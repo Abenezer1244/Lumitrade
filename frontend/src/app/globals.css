@@ -65,6 +65,10 @@ body {
 .border-loss    { border-color: var(--color-loss); }
 .border-profit  { border-color: var(--color-profit); }
 
+/* ── Scrollbar hide utility ──────────────────────────────────── */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
 /* ── Reduced motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
