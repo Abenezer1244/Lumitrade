@@ -11,6 +11,7 @@ import asyncio
 import signal
 import sys
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from .config import LumitradeConfig
 from .infrastructure.alert_service import AlertService
@@ -21,6 +22,61 @@ from .state.lock import DistributedLock
 from .state.manager import StateManager
 
 logger = get_logger("orchestrator")
+
+
+# ── Sentry Integration (DOS Section 6.2) ─────────────────────────
+
+
+def scrub_sentry_event(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any]:
+    """Strip sensitive data from Sentry events before transmission.
+
+    Removes request headers/cookies and local variables from stack frames
+    to prevent accidental credential leakage to Sentry servers.
+    """
+    # Remove request headers and cookies
+    request = event.get("request")
+    if request and isinstance(request, dict):
+        request.pop("headers", None)
+        request.pop("cookies", None)
+
+    # Remove local variables from all stack frames
+    exception = event.get("exception")
+    if exception and isinstance(exception, dict):
+        for exc_value in exception.get("values", []):
+            stacktrace = exc_value.get("stacktrace")
+            if stacktrace and isinstance(stacktrace, dict):
+                for frame in stacktrace.get("frames", []):
+                    frame.pop("vars", None)
+
+    return event
+
+
+def configure_sentry(config: LumitradeConfig) -> None:
+    """Initialize Sentry error tracking if DSN is configured.
+
+    Safe no-op if sentry-sdk is not installed or DSN is empty.
+    Called once at startup after configure_logging().
+    """
+    if not config.sentry_dsn:
+        logger.debug("sentry_skipped", reason="no_dsn_configured")
+        return
+
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.asyncio import AsyncioIntegration
+    except ImportError:
+        logger.debug("sentry_skipped", reason="sentry_sdk_not_installed")
+        return
+
+    sentry_sdk.init(
+        dsn=config.sentry_dsn,
+        integrations=[AsyncioIntegration()],
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
+        environment=config.oanda_environment,
+        before_send=scrub_sentry_event,
+    )
+    logger.info("sentry_initialized", environment=config.oanda_environment)
 
 
 class OrchestratorService:
@@ -47,6 +103,9 @@ class OrchestratorService:
 
         # 1. Configure logging
         configure_logging(self.config.log_level)
+
+        # 1b. Initialize Sentry error tracking (DOS Section 6.2)
+        configure_sentry(self.config)
 
         # 2. Connect database
         await self.db.connect()
@@ -214,6 +273,8 @@ class OrchestratorService:
 def main() -> None:
     """Entry point for python -m lumitrade.main."""
     configure_logging()
+    config = LumitradeConfig()
+    configure_sentry(config)
     orchestrator = OrchestratorService()
     try:
         asyncio.run(orchestrator.run())
