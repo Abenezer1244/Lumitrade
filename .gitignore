@@ -1,0 +1,63 @@
+# Environment files — NEVER commit
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+*.env
+
+# Key files
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Secrets and credentials
+secrets/
+credentials/
+*credentials*.json
+*service-account*.json
+
+# Log files (may contain sensitive data)
+logs/
+*.log
+
+# Python
+__pycache__/
+.venv/
+venv/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Node
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+docker-compose.override.yml
+
+# Supabase local
+supabase/.temp/

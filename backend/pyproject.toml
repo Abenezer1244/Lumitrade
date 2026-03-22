@@ -1,0 +1,48 @@
+[project]
+name = "lumitrade"
+version = "1.0.0"
+description = "AI-powered forex trading platform"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "unit: Unit tests — no external dependencies",
+    "integration: Integration tests — requires test DB",
+    "chaos: Chaos/failure scenario tests",
+    "e2e: End-to-end tests — requires running frontend",
+    "performance: Performance benchmarks",
+    "security: Security validation tests",
+    "critical: Tests blocking deployment if they fail",
+    "future: Future feature tests — skipped until feature implemented",
+    "live: Tests requiring real OANDA credentials — never run in CI",
+]
+addopts = "--tb=short -q -m \"not future and not live\""
+
+[tool.coverage.run]
+source = ["lumitrade"]
+omit = ["lumitrade/tests/*", "lumitrade/__init__.py"]
+
+[tool.coverage.report]
+fail_under = 75
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
