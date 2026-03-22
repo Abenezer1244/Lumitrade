@@ -30,7 +30,7 @@ sentry-sdk==1.45.0
 # ── Config & environment ──────────────────────────────────────
 python-dotenv==1.0.1
 pydantic==2.6.4
-pydantic-settings==2.2.1
+pydantic-settings==2.13.1
 
 # ── Testing ───────────────────────────────────────────────────
 pytest==8.1.1
