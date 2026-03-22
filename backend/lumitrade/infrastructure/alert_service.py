@@ -94,12 +94,20 @@ class AlertService:
     async def _log_alert(self, level: str, message: str, channel: str):
         from datetime import datetime, timezone
 
-        await self.db.insert(
-            "alerts_log",
-            {
-                "level": level,
-                "message": message,
-                "channel": channel,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
-        )
+        try:
+            await self.db.insert(
+                "alerts_log",
+                {
+                    "level": level,
+                    "message": message,
+                    "channel": channel,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except Exception as e:
+            # Alert logging should never crash the engine
+            logger.warning(
+                "alert_log_failed",
+                level=level,
+                error=str(e),
+            )
