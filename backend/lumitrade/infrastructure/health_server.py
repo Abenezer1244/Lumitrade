@@ -207,3 +207,27 @@ class HealthServer:
             logger.warning("health_check_trading_info_failed")
 
         return default_info
+
+
+async def _run_standalone() -> None:
+    """Entry point when run as a standalone process via supervisord."""
+    from ..config import LumitradeConfig
+
+    config = LumitradeConfig()  # type: ignore[call-arg]
+    db = DatabaseClient(config)
+    await db.connect()
+
+    server = HealthServer(db, config.instance_id)
+    await server.start()
+
+    # Run forever until interrupted
+    try:
+        await asyncio.get_event_loop().create_future()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        await server.stop()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(_run_standalone())
