@@ -1,0 +1,80 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Background */
+  --color-bg-primary: #0D1B2A;
+  --color-bg-surface: #111D2E;
+  --color-bg-elevated: #1A2840;
+  --color-bg-input: #0A1628;
+
+  /* Borders */
+  --color-border: #1E3050;
+  --color-border-accent: #2A4070;
+
+  /* Text */
+  --color-text-primary: #E8F0FE;
+  --color-text-secondary: #8A9BC0;
+  --color-text-tertiary: #4A5E80;
+
+  /* Semantic */
+  --color-accent: #3D8EFF;
+  --color-accent-glow: rgba(61, 142, 255, 0.15);
+  --color-profit: #00C896;
+  --color-profit-dim: rgba(0, 200, 150, 0.12);
+  --color-loss: #FF4D6A;
+  --color-loss-dim: rgba(255, 77, 106, 0.12);
+  --color-warning: #FFB347;
+  --color-warning-dim: rgba(255, 179, 71, 0.12);
+  --color-gold: #E67E22;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: "DM Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typography utilities ───────────────────────────────────── */
+.text-display   { font-family: "Space Grotesk", sans-serif; font-size: 28px; font-weight: 600; }
+.text-heading   { font-size: 18px; font-weight: 600; }
+.text-card-title { font-size: 14px; font-weight: 500; }
+.text-body      { font-size: 14px; font-weight: 400; }
+.text-label     { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+.text-price     { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 500; }
+.text-metric    { font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 600; }
+.text-micro     { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 400; }
+
+/* ── Semantic color utilities ───────────────────────────────── */
+.text-profit    { color: var(--color-profit); }
+.text-loss      { color: var(--color-loss); }
+.text-warning   { color: var(--color-warning); }
+.text-gold      { color: var(--color-gold); }
+.text-accent    { color: var(--color-accent); }
+.bg-profit-dim  { background-color: var(--color-profit-dim); }
+.bg-loss-dim    { background-color: var(--color-loss-dim); }
+.bg-warning-dim { background-color: var(--color-warning-dim); }
+.bg-input       { background-color: var(--color-bg-input); }
+.bg-surface     { background-color: var(--color-bg-surface); }
+.bg-elevated    { background-color: var(--color-bg-elevated); }
+.border-border  { border-color: var(--color-border); }
+.border-loss    { border-color: var(--color-loss); }
+.border-profit  { border-color: var(--color-profit); }
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .animate-pulse {
+    animation: none !important;
+  }
+}
