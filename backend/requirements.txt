@@ -17,7 +17,7 @@ postgrest==0.16.1
 # ── Financial data & indicators ───────────────────────────────
 pandas==2.2.1
 numpy==1.26.4
-pandas-ta==0.3.14b
+pandas-ta==0.4.71b0
 
 # ── Alerting ──────────────────────────────────────────────────
 # Telnyx SMS via raw httpx — no SDK needed
