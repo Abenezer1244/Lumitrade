@@ -13,40 +13,31 @@ from unittest.mock import AsyncMock
 import pytest
 
 from lumitrade.state.lock import (
-    LOCK_ROW_KEY,
+    LOCK_ROW_ID,
     LOCK_TTL_SECONDS,
-    TAKEOVER_THRESHOLD,
     DistributedLock,
 )
 
 
-def _make_lock_row(instance_id: str, renewed_at: datetime) -> dict:
-    """Create a well-formed lock row as returned by select_one."""
+def _make_lock_row(instance_id: str, expires_at: datetime) -> dict:
+    """Create a well-formed singleton row with lock fields as returned by select_one."""
     return {
-        "key": LOCK_ROW_KEY,
-        "value": {
-            "instance_id": instance_id,
-            "acquired_at": renewed_at.isoformat(),
-            "renewed_at": renewed_at.isoformat(),
-            "ttl_seconds": LOCK_TTL_SECONDS,
-        },
-        "updated_at": renewed_at.isoformat(),
+        "id": LOCK_ROW_ID,
+        "instance_id": instance_id,
+        "is_primary_instance": True,
+        "lock_expires_at": expires_at.isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def _make_released_lock_row() -> dict:
-    """Lock row after release — instance_id is None."""
+    """Singleton row after release — instance_id is None, is_primary_instance is False."""
     now = datetime.now(timezone.utc)
     return {
-        "key": LOCK_ROW_KEY,
-        "value": {
-            "instance_id": None,
-            "acquired_at": None,
-            "renewed_at": None,
-            "ttl_seconds": LOCK_TTL_SECONDS,
-            "released_at": now.isoformat(),
-            "released_by": "primary-01",
-        },
+        "id": LOCK_ROW_ID,
+        "instance_id": None,
+        "is_primary_instance": False,
+        "lock_expires_at": None,
         "updated_at": now.isoformat(),
     }
 
@@ -59,10 +50,11 @@ class TestFailover:
 
     @pytest.mark.asyncio
     async def test_fo001_standby_blocked_by_active_primary(self):
-        """FO-001: Standby cannot acquire while primary renewed recently."""
+        """FO-001: Standby cannot acquire while primary lock is not expired."""
         db = AsyncMock()
-        recent = datetime.now(timezone.utc) - timedelta(seconds=30)
-        db.select_one.return_value = _make_lock_row("primary-01", recent)
+        # Lock expires in the future — primary is active
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=90)
+        db.select_one.return_value = _make_lock_row("primary-01", future_expiry)
 
         lock = DistributedLock(db)
         result = await lock.acquire("standby-01")
@@ -77,9 +69,8 @@ class TestFailover:
     async def test_fo002_standby_takes_over_expired_lock(self):
         """FO-002: Expired primary lock allows standby takeover."""
         db = AsyncMock()
-        expired = datetime.now(timezone.utc) - timedelta(
-            seconds=TAKEOVER_THRESHOLD + 60
-        )
+        # Lock expired 60 seconds ago
+        expired = datetime.now(timezone.utc) - timedelta(seconds=60)
         db.select_one.return_value = _make_lock_row("primary-01", expired)
 
         lock = DistributedLock(db)
@@ -88,7 +79,8 @@ class TestFailover:
         assert result is True
         db.update.assert_called_once()
         update_payload = db.update.call_args[0][2]
-        assert update_payload["value"]["instance_id"] == "standby-01"
+        assert update_payload["instance_id"] == "standby-01"
+        assert update_payload["is_primary_instance"] is True
 
     # ── FO-003: Primary reclaims after standby releases ───────────
 
@@ -96,10 +88,7 @@ class TestFailover:
     async def test_fo003_primary_reclaims_after_release(self):
         """FO-003: Primary reclaims after standby releases."""
         db = AsyncMock()
-        # First call: standby releases (lock row has instance_id=None)
-        # The released lock row has instance_id=None, which != "primary-01"
-        # and renewed_at=None, so it falls through to the malformed branch
-        # which does _update_lock and returns True.
+        # Released lock row — instance_id=None, is_primary_instance=False
         db.select_one.return_value = _make_released_lock_row()
 
         lock = DistributedLock(db)
@@ -111,10 +100,11 @@ class TestFailover:
 
     @pytest.mark.asyncio
     async def test_fo004_release_clears_lock(self):
-        """FO-004: release() sets instance_id to None and records released_by."""
+        """FO-004: release() sets is_primary_instance=False, instance_id=None."""
         db = AsyncMock()
         now = datetime.now(timezone.utc)
-        db.select_one.return_value = _make_lock_row("primary-01", now)
+        future_expiry = now + timedelta(seconds=90)
+        db.select_one.return_value = _make_lock_row("primary-01", future_expiry)
 
         lock = DistributedLock(db)
         await lock.release("primary-01")
@@ -122,12 +112,11 @@ class TestFailover:
         db.update.assert_called_once()
         update_args = db.update.call_args[0]
         assert update_args[0] == "system_state"
-        assert update_args[1] == {"key": LOCK_ROW_KEY}
-        cleared = update_args[2]["value"]
+        assert update_args[1] == {"id": LOCK_ROW_ID}
+        cleared = update_args[2]
         assert cleared["instance_id"] is None
-        assert cleared["acquired_at"] is None
-        assert cleared["renewed_at"] is None
-        assert cleared["released_by"] == "primary-01"
+        assert cleared["is_primary_instance"] is False
+        assert cleared["lock_expires_at"] is None
 
     # ── FO-005: Acquire on empty table creates lock ───────────────
 
@@ -143,8 +132,9 @@ class TestFailover:
         assert result is True
         db.upsert.assert_called_once()
         payload = db.upsert.call_args[0][1]
-        assert payload["key"] == LOCK_ROW_KEY
-        assert payload["value"]["instance_id"] == "new-instance"
+        assert payload["id"] == LOCK_ROW_ID
+        assert payload["instance_id"] == "new-instance"
+        assert payload["is_primary_instance"] is True
 
     # ── FO-006: Same instance re-acquires (renew) ─────────────────
 
@@ -152,8 +142,8 @@ class TestFailover:
     async def test_fo006_same_instance_reacquires(self):
         """FO-006: Instance that already holds the lock can refresh/renew it."""
         db = AsyncMock()
-        now = datetime.now(timezone.utc) - timedelta(seconds=50)
-        db.select_one.return_value = _make_lock_row("instance-A", now)
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
+        db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")

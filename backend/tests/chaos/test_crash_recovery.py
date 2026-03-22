@@ -14,12 +14,11 @@ import pytest
 
 from lumitrade.core.enums import RiskState
 from lumitrade.state.lock import (
-    LOCK_ROW_KEY,
+    LOCK_ROW_ID,
     LOCK_TTL_SECONDS,
-    TAKEOVER_THRESHOLD,
     DistributedLock,
 )
-from lumitrade.state.manager import STATE_ROW_KEY, StateManager
+from lumitrade.state.manager import STATE_ROW_ID, StateManager
 
 
 def _make_config_mock():
@@ -31,17 +30,14 @@ def _make_config_mock():
     return config
 
 
-def _make_lock_row(instance_id: str, renewed_at: datetime) -> dict:
-    """Create a well-formed lock row as returned by select_one."""
+def _make_lock_row(instance_id: str, expires_at: datetime) -> dict:
+    """Create a well-formed singleton row with lock fields."""
     return {
-        "key": LOCK_ROW_KEY,
-        "value": {
-            "instance_id": instance_id,
-            "acquired_at": renewed_at.isoformat(),
-            "renewed_at": renewed_at.isoformat(),
-            "ttl_seconds": LOCK_TTL_SECONDS,
-        },
-        "updated_at": renewed_at.isoformat(),
+        "id": LOCK_ROW_ID,
+        "instance_id": instance_id,
+        "is_primary_instance": True,
+        "lock_expires_at": expires_at.isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -49,11 +45,11 @@ def _make_lock_row(instance_id: str, renewed_at: datetime) -> dict:
 class TestCrashRecovery:
     """CR-001 to CR-010: State persistence and lock recovery."""
 
-    # ── CR-001: save() calls db.upsert with correct key ──────────
+    # ── CR-001: save() calls db.upsert with correct id ──────────
 
     @pytest.mark.asyncio
     async def test_cr001_save_calls_upsert(self):
-        """CR-001: save() writes state to system_state with correct key."""
+        """CR-001: save() writes state to system_state with correct singleton id."""
         db = AsyncMock()
         config = _make_config_mock()
         oanda = AsyncMock()
@@ -65,9 +61,9 @@ class TestCrashRecovery:
         call_args = db.upsert.call_args
         assert call_args[0][0] == "system_state"
         payload = call_args[0][1]
-        assert payload["key"] == STATE_ROW_KEY
-        assert "value" in payload
-        assert payload["value"]["instance_id"] == "instance-A"
+        assert payload["id"] == STATE_ROW_ID
+        assert payload["risk_state"] == "NORMAL"
+        assert "updated_at" in payload
 
     # ── CR-002: Lock acquired on empty system (no row) ────────────
 
@@ -83,7 +79,8 @@ class TestCrashRecovery:
         assert result is True
         db.upsert.assert_called_once()
         upsert_payload = db.upsert.call_args[0][1]
-        assert upsert_payload["value"]["instance_id"] == "instance-A"
+        assert upsert_payload["instance_id"] == "instance-A"
+        assert upsert_payload["is_primary_instance"] is True
 
     # ── CR-003: Lock not acquired when held by active other ───────
 
@@ -91,8 +88,9 @@ class TestCrashRecovery:
     async def test_cr003_lock_blocked_by_active_holder(self):
         """CR-003: Lock held by active instance-B blocks instance-A."""
         db = AsyncMock()
-        recent_time = datetime.now(timezone.utc) - timedelta(seconds=30)
-        db.select_one.return_value = _make_lock_row("instance-B", recent_time)
+        # Lock expires in the future — holder is active
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=90)
+        db.select_one.return_value = _make_lock_row("instance-B", future_expiry)
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -105,12 +103,11 @@ class TestCrashRecovery:
 
     @pytest.mark.asyncio
     async def test_cr004_expired_lock_takeover(self):
-        """CR-004: Lock expired beyond TAKEOVER_THRESHOLD can be taken over."""
+        """CR-004: Lock expired allows takeover."""
         db = AsyncMock()
-        expired_time = datetime.now(timezone.utc) - timedelta(
-            seconds=TAKEOVER_THRESHOLD + 10
-        )
-        db.select_one.return_value = _make_lock_row("dead-instance", expired_time)
+        # Lock expired 10 seconds ago
+        expired = datetime.now(timezone.utc) - timedelta(seconds=10)
+        db.select_one.return_value = _make_lock_row("dead-instance", expired)
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -125,15 +122,17 @@ class TestCrashRecovery:
         """CR-005: release() clears the lock data for the holding instance."""
         db = AsyncMock()
         now = datetime.now(timezone.utc)
-        db.select_one.return_value = _make_lock_row("instance-A", now)
+        future_expiry = now + timedelta(seconds=90)
+        db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
 
         lock = DistributedLock(db)
         await lock.release("instance-A")
 
         db.update.assert_called_once()
         update_payload = db.update.call_args[0][2]
-        assert update_payload["value"]["instance_id"] is None
-        assert update_payload["value"]["released_by"] == "instance-A"
+        assert update_payload["instance_id"] is None
+        assert update_payload["is_primary_instance"] is False
+        assert update_payload["lock_expires_at"] is None
 
     # ── CR-006: State restored from DB ────────────────────────────
 
@@ -149,18 +148,16 @@ class TestCrashRecovery:
         }
         oanda.get_open_trades.return_value = []
 
-        # DB returns persisted state
+        # DB returns persisted state as flat columns
         db.select_one.return_value = {
-            "key": STATE_ROW_KEY,
-            "value": {
-                "daily_pnl": "-15.00",
-                "weekly_pnl": "42.00",
-                "consecutive_losses": 2,
-                "last_signal_at": "2025-01-06T12:00:00+00:00",
-                "last_trade_at": "2025-01-06T11:30:00+00:00",
-                "kill_switch_active": False,
-                "last_persisted_at": "2025-01-06T12:30:00+00:00",
-            },
+            "id": STATE_ROW_ID,
+            "risk_state": "NORMAL",
+            "open_trades": [],
+            "daily_pnl_usd": "-15.00",
+            "weekly_pnl_usd": "42.00",
+            "consecutive_losses": 2,
+            "last_signal_time": {"EUR_USD": "2025-01-06T12:00:00+00:00"},
+            "confidence_threshold_override": None,
             "updated_at": "2025-01-06T12:30:00+00:00",
         }
 
@@ -234,8 +231,8 @@ class TestCrashRecovery:
     async def test_cr008_same_instance_reacquires(self):
         """CR-008: An instance that already holds the lock can refresh it."""
         db = AsyncMock()
-        now = datetime.now(timezone.utc)
-        db.select_one.return_value = _make_lock_row("instance-A", now)
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
+        db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -275,6 +272,7 @@ class TestCrashRecovery:
         assert result is True
         db.upsert.assert_called_once()
         payload = db.upsert.call_args[0][1]
-        assert payload["key"] == LOCK_ROW_KEY
-        assert payload["value"]["instance_id"] == "fresh-instance"
-        assert "renewed_at" in payload["value"]
+        assert payload["id"] == LOCK_ROW_ID
+        assert payload["instance_id"] == "fresh-instance"
+        assert payload["is_primary_instance"] is True
+        assert "lock_expires_at" in payload

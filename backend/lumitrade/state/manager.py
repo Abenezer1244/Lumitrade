@@ -12,6 +12,20 @@ State lifecycle:
   2. During operation: persist_loop() saves state every 30s.
   3. Components read state via get() and risk_state property.
   4. On shutdown: final save() before lock release.
+
+DB schema (system_state singleton row):
+  id TEXT PRIMARY KEY DEFAULT 'singleton'
+  risk_state TEXT
+  open_trades JSONB
+  daily_pnl_usd DECIMAL
+  weekly_pnl_usd DECIMAL
+  consecutive_losses INT
+  last_signal_time JSONB
+  confidence_threshold_override DECIMAL
+  is_primary_instance BOOLEAN
+  instance_id TEXT
+  lock_expires_at TIMESTAMPTZ
+  updated_at TIMESTAMPTZ
 """
 
 import asyncio
@@ -25,7 +39,7 @@ from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
 
-STATE_ROW_KEY = "engine_state"
+STATE_ROW_ID = "singleton"
 PERSIST_INTERVAL_SECONDS = 30
 
 
@@ -65,6 +79,7 @@ class StateManager:
             "reconciliation": None,
             "account_balance": "0",
             "account_equity": "0",
+            "confidence_threshold_override": None,
         }
 
     async def restore(self) -> None:
@@ -72,36 +87,41 @@ class StateManager:
         Restore system state from DB and reconcile with OANDA.
 
         Sequence:
-          1. Read persisted state from system_state table.
+          1. Read persisted state from system_state table (singleton row).
           2. Fetch live account data from OANDA.
           3. Run position reconciliation.
           4. Merge results into in-memory state.
         """
         logger.info("state_restore_started", instance_id=self._config.instance_id)
 
-        # 1. Read persisted state from DB
+        # 1. Read persisted state from DB (flat columns, not key-value)
         try:
             row = await self._db.select_one(
                 "system_state",
-                {"key": STATE_ROW_KEY},
+                {"id": STATE_ROW_ID},
             )
-            if row and row.get("value"):
-                persisted = row["value"]
-                # Merge persisted state — keep config values as authoritative
-                for key in (
-                    "daily_pnl",
-                    "weekly_pnl",
-                    "consecutive_losses",
-                    "last_signal_at",
-                    "last_trade_at",
-                    "kill_switch_active",
-                ):
-                    if key in persisted:
-                        self._state[key] = persisted[key]
+            if row:
+                # Map DB columns to in-memory state keys
+                if row.get("risk_state") is not None:
+                    self._state["risk_state"] = row["risk_state"]
+                if row.get("open_trades") is not None:
+                    self._state["open_trades"] = row["open_trades"]
+                if row.get("daily_pnl_usd") is not None:
+                    self._state["daily_pnl"] = str(row["daily_pnl_usd"])
+                if row.get("weekly_pnl_usd") is not None:
+                    self._state["weekly_pnl"] = str(row["weekly_pnl_usd"])
+                if row.get("consecutive_losses") is not None:
+                    self._state["consecutive_losses"] = row["consecutive_losses"]
+                if row.get("last_signal_time") is not None:
+                    self._state["last_signal_at"] = row["last_signal_time"]
+                if row.get("confidence_threshold_override") is not None:
+                    self._state["confidence_threshold_override"] = str(
+                        row["confidence_threshold_override"]
+                    )
 
                 logger.info(
                     "state_restored_from_db",
-                    persisted_at=persisted.get("last_persisted_at"),
+                    persisted_at=row.get("updated_at"),
                 )
             else:
                 logger.info("state_no_persisted_state", msg="Starting with defaults")
@@ -162,6 +182,7 @@ class StateManager:
     async def save(self) -> None:
         """
         Write full in-memory state to the system_state singleton row.
+        Maps in-memory keys to flat DB columns.
         """
         now = datetime.now(timezone.utc)
         self._state["last_persisted_at"] = now.isoformat()
@@ -170,8 +191,16 @@ class StateManager:
             await self._db.upsert(
                 "system_state",
                 {
-                    "key": STATE_ROW_KEY,
-                    "value": self._state,
+                    "id": STATE_ROW_ID,
+                    "risk_state": self._state.get("risk_state", "NORMAL"),
+                    "open_trades": self._state.get("open_trades", []),
+                    "daily_pnl_usd": self._state.get("daily_pnl", "0"),
+                    "weekly_pnl_usd": self._state.get("weekly_pnl", "0"),
+                    "consecutive_losses": self._state.get("consecutive_losses", 0),
+                    "last_signal_time": self._state.get("last_signal_at"),
+                    "confidence_threshold_override": self._state.get(
+                        "confidence_threshold_override"
+                    ),
                     "updated_at": now.isoformat(),
                 },
             )

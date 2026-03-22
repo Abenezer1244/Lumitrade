@@ -6,15 +6,20 @@ Ensures only one engine instance is PRIMARY at a time.
 Per DOS Section 7.4.
 
 Lock lifecycle:
-  1. Instance tries to acquire lock (INSERT or UPDATE if expired).
+  1. Instance tries to acquire lock (UPDATE singleton row).
   2. Primary instance renews lock every RENEW_INTERVAL seconds.
   3. If primary crashes, lock expires after LOCK_TTL_SECONDS.
-  4. A standby instance can take over after TAKEOVER_THRESHOLD seconds.
+  4. A standby instance can take over after lock_expires_at < now.
   5. On graceful shutdown, lock is explicitly released.
+
+DB columns used (on the singleton row):
+  is_primary_instance BOOLEAN
+  instance_id TEXT
+  lock_expires_at TIMESTAMPTZ
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
@@ -23,8 +28,7 @@ logger = get_logger(__name__)
 
 LOCK_TTL_SECONDS = 120
 RENEW_INTERVAL = 60
-TAKEOVER_THRESHOLD = 180
-LOCK_ROW_KEY = "engine_lock"
+LOCK_ROW_ID = "singleton"
 MAX_CONSECUTIVE_FAILURES = 2
 
 
@@ -40,10 +44,10 @@ class DistributedLock:
         """
         Try to become the primary instance.
 
-        Checks the current lock state in system_state:
-        - If no lock exists: acquire it.
+        Checks the current lock state in system_state singleton row:
+        - If no row or no holder: acquire it.
         - If lock is held by us: refresh it.
-        - If lock is expired beyond TAKEOVER_THRESHOLD: take over.
+        - If lock_expires_at < now: lock is expired, take over.
         - Otherwise: return False (another instance is primary).
 
         Returns:
@@ -54,21 +58,20 @@ class DistributedLock:
         try:
             row = await self._db.select_one(
                 "system_state",
-                {"key": LOCK_ROW_KEY},
+                {"id": LOCK_ROW_ID},
             )
 
             if row is None:
-                # No lock exists — claim it
+                # No singleton row — create it with lock
                 await self._db.upsert(
                     "system_state",
                     {
-                        "key": LOCK_ROW_KEY,
-                        "value": {
-                            "instance_id": instance_id,
-                            "acquired_at": now.isoformat(),
-                            "renewed_at": now.isoformat(),
-                            "ttl_seconds": LOCK_TTL_SECONDS,
-                        },
+                        "id": LOCK_ROW_ID,
+                        "instance_id": instance_id,
+                        "is_primary_instance": True,
+                        "lock_expires_at": (
+                            now + timedelta(seconds=LOCK_TTL_SECONDS)
+                        ).isoformat(),
                         "updated_at": now.isoformat(),
                     },
                 )
@@ -79,9 +82,8 @@ class DistributedLock:
                 )
                 return True
 
-            lock_data = row.get("value", {})
-            current_holder = lock_data.get("instance_id")
-            renewed_at_str = lock_data.get("renewed_at")
+            current_holder = row.get("instance_id")
+            lock_expires_at_str = row.get("lock_expires_at")
 
             # We already hold the lock — refresh
             if current_holder == instance_id:
@@ -92,31 +94,39 @@ class DistributedLock:
                 )
                 return True
 
-            # Check if the current lock is expired
-            if renewed_at_str:
-                renewed_at = datetime.fromisoformat(renewed_at_str)
-                elapsed = (now - renewed_at).total_seconds()
+            # Check if no holder or lock is expired
+            if current_holder is None or not row.get("is_primary_instance"):
+                # No active holder — claim it
+                await self._update_lock(instance_id, now)
+                logger.info(
+                    "lock_acquired",
+                    instance_id=instance_id,
+                    method="claim_vacant",
+                )
+                return True
 
-                if elapsed > TAKEOVER_THRESHOLD:
+            if lock_expires_at_str:
+                expires_at = datetime.fromisoformat(lock_expires_at_str)
+                if now > expires_at:
                     # Lock holder is presumed dead — take over
                     await self._update_lock(instance_id, now)
                     logger.warning(
                         "lock_takeover",
                         instance_id=instance_id,
                         previous_holder=current_holder,
-                        elapsed_seconds=elapsed,
+                        expired_at=lock_expires_at_str,
                     )
                     return True
 
+                remaining = (expires_at - now).total_seconds()
                 logger.info(
                     "lock_held_by_other",
                     current_holder=current_holder,
-                    elapsed_seconds=elapsed,
-                    takeover_in=TAKEOVER_THRESHOLD - elapsed,
+                    expires_in_seconds=remaining,
                 )
                 return False
 
-            # Malformed lock data — take over
+            # No lock_expires_at — malformed, take over
             await self._update_lock(instance_id, now)
             logger.warning(
                 "lock_takeover_malformed",
@@ -210,7 +220,7 @@ class DistributedLock:
         try:
             row = await self._db.select_one(
                 "system_state",
-                {"key": LOCK_ROW_KEY},
+                {"id": LOCK_ROW_ID},
             )
 
             if row is None:
@@ -221,8 +231,7 @@ class DistributedLock:
                 )
                 return
 
-            lock_data = row.get("value", {})
-            current_holder = lock_data.get("instance_id")
+            current_holder = row.get("instance_id")
 
             if current_holder != instance_id:
                 logger.warning(
@@ -236,16 +245,11 @@ class DistributedLock:
             now = datetime.now(timezone.utc)
             await self._db.update(
                 "system_state",
-                {"key": LOCK_ROW_KEY},
+                {"id": LOCK_ROW_ID},
                 {
-                    "value": {
-                        "instance_id": None,
-                        "acquired_at": None,
-                        "renewed_at": None,
-                        "ttl_seconds": LOCK_TTL_SECONDS,
-                        "released_at": now.isoformat(),
-                        "released_by": instance_id,
-                    },
+                    "instance_id": None,
+                    "is_primary_instance": False,
+                    "lock_expires_at": None,
                     "updated_at": now.isoformat(),
                 },
             )
@@ -269,17 +273,16 @@ class DistributedLock:
         return self._renew_task
 
     async def _update_lock(self, instance_id: str, now: datetime) -> None:
-        """Write the lock renewal to system_state."""
+        """Write the lock renewal to system_state singleton row."""
         await self._db.update(
             "system_state",
-            {"key": LOCK_ROW_KEY},
+            {"id": LOCK_ROW_ID},
             {
-                "value": {
-                    "instance_id": instance_id,
-                    "acquired_at": now.isoformat(),
-                    "renewed_at": now.isoformat(),
-                    "ttl_seconds": LOCK_TTL_SECONDS,
-                },
+                "instance_id": instance_id,
+                "is_primary_instance": True,
+                "lock_expires_at": (
+                    now + timedelta(seconds=LOCK_TTL_SECONDS)
+                ).isoformat(),
                 "updated_at": now.isoformat(),
             },
         )

@@ -44,6 +44,7 @@ logger = get_logger(__name__)
 
 HEALTH_PORT = int(os.environ.get("PORT", 8000))
 STATE_STALENESS_THRESHOLD_SECONDS = 120
+STATE_ROW_ID = "singleton"
 
 
 class HealthServer:
@@ -130,25 +131,24 @@ class HealthServer:
             "lock": "not_held",
         }
 
-        # Database check
+        # Database check — read the singleton row
         try:
-            await self._db.select("system_state", {"key": "engine_state"}, limit=1)
+            await self._db.select("system_state", {"id": STATE_ROW_ID}, limit=1)
             components["database"] = "ok"
         except Exception:
             logger.warning("health_check_db_failed")
 
-        # State freshness check
+        # State freshness check — use updated_at column
         try:
             row = await self._db.select_one(
                 "system_state",
-                {"key": "engine_state"},
+                {"id": STATE_ROW_ID},
             )
-            if row and row.get("value"):
-                state_data = row["value"]
-                last_persisted = state_data.get("last_persisted_at")
-                if last_persisted:
-                    persisted_at = datetime.fromisoformat(last_persisted)
-                    elapsed = (now - persisted_at).total_seconds()
+            if row:
+                updated_at_str = row.get("updated_at")
+                if updated_at_str:
+                    updated_at = datetime.fromisoformat(updated_at_str)
+                    elapsed = (now - updated_at).total_seconds()
                     if elapsed <= STATE_STALENESS_THRESHOLD_SECONDS:
                         components["state"] = "ok"
                     else:
@@ -156,18 +156,18 @@ class HealthServer:
         except Exception:
             logger.warning("health_check_state_failed")
 
-        # Lock check
+        # Lock check — read flat columns from singleton row
         try:
-            lock_row = await self._db.select_one(
+            row = await self._db.select_one(
                 "system_state",
-                {"key": "engine_lock"},
+                {"id": STATE_ROW_ID},
             )
-            if lock_row and lock_row.get("value"):
-                lock_data = lock_row["value"]
-                holder = lock_data.get("instance_id")
-                if holder == self._instance_id:
+            if row:
+                holder = row.get("instance_id")
+                is_primary = row.get("is_primary_instance", False)
+                if is_primary and holder == self._instance_id:
                     components["lock"] = "held"
-                elif holder:
+                elif is_primary and holder:
                     components["lock"] = "held_by_other"
                 else:
                     components["lock"] = "not_held"
@@ -182,7 +182,7 @@ class HealthServer:
         return components
 
     async def _get_trading_info(self) -> dict:
-        """Extract trading info from persisted state."""
+        """Extract trading info from persisted state (flat columns)."""
         default_info = {
             "mode": "UNKNOWN",
             "risk_state": "UNKNOWN",
@@ -193,15 +193,15 @@ class HealthServer:
         try:
             row = await self._db.select_one(
                 "system_state",
-                {"key": "engine_state"},
+                {"id": STATE_ROW_ID},
             )
-            if row and row.get("value"):
-                state_data = row["value"]
+            if row:
+                open_trades = row.get("open_trades", [])
                 return {
-                    "mode": state_data.get("trading_mode", "UNKNOWN"),
-                    "risk_state": state_data.get("risk_state", "UNKNOWN"),
-                    "open_trades": len(state_data.get("open_trades", [])),
-                    "last_signal_at": state_data.get("last_signal_at"),
+                    "mode": "UNKNOWN",  # trading_mode not stored in DB columns
+                    "risk_state": row.get("risk_state", "UNKNOWN"),
+                    "open_trades": len(open_trades) if isinstance(open_trades, list) else 0,
+                    "last_signal_at": row.get("last_signal_time"),
                 }
         except Exception:
             logger.warning("health_check_trading_info_failed")
