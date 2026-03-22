@@ -32,6 +32,7 @@ Response JSON:
   }
 """
 
+import os
 from datetime import datetime, timezone
 
 from aiohttp import web
@@ -41,7 +42,7 @@ from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
 
-HEALTH_PORT = 8000
+HEALTH_PORT = int(os.environ.get("PORT", 8000))
 STATE_STALENESS_THRESHOLD_SECONDS = 120
 
 
