@@ -63,7 +63,7 @@ class CalendarGuard:
                     logger.info(
                         "news_blackout_triggered",
                         pair=pair,
-                        event=event.title,
+                        news_event=event.title,
                         impact=event.impact.value,
                         minutes_until=minutes_until,
                     )
@@ -75,7 +75,7 @@ class CalendarGuard:
                     logger.info(
                         "news_blackout_triggered",
                         pair=pair,
-                        event=event.title,
+                        news_event=event.title,
                         impact=event.impact.value,
                         minutes_until=minutes_until,
                     )
