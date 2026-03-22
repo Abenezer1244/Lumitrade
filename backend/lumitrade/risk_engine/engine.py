@@ -195,7 +195,10 @@ class RiskEngine:
             )
         except Exception:
             # If DB unavailable, assume 0 — fail-open on read
-            logger.warning("position_count_db_error", msg="Could not query open positions")
+            logger.warning(
+                "position_count_db_error",
+                msg="Could not query open positions",
+            )
             current_count = 0
 
         passed = current_count < max_positions
@@ -228,8 +231,11 @@ class RiskEngine:
                     if last_closed_dt.tzinfo is None:
                         last_closed_dt = last_closed_dt.replace(tzinfo=timezone.utc)
                     if last_closed_dt > cutoff:
+                        elapsed = (
+                            datetime.now(timezone.utc) - last_closed_dt
+                        )
                         minutes_ago = int(
-                            (datetime.now(timezone.utc) - last_closed_dt).total_seconds() / 60
+                            elapsed.total_seconds() / 60
                         )
                         return (
                             "COOLDOWN",
@@ -267,7 +273,9 @@ class RiskEngine:
         return (
             "CONFIDENCE",
             passed,
-            "OK" if passed else f"Confidence {proposal.confidence_adjusted} < {threshold}",
+            "OK"
+            if passed
+            else f"Confidence {proposal.confidence_adjusted} < {threshold}",
             str(proposal.confidence_adjusted),
             str(threshold),
         )
@@ -334,7 +342,9 @@ class RiskEngine:
         return (
             "ACTION",
             passed,
-            "OK" if passed else f"Action is {proposal.action.value}, expected BUY or SELL",
+            "OK"
+            if passed
+            else f"Action is {proposal.action.value}, expected BUY or SELL",
             proposal.action.value,
             "BUY or SELL",
         )

@@ -6,7 +6,7 @@ Never uses raw SQL string interpolation.
 Per SS Section 4.1.
 """
 
-from supabase import create_async_client, AsyncClient
+from supabase import AsyncClient, create_async_client
 
 from ..config import LumitradeConfig
 from .secure_logger import get_logger

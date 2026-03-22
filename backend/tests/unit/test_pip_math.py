@@ -6,14 +6,13 @@ All calculations use Decimal. Manually verified expected values.
 100% coverage required on this module.
 """
 
-import pytest
 from decimal import Decimal
 
 from lumitrade.utils.pip_math import (
-    pip_size,
-    pips_between,
-    pip_value_per_unit,
     calculate_position_size,
+    pip_size,
+    pip_value_per_unit,
+    pips_between,
 )
 
 

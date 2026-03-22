@@ -7,9 +7,7 @@ Per BDS Section 5.1 + SS Section 4.2 + Addition Sets 1B and 2C.
 """
 
 import re
-from decimal import Decimal
 
-from ..core.enums import Action
 from ..core.models import MarketSnapshot, NewsEvent, PerformanceContext, TradeSummary
 from ..infrastructure.secure_logger import get_logger
 
@@ -40,7 +38,7 @@ REQUIRED JSON SCHEMA:
   "recommended_risk_pct": 0.0025-0.02,
   "risk_reasoning": "1-2 sentences explaining position size recommendation",
   "summary": "2-4 plain English sentences. No jargon.",
-  "reasoning": "Full technical analysis. Min 100 words. Cite specific indicator values.",
+  "reasoning": "Full technical analysis. Min 100 words. Cite values.",
   "timeframe_h4_score": 0.0-1.0,
   "timeframe_h1_score": 0.0-1.0,
   "timeframe_m15_score": 0.0-1.0,
@@ -84,10 +82,12 @@ class PromptBuilder:
             "",
             "=== TECHNICAL INDICATORS ===",
             f"RSI(14): {ind.rsi_14}",
-            f"MACD Line: {ind.macd_line} | Signal: {ind.macd_signal} | Histogram: {ind.macd_histogram}",
+            f"MACD Line: {ind.macd_line} | Signal: "
+            f"{ind.macd_signal} | Histogram: {ind.macd_histogram}",
             f"EMA 20: {ind.ema_20} | EMA 50: {ind.ema_50} | EMA 200: {ind.ema_200}",
             f"ATR(14): {ind.atr_14}",
-            f"Bollinger Upper: {ind.bb_upper} | Mid: {ind.bb_mid} | Lower: {ind.bb_lower}",
+            f"Bollinger Upper: {ind.bb_upper} | "
+            f"Mid: {ind.bb_mid} | Lower: {ind.bb_lower}",
             "",
             "=== CANDLE DATA (last 20 candles each timeframe) ===",
             "H4 OHLCV (newest first):",
@@ -167,7 +167,7 @@ class PromptBuilder:
         lines = [
             f"  Recent win rate (last 10 trades): {ctx.last_10_win_rate:.0%}",
             f"  Average pips (last 10 trades):    {ctx.last_10_avg_pips:+.1f}",
-            f"  Current streak: "
+            "  Current streak: "
             + (
                 f"{ctx.consecutive_wins} consecutive wins"
                 if ctx.consecutive_wins > 0
@@ -182,7 +182,7 @@ class PromptBuilder:
             f"  Trend strength (EMA alignment):    {ctx.trend_strength}",
             "",
             "  When recommending risk_pct, consider:",
-            "  - Recent win rate above 60% + strong trend + low volatility -> up to 1.5%",
+            "  - Win rate >60% + strong trend + low vol -> up to 1.5%",
             "  - Recent win rate below 40% OR 3+ consecutive losses -> cap at 0.5%",
             "  - Default: 0.5% to 1.0% based on signal confidence",
             "  - Hard limits enforced by risk engine: min 0.25%, max 2.0%",

@@ -11,13 +11,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from ..config import LumitradeConfig
-from ..core.enums import MarketRegime, Session
 from ..core.models import (
     AccountContext,
-    Candle,
     DataQuality,
     MarketSnapshot,
-    PerformanceContext,
     PriceTick,
     TradeSummary,
 )
@@ -25,8 +22,8 @@ from ..infrastructure.db import DatabaseClient
 from ..infrastructure.oanda_client import OandaClient
 from ..infrastructure.secure_logger import get_logger
 from ..utils.time_utils import get_current_session
-from .candle_fetcher import CandleFetcher
 from .calendar import CalendarFetcher
+from .candle_fetcher import CandleFetcher
 from .indicators import compute_indicators
 from .price_stream import PriceStreamManager
 from .regime_classifier import RegimeClassifier
@@ -211,7 +208,11 @@ class DataEngine:
                     outcome=t.get("outcome"),
                     pnl_pips=Decimal(str(t["pnl_pips"])) if t.get("pnl_pips") else None,
                     opened_at=datetime.fromisoformat(t["opened_at"]),
-                    closed_at=datetime.fromisoformat(t["closed_at"]) if t.get("closed_at") else None,
+                    closed_at=(
+                        datetime.fromisoformat(t["closed_at"])
+                        if t.get("closed_at")
+                        else None
+                    ),
                 )
                 for t in trades
             ]

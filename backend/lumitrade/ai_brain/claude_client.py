@@ -5,7 +5,6 @@ Wrapper for Anthropic Python SDK. Handles API calls with retry.
 Per BDS Section 5 and Master Prompt.
 """
 
-import asyncio
 
 from anthropic import AsyncAnthropic
 

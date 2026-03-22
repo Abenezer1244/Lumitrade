@@ -6,13 +6,12 @@ Supabase client is mocked — no real DB calls.
 Verifies correct method chaining and return values.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lumitrade.config import LumitradeConfig
 from lumitrade.infrastructure.db import DatabaseClient
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -153,7 +152,7 @@ class TestDatabaseClient:
         client, mock_supabase, mock_query, mock_response = db_client
         mock_response.data = {"id": "abc", "status": "CLOSED"}
 
-        result = await client.update(
+        await client.update(
             "trades",
             {"id": "abc"},
             {"status": "CLOSED", "closed_at": "2026-03-22T12:00:00Z"},
@@ -173,8 +172,12 @@ class TestDatabaseClient:
         client, mock_supabase, mock_query, mock_response = db_client
         mock_response.data = {"id": "abc", "risk_state": "NORMAL"}
 
-        data = {"id": "abc", "risk_state": "NORMAL", "updated_at": "2026-03-22T12:00:00Z"}
-        result = await client.upsert("system_state", data)
+        data = {
+            "id": "abc",
+            "risk_state": "NORMAL",
+            "updated_at": "2026-03-22T12:00:00Z",
+        }
+        await client.upsert("system_state", data)
 
         mock_supabase.table.assert_called_with("system_state")
         mock_query.upsert.assert_called_once_with(data)

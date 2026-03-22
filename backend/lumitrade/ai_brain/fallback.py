@@ -17,6 +17,21 @@ from ..infrastructure.secure_logger import get_logger
 logger = get_logger(__name__)
 
 
+def _direction_reasoning(action: Action) -> str:
+    """Return directional reasoning string for fallback."""
+    if action == Action.BUY:
+        return (
+            "EMA 50 above EMA 200 with oversold RSI "
+            "suggests bullish setup."
+        )
+    if action == Action.SELL:
+        return (
+            "EMA 50 below EMA 200 with overbought RSI "
+            "suggests bearish setup."
+        )
+    return "No clear directional bias from indicators."
+
+
 class RuleBasedFallback:
     """Generates signals from indicator thresholds when AI is unavailable."""
 
@@ -67,13 +82,22 @@ class RuleBasedFallback:
             entry_price=entry,
             stop_loss=sl,
             take_profit=tp,
-            summary=f"Rule-based {action.value} signal for {snapshot.pair}. AI was unavailable.",
+            summary=(
+                f"Rule-based {action.value} signal "
+                f"for {snapshot.pair}. AI was unavailable."
+            ),
             reasoning=(
-                f"Rule-based fallback signal generated because Claude API was unavailable. "
-                f"EMA 50: {ind.ema_50}, EMA 200: {ind.ema_200}, RSI: {ind.rsi_14}. "
-                f"{'EMA 50 above EMA 200 with oversold RSI suggests bullish setup.' if action == Action.BUY else 'EMA 50 below EMA 200 with overbought RSI suggests bearish setup.' if action == Action.SELL else 'No clear directional bias from indicators.'} "
-                f"ATR: {ind.atr_14}. MACD histogram: {ind.macd_histogram}. "
-                f"Bollinger Bands: upper {ind.bb_upper}, mid {ind.bb_mid}, lower {ind.bb_lower}."
+                "Rule-based fallback signal generated "
+                "because Claude API was unavailable. "
+                f"EMA 50: {ind.ema_50}, "
+                f"EMA 200: {ind.ema_200}, "
+                f"RSI: {ind.rsi_14}. "
+                f"{_direction_reasoning(action)} "
+                f"ATR: {ind.atr_14}. "
+                f"MACD histogram: {ind.macd_histogram}. "
+                f"Bollinger Bands: upper {ind.bb_upper}, "
+                f"mid {ind.bb_mid}, "
+                f"lower {ind.bb_lower}."
             ),
             timeframe_scores={"h4": 0.5, "h1": 0.5, "m15": 0.5},
             indicators_snapshot=ind.to_dict(),

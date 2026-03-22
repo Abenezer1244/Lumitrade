@@ -6,8 +6,7 @@ Validates each candle series through DataValidator before returning.
 Per BDS Section 4.
 """
 
-import json
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from ..core.models import Candle

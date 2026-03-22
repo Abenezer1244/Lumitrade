@@ -6,7 +6,6 @@ Original 12 from the Base Domain Schema (BDS) plus 4 future enums from SAS v2.0.
 
 from enum import Enum
 
-
 # ---------------------------------------------------------------------------
 # BDS enums (12)
 # ---------------------------------------------------------------------------

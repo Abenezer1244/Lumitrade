@@ -6,8 +6,7 @@ Results cached for 30 minutes to minimize API calls.
 Per BDS Section 4 and PRD Section 10.
 """
 
-import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from ..core.enums import NewsImpact

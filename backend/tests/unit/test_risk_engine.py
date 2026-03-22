@@ -5,15 +5,19 @@ Risk Engine Tests — RE-001 to RE-025
 Per QTS Table 5. All 25 test cases.
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
+import pytest
+
 from lumitrade.core.enums import (
-    Action, Direction, GenerationMethod, RiskState,
-    Session, TradeDuration, TradingMode,
+    Action,
+    GenerationMethod,
+    RiskState,
+    Session,
+    TradeDuration,
 )
 from lumitrade.core.models import ApprovedOrder, RiskRejection, SignalProposal
 
@@ -166,7 +170,9 @@ class TestRejections:
     """RE-002 to RE-005, RE-007, RE-009, RE-011, RE-013, RE-015-017."""
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_daily_limit(self, engine, mock_state_manager):
+    async def test_rejects_when_risk_state_daily_limit(
+        self, engine, mock_state_manager,
+    ):
         """RE-002"""
         mock_state_manager.risk_state = RiskState.DAILY_LIMIT
         result = await engine.evaluate(_make_proposal(), Decimal("300"))
@@ -174,14 +180,18 @@ class TestRejections:
         assert result.rule_violated == "RISK_STATE"
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_weekly_limit(self, engine, mock_state_manager):
+    async def test_rejects_when_risk_state_weekly_limit(
+        self, engine, mock_state_manager,
+    ):
         """RE-003"""
         mock_state_manager.risk_state = RiskState.WEEKLY_LIMIT
         result = await engine.evaluate(_make_proposal(), Decimal("300"))
         assert isinstance(result, RiskRejection)
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_emergency_halt(self, engine, mock_state_manager):
+    async def test_rejects_when_risk_state_emergency_halt(
+        self, engine, mock_state_manager,
+    ):
         """RE-004"""
         mock_state_manager.risk_state = RiskState.EMERGENCY_HALT
         result = await engine.evaluate(_make_proposal(), Decimal("300"))

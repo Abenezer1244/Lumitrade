@@ -7,13 +7,14 @@ These are the gatekeepers: if bad data leaks through, we trade on garbage.
 Per QTS v2.0 Section 4.2.
 """
 
-import pytest
 from collections import deque
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from lumitrade.core.models import Candle, PriceTick
-from lumitrade.data_engine.validator import DataValidator, ROLLING_WINDOW
+from lumitrade.data_engine.validator import ROLLING_WINDOW, DataValidator
 
 
 @pytest.mark.chaos
@@ -95,7 +96,7 @@ class TestDataFailures:
     # ── DF-004: Candle gap detected ───────────────────────────────
 
     def test_df004_candle_gap_detected(self, validator: DataValidator):
-        """DF-004: Gap between candles > 1.5x expected interval returns (True, False)."""
+        """DF-004: Gap > 1.5x expected interval returns (True, False)."""
         base_time = datetime(2025, 1, 6, 10, 0, tzinfo=timezone.utc)
         candles = [
             Candle(
@@ -172,7 +173,9 @@ class TestDataFailures:
 
     # ── DF-007: Clean data passes all checks ──────────────────────
 
-    def test_df007_clean_data_passes(self, validator: DataValidator, fresh_tick: PriceTick):
+    def test_df007_clean_data_passes(
+        self, validator: DataValidator, fresh_tick: PriceTick,
+    ):
         """DF-007: A perfectly valid tick passes all checks and is tradeable."""
         quality = validator.validate_tick(fresh_tick)
 

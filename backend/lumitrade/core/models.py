@@ -10,16 +10,13 @@ Per BDS Section 2.2 + SAS v2.0 Section 14.5 + Addition Set 2A.
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from uuid import UUID, uuid4
 from typing import Optional
+from uuid import UUID
 
 from .enums import (
     Action,
-    AssetClass,
-    CircuitBreakerState,
     CurrencySentiment,
     Direction,
-    ExitReason,
     GenerationMethod,
     MarketRegime,
     NewsImpact,
@@ -30,7 +27,6 @@ from .enums import (
     TradeDuration,
     TradingMode,
 )
-
 
 # ── Market Data Models ─────────────────────────────────────────
 

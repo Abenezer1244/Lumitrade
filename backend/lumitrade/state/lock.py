@@ -185,8 +185,9 @@ class DistributedLock:
                         msg="Exceeded max consecutive renewal failures, shutting down",
                     )
                     raise SystemExit(
-                        f"Lock renewal failed {consecutive_failures} times consecutively. "
-                        "Shutting down to allow failover."
+                        f"Lock renewal failed "
+                        f"{consecutive_failures} times. "
+                        "Shutting down for failover."
                     )
 
     async def release(self, instance_id: str) -> None:

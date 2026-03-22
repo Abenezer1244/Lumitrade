@@ -8,7 +8,7 @@ INJ-001 through INJ-006.
 
 import pytest
 
-from lumitrade.ai_brain.prompt_builder import _sanitize_news_title, MAX_NEWS_TITLE_LEN
+from lumitrade.ai_brain.prompt_builder import MAX_NEWS_TITLE_LEN, _sanitize_news_title
 
 
 @pytest.mark.security

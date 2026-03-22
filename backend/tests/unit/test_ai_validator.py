@@ -6,10 +6,11 @@ Per QTS Table 4. All 30 test cases.
 """
 
 import json
-import pytest
 from decimal import Decimal
 
-from lumitrade.ai_brain.validator import AIOutputValidator, ValidationResult
+import pytest
+
+from lumitrade.ai_brain.validator import AIOutputValidator
 
 LIVE_PRICE = Decimal("1.08435")
 
@@ -26,10 +27,14 @@ def _valid_buy() -> dict:
         "entry_price": 1.08430,
         "stop_loss": 1.08230,
         "take_profit": 1.08730,
-        "summary": "EUR/USD shows bullish confluence across all timeframes with strong momentum.",
+        "summary": (
+            "EUR/USD shows bullish confluence across "
+            "all timeframes with strong momentum."
+        ),
         "reasoning": (
             "H4 shows price above EMA 200 with RSI 58 maintaining bullish momentum. "
-            "MACD histogram is positive and expanding. EMA 20 is above EMA 50 confirming trend. "
+            "MACD histogram is positive and expanding. "
+            "EMA 20 is above EMA 50 confirming trend. "
             "H1 structure shows higher highs and higher lows with support at 1.0830. "
             "M15 entry signal triggered by RSI reversal from oversold at 32. "
         ),
@@ -47,7 +52,10 @@ def _valid_sell() -> dict:
     d["action"] = "SELL"
     d["stop_loss"] = 1.08630
     d["take_profit"] = 1.08130
-    d["summary"] = "EUR/USD shows bearish confluence across all timeframes with weakening momentum."
+    d["summary"] = (
+        "EUR/USD shows bearish confluence across "
+        "all timeframes with weakening momentum."
+    )
     return d
 
 

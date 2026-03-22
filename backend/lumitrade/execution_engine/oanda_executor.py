@@ -4,12 +4,12 @@ Lumitrade OANDA Executor
 Places real orders via OandaTradingClient. Idempotent via order_ref.
 Per BDS Section 7.
 """
-import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
+
 from ..core.enums import OrderStatus
-from ..core.models import ApprovedOrder, OrderResult
 from ..core.exceptions import ExecutionError
+from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.oanda_client import OandaTradingClient
 from ..infrastructure.secure_logger import get_logger
 

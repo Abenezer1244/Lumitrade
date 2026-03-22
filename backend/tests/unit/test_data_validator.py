@@ -5,10 +5,10 @@ Tests for all 5 validation checks: freshness, spike, spread, OHLC, gaps.
 Per QTS Section 4.3 (DF-001 to DF-005).
 """
 
-import pytest
-from collections import deque
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+
+import pytest
 
 from lumitrade.core.models import Candle, DataQuality, PriceTick
 from lumitrade.data_engine.validator import DataValidator
@@ -158,12 +158,18 @@ class TestOHLCIntegrity:
     """DF-005: OHLC candle validation."""
 
     def test_valid_candle_passes(self, validator):
-        candles = [_make_candle(open_="1.0843", high="1.0850", low="1.0840", close="1.0845")]
+        candles = [_make_candle(
+            open_="1.0843", high="1.0850",
+            low="1.0840", close="1.0845",
+        )]
         ohlc_ok, gaps_ok = validator.validate_candles(candles)
         assert ohlc_ok is True
 
     def test_invalid_candle_low_above_high(self, validator):
-        candles = [_make_candle(open_="1.0843", high="1.0840", low="1.0850", close="1.0845")]
+        candles = [_make_candle(
+            open_="1.0843", high="1.0840",
+            low="1.0850", close="1.0845",
+        )]
         ohlc_ok, gaps_ok = validator.validate_candles(candles)
         assert ohlc_ok is False
 

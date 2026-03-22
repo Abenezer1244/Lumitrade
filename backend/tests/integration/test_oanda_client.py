@@ -6,8 +6,6 @@ Uses respx to mock httpx calls — no real OANDA API calls.
 Verifies correct endpoints, headers, and error handling.
 """
 
-from decimal import Decimal
-from unittest.mock import patch, MagicMock
 
 import httpx
 import pytest
@@ -15,7 +13,6 @@ import respx
 
 from lumitrade.config import LumitradeConfig
 from lumitrade.infrastructure.oanda_client import OandaClient
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -87,13 +84,19 @@ class TestOandaClient:
             "candles": [
                 {
                     "time": "2026-03-22T10:00:00Z",
-                    "mid": {"o": "1.08500", "h": "1.08600", "l": "1.08400", "c": "1.08550"},
+                    "mid": {
+                        "o": "1.08500", "h": "1.08600",
+                        "l": "1.08400", "c": "1.08550",
+                    },
                     "volume": 1250,
                     "complete": True,
                 },
                 {
                     "time": "2026-03-22T10:15:00Z",
-                    "mid": {"o": "1.08550", "h": "1.08700", "l": "1.08500", "c": "1.08650"},
+                    "mid": {
+                        "o": "1.08550", "h": "1.08700",
+                        "l": "1.08500", "c": "1.08650",
+                    },
                     "volume": 980,
                     "complete": True,
                 },
@@ -235,7 +238,9 @@ class TestOandaClient:
         """OC-005b: HTTP 500 raises httpx.HTTPStatusError."""
         respx.get(
             f"{BASE_URL}/v3/accounts/{ACCOUNT_ID}/summary"
-        ).mock(return_value=httpx.Response(500, json={"errorMessage": "Internal server error"}))
+        ).mock(return_value=httpx.Response(
+            500, json={"errorMessage": "Internal server error"},
+        ))
 
         with pytest.raises(httpx.HTTPStatusError) as exc_info:
             await oanda_client.get_account_summary()

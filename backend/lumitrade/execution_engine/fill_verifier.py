@@ -6,6 +6,7 @@ Per BDS Section 7.2.
 """
 from dataclasses import replace
 from decimal import Decimal
+
 from ..core.enums import OrderStatus
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.alert_service import AlertService

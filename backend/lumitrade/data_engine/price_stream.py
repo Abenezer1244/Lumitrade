@@ -126,7 +126,11 @@ class PriceStreamManager:
                 pair=data["instrument"],
                 bid=Decimal(bids[0]["price"]),
                 ask=Decimal(asks[0]["price"]),
-                timestamp=datetime.fromisoformat(time_str) if time_str else datetime.now(timezone.utc),
+                timestamp=(
+                    datetime.fromisoformat(time_str)
+                    if time_str
+                    else datetime.now(timezone.utc)
+                ),
             )
         except (KeyError, ValueError) as e:
             logger.warning("rest_price_parse_failed", error=str(e))

@@ -1,7 +1,7 @@
 """SA-01: Market Analyst Subagent. Phase 0: returns empty briefing."""
 
-from .base_agent import BaseSubagent
 from ..infrastructure.secure_logger import get_logger
+from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
 

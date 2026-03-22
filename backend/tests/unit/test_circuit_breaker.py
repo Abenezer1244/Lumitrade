@@ -5,17 +5,16 @@ Per QTS Table 11 (BF-001 to BF-004).
 100% coverage required.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-import asyncio
-from datetime import datetime, timezone, timedelta
-from unittest.mock import patch
 
 from lumitrade.core.enums import CircuitBreakerState
 from lumitrade.execution_engine.circuit_breaker import (
-    CircuitBreaker,
     FAILURE_THRESHOLD,
     FAILURE_WINDOW_SEC,
     RESET_TIMEOUT_SEC,
+    CircuitBreaker,
 )
 
 

@@ -12,7 +12,6 @@ from typing import Any
 
 import structlog
 
-
 # ── Scrub patterns — order matters (most specific first) ────────
 SCRUB_PATTERNS: list[tuple[str, str]] = [
     # OANDA Bearer tokens

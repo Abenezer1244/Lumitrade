@@ -7,6 +7,7 @@ NEVER calls OandaTradingClient. Per BDS Section 5.
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
+
 from ..core.enums import OrderStatus
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.secure_logger import get_logger
@@ -15,7 +16,9 @@ logger = get_logger(__name__)
 
 
 class PaperExecutor:
-    async def execute(self, order: ApprovedOrder, current_price: Decimal) -> OrderResult:
+    async def execute(
+        self, order: ApprovedOrder, current_price: Decimal,
+    ) -> OrderResult:
         fill_price = current_price
         slippage = abs(order.entry_price - fill_price)
         logger.info(

@@ -8,7 +8,6 @@ Per BDS Section 5 and SAS Section 3.2.3.
 
 import asyncio
 import hashlib
-import json
 from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -105,14 +104,16 @@ class SignalScanner:
             logger.warning("scan_data_not_tradeable", pair=pair)
             return None
 
-        # 2. Get analyst briefing (SA-01 — empty string in Phase 0)
-        briefing = ""
+        # 2. Get analyst briefing (SA-01 — Phase 0 stub, result unused)
         if self._subagents:
             try:
-                result = await self._subagents.get_analyst_briefing(snapshot)
-                briefing = result.get("briefing", "") if isinstance(result, dict) else ""
+                await self._subagents.get_analyst_briefing(
+                    snapshot,
+                )
             except Exception as e:
-                logger.warning("analyst_briefing_failed", error=str(e))
+                logger.warning(
+                    "analyst_briefing_failed", error=str(e),
+                )
 
         # 3. Build prompt
         prompt = await self._prompt_builder.build_prompt(snapshot)

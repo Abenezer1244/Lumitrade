@@ -212,7 +212,11 @@ class OrchestratorService:
             try:
                 if self.state:
                     state_data = await self.state.get()
-                    open_trades = state_data.get("open_trades", []) if state_data else []
+                    open_trades = (
+                        state_data.get("open_trades", [])
+                        if state_data
+                        else []
+                    )
                     if open_trades:
                         snapshot = await self.data_eng.get_snapshot(
                             self.config.pairs[0]

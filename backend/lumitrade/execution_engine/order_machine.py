@@ -5,17 +5,24 @@ Tracks order lifecycle. Enforces state transitions. Rejects expired orders.
 Per BDS and SAS specs.
 """
 from datetime import datetime, timezone
+
 from ..core.enums import OrderStatus
-from ..core.models import ApprovedOrder
 from ..core.exceptions import OrderExpiredError
+from ..core.models import ApprovedOrder
 from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
 
 VALID_TRANSITIONS = {
-    OrderStatus.PENDING: {OrderStatus.SUBMITTED, OrderStatus.REJECTED, OrderStatus.TIMEOUT},
-    OrderStatus.SUBMITTED: {OrderStatus.ACKNOWLEDGED, OrderStatus.REJECTED, OrderStatus.TIMEOUT},
-    OrderStatus.ACKNOWLEDGED: {OrderStatus.FILLED, OrderStatus.PARTIAL, OrderStatus.REJECTED},
+    OrderStatus.PENDING: {
+        OrderStatus.SUBMITTED, OrderStatus.REJECTED, OrderStatus.TIMEOUT,
+    },
+    OrderStatus.SUBMITTED: {
+        OrderStatus.ACKNOWLEDGED, OrderStatus.REJECTED, OrderStatus.TIMEOUT,
+    },
+    OrderStatus.ACKNOWLEDGED: {
+        OrderStatus.FILLED, OrderStatus.PARTIAL, OrderStatus.REJECTED,
+    },
     OrderStatus.FILLED: {OrderStatus.CANCELLED},
     OrderStatus.PARTIAL: {OrderStatus.FILLED, OrderStatus.CANCELLED},
 }
@@ -39,7 +46,9 @@ class OrderStateMachine:
     def check_expiry(self, order: ApprovedOrder) -> None:
         if order.is_expired:
             self._status = OrderStatus.TIMEOUT
-            raise OrderExpiredError(f"Order {order.order_ref} expired at {order.expiry}")
+            raise OrderExpiredError(
+                f"Order {order.order_ref} expired at {order.expiry}"
+            )
 
     def transition(self, new_status: OrderStatus) -> None:
         valid = VALID_TRANSITIONS.get(self._status, set())

@@ -32,7 +32,6 @@ Response JSON:
   }
 """
 
-import asyncio
 from datetime import datetime, timezone
 
 from aiohttp import web

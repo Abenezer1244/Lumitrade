@@ -5,14 +5,14 @@ Manages lifecycle of all 5 subagents. Per SAS v2.0 Section 15.5.
 """
 
 from ..config import LumitradeConfig
-from ..infrastructure.db import DatabaseClient
 from ..infrastructure.alert_service import AlertService
+from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
+from .intelligence_subagent import IntelligenceSubagent
 from .market_analyst import MarketAnalystAgent
+from .onboarding_agent import OnboardingAgent
 from .post_trade_analyst import PostTradeAnalystAgent
 from .risk_monitor import RiskMonitorAgent
-from .intelligence_subagent import IntelligenceSubagent
-from .onboarding_agent import OnboardingAgent
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,12 @@ logger = get_logger(__name__)
 class SubagentOrchestrator:
     """Coordinates all 5 subagents."""
 
-    def __init__(self, config: LumitradeConfig, db: DatabaseClient, alerts: AlertService):
+    def __init__(
+        self,
+        config: LumitradeConfig,
+        db: DatabaseClient,
+        alerts: AlertService,
+    ):
         self.market_analyst = MarketAnalystAgent(config)
         self.post_trade = PostTradeAnalystAgent(config, db)
         self.risk_monitor = RiskMonitorAgent(config, db, alerts)
@@ -40,5 +45,7 @@ class SubagentOrchestrator:
         await self.intelligence.run({"account_id": account_id})
 
     async def run_onboarding(self, account_id: str, message: str) -> str:
-        result = await self.onboarding.run({"account_id": account_id, "user_message": message})
+        result = await self.onboarding.run(
+            {"account_id": account_id, "user_message": message},
+        )
         return result.get("response", "")

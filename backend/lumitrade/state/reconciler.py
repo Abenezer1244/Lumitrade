@@ -17,11 +17,11 @@ at stake.
 
 from datetime import datetime, timezone
 
+from ..core.enums import ExitReason
+from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.oanda_client import OandaClient
-from ..infrastructure.alert_service import AlertService
 from ..infrastructure.secure_logger import get_logger
-from ..core.enums import ExitReason
 
 logger = get_logger(__name__)
 
@@ -220,8 +220,9 @@ class PositionReconciler:
                     "opened_at": open_time,
                     "is_phantom": True,
                     "reconciliation_note": (
-                        f"Phantom detected: trade {trade_id} found on OANDA but not in DB. "
-                        f"Emergency record created at {now.isoformat()}"
+                        f"Phantom detected: trade {trade_id} "
+                        "found on OANDA but not in DB. "
+                        f"Emergency record at {now.isoformat()}"
                     ),
                 },
             )

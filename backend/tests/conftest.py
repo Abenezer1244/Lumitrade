@@ -6,7 +6,6 @@ No real API calls in unit tests.
 """
 
 import os
-import pytest
 
 # Set fake env vars BEFORE any lumitrade imports
 os.environ.setdefault("OANDA_API_KEY_DATA", "test_key_data")

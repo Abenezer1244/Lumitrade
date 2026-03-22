@@ -123,8 +123,8 @@ class StateManager:
 
         # 3. Run position reconciliation
         try:
-            from .reconciler import PositionReconciler
             from ..infrastructure.alert_service import AlertService
+            from .reconciler import PositionReconciler
 
             alerts = AlertService(self._config, self._db)
             reconciler = PositionReconciler(self._db, self._oanda, alerts)

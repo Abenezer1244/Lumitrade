@@ -4,9 +4,8 @@ Secure Logger Tests
 Per SS Section 7.2 — verify all scrub patterns work correctly.
 """
 
-import pytest
 
-from lumitrade.infrastructure.secure_logger import scrub_value, _scrub_processor
+from lumitrade.infrastructure.secure_logger import _scrub_processor, scrub_value
 
 
 class TestScrubValue:

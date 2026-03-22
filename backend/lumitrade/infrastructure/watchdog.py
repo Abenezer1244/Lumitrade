@@ -160,8 +160,9 @@ class Watchdog:
                         threshold_seconds=HEARTBEAT_STALE_THRESHOLD_SECONDS,
                     )
                     await self._alerts.send_error(
-                        f"Engine heartbeat stale: last update {heartbeat_age:.0f}s ago. "
-                        f"Engine may be unresponsive."
+                        "Engine heartbeat stale: last update "
+                        f"{heartbeat_age:.0f}s ago. "
+                        "Engine may be unresponsive."
                     )
         except (ValueError, TypeError):
             pass

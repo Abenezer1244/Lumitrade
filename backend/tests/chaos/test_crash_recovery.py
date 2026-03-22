@@ -7,18 +7,19 @@ A crash that loses state = orphaned trades = uncontrolled risk.
 Per QTS v2.0 Section 7.3.
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from lumitrade.core.enums import RiskState
 from lumitrade.state.lock import (
-    DistributedLock,
+    LOCK_ROW_KEY,
     LOCK_TTL_SECONDS,
     TAKEOVER_THRESHOLD,
-    LOCK_ROW_KEY,
+    DistributedLock,
 )
-from lumitrade.state.manager import StateManager, STATE_ROW_KEY
+from lumitrade.state.manager import STATE_ROW_KEY, StateManager
 
 
 def _make_config_mock():
@@ -163,8 +164,14 @@ class TestCrashRecovery:
             "updated_at": "2025-01-06T12:30:00+00:00",
         }
 
-        with patch("lumitrade.state.manager.StateManager.save", new_callable=AsyncMock):
-            with patch("lumitrade.state.reconciler.PositionReconciler") as MockReconciler:
+        save_path = (
+            "lumitrade.state.manager.StateManager.save"
+        )
+        reconciler_path = (
+            "lumitrade.state.reconciler.PositionReconciler"
+        )
+        with patch(save_path, new_callable=AsyncMock):
+            with patch(reconciler_path) as mock_reconciler_cls:
                 mock_reconciler_instance = AsyncMock()
                 mock_reconciler_instance.reconcile.return_value = {
                     "ghosts": [],
@@ -172,7 +179,7 @@ class TestCrashRecovery:
                     "matched": [],
                     "reconciled_at": datetime.now(timezone.utc).isoformat(),
                 }
-                MockReconciler.return_value = mock_reconciler_instance
+                mock_reconciler_cls.return_value = mock_reconciler_instance
 
                 with patch("lumitrade.infrastructure.alert_service.AlertService"):
                     sm = StateManager(config, db, oanda)
@@ -196,8 +203,14 @@ class TestCrashRecovery:
 
         db.select_one.return_value = None  # No persisted state
 
-        with patch("lumitrade.state.manager.StateManager.save", new_callable=AsyncMock):
-            with patch("lumitrade.state.reconciler.PositionReconciler") as MockReconciler:
+        save_path = (
+            "lumitrade.state.manager.StateManager.save"
+        )
+        reconciler_path = (
+            "lumitrade.state.reconciler.PositionReconciler"
+        )
+        with patch(save_path, new_callable=AsyncMock):
+            with patch(reconciler_path) as mock_reconciler_cls:
                 mock_reconciler_instance = AsyncMock()
                 mock_reconciler_instance.reconcile.return_value = {
                     "ghosts": [],
@@ -205,7 +218,7 @@ class TestCrashRecovery:
                     "matched": [],
                     "reconciled_at": datetime.now(timezone.utc).isoformat(),
                 }
-                MockReconciler.return_value = mock_reconciler_instance
+                mock_reconciler_cls.return_value = mock_reconciler_instance
 
                 with patch("lumitrade.infrastructure.alert_service.AlertService"):
                     sm = StateManager(config, db, oanda)

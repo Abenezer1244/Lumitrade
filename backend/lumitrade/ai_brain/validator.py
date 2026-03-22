@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from ..core.enums import Action, TradeDuration
+from ..core.enums import Action
 from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
@@ -65,7 +65,10 @@ class AIOutputValidator:
             return ValidationResult(False, reason=f"JSON parse failed: {e}")
 
         if not isinstance(data, dict):
-            return ValidationResult(False, reason="Expected JSON object, got array or primitive")
+            return ValidationResult(
+                False,
+                reason="Expected JSON object, got array or primitive",
+            )
 
         # Step 2: Required fields
         for field in REQUIRED_FIELDS:
@@ -126,7 +129,10 @@ class AIOutputValidator:
             if deviation > Decimal("0.005"):
                 return ValidationResult(
                     False,
-                    reason=f"Entry {entry} deviates {deviation:.4f} from live {live_price}",
+                    reason=(
+                        f"Entry {entry} deviates "
+                        f"{deviation:.4f} from live {live_price}"
+                    ),
                 )
 
         # Step 7: Risk/reward ratio

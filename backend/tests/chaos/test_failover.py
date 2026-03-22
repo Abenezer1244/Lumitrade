@@ -7,15 +7,16 @@ If failover breaks, the system stays down when the primary crashes.
 Per QTS v2.0 Section 7.4.
 """
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
+import pytest
+
 from lumitrade.state.lock import (
-    DistributedLock,
+    LOCK_ROW_KEY,
     LOCK_TTL_SECONDS,
     TAKEOVER_THRESHOLD,
-    LOCK_ROW_KEY,
+    DistributedLock,
 )
 
 
@@ -74,7 +75,7 @@ class TestFailover:
 
     @pytest.mark.asyncio
     async def test_fo002_standby_takes_over_expired_lock(self):
-        """FO-002: When primary lock is expired beyond TAKEOVER_THRESHOLD, standby takes over."""
+        """FO-002: Expired primary lock allows standby takeover."""
         db = AsyncMock()
         expired = datetime.now(timezone.utc) - timedelta(
             seconds=TAKEOVER_THRESHOLD + 60
@@ -93,7 +94,7 @@ class TestFailover:
 
     @pytest.mark.asyncio
     async def test_fo003_primary_reclaims_after_release(self):
-        """FO-003: After standby releases, primary can reclaim via upsert on None row."""
+        """FO-003: Primary reclaims after standby releases."""
         db = AsyncMock()
         # First call: standby releases (lock row has instance_id=None)
         # The released lock row has instance_id=None, which != "primary-01"

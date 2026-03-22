@@ -7,6 +7,7 @@ Per BDS Section 7.1.
 """
 import asyncio
 from datetime import datetime, timezone
+
 from ..core.enums import CircuitBreakerState
 from ..infrastructure.secure_logger import get_logger
 
@@ -48,7 +49,10 @@ class CircuitBreaker:
                 if (now - f).total_seconds() < FAILURE_WINDOW_SEC
             ]
             self._failures.append(now)
-            if len(self._failures) >= FAILURE_THRESHOLD and self._state != CircuitBreakerState.OPEN:
+            if (
+                len(self._failures) >= FAILURE_THRESHOLD
+                and self._state != CircuitBreakerState.OPEN
+            ):
                 self._state = CircuitBreakerState.OPEN
                 self._opened_at = now
                 logger.error("circuit_breaker_tripped", failures=len(self._failures))

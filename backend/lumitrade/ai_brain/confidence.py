@@ -8,7 +8,7 @@ Per PRD Section 10.3.
 from decimal import Decimal
 
 from ..core.enums import NewsImpact, Session
-from ..core.models import MarketSnapshot, SignalProposal
+from ..core.models import MarketSnapshot
 from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)

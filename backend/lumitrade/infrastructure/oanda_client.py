@@ -13,7 +13,6 @@ from decimal import Decimal
 import httpx
 
 from ..config import LumitradeConfig
-from ..core.exceptions import DataValidationError
 from .broker_interface import BrokerInterface
 from .secure_logger import get_logger
 

@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from lumitrade.infrastructure.secure_logger import scrub_value, _scrub_processor
+from lumitrade.infrastructure.secure_logger import _scrub_processor, scrub_value
 
 
 @pytest.mark.security
@@ -144,12 +144,12 @@ class TestCodebaseSecurity:
                 skip in line
                 for skip in [
                     "__pycache__", ".pyc", "test_", "conftest",
-                    "# ", "NEVER set", "Per SS",  # Allow doc comments warning against it
+                    "# ", "NEVER set", "Per SS",  # Allow doc comments
                 ]
             )
         ]
         assert matches == [], (
-            f"Found verify=False in production code:\n" + "\n".join(matches)
+            "Found verify=False in production code:\n" + "\n".join(matches)
         )
 
     def test_sec_009_no_hardcoded_api_keys(self, backend_root):

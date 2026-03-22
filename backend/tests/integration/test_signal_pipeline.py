@@ -10,7 +10,7 @@ and verify the full evaluate() decision path.
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -33,7 +33,6 @@ from lumitrade.core.models import (
     SignalProposal,
 )
 from lumitrade.risk_engine.engine import RiskEngine
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -151,7 +150,7 @@ class TestSignalPipeline:
     # ── SP-001: Valid BUY signal approved ─────────────────────────
 
     async def test_sp001_valid_buy_signal_produces_approved_order(self, config):
-        """SP-001: Valid BUY signal flows through risk engine and produces ApprovedOrder."""
+        """SP-001: Valid BUY signal produces ApprovedOrder."""
         db = _make_db(open_positions_count=0, recent_trades=[])
         state_manager = _make_state_manager(risk_state=RiskState.NORMAL)
         engine = RiskEngine(config=config, state_manager=state_manager, db=db)

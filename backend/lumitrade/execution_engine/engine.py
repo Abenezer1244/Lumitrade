@@ -8,20 +8,21 @@ Per BDS Section 7 and SAS Section 3.2.5.
 import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
+
+from ..analytics.performance_analyzer import PerformanceAnalyzer
 from ..config import LumitradeConfig
-from ..core.enums import OrderStatus, TradingMode, ExitReason
+from ..core.enums import OrderStatus, TradingMode
+from ..core.exceptions import OrderExpiredError
 from ..core.models import ApprovedOrder, OrderResult
-from ..core.exceptions import OrderExpiredError, ExecutionError
+from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.oanda_client import OandaTradingClient
-from ..infrastructure.alert_service import AlertService
 from ..infrastructure.secure_logger import get_logger
-from ..analytics.performance_analyzer import PerformanceAnalyzer
 from .circuit_breaker import CircuitBreaker
 from .fill_verifier import FillVerifier
+from .oanda_executor import OandaExecutor
 from .order_machine import OrderStateMachine
 from .paper_executor import PaperExecutor
-from .oanda_executor import OandaExecutor
 
 logger = get_logger(__name__)
 POSITION_MONITOR_INTERVAL = 60
@@ -131,13 +132,13 @@ class ExecutionEngine:
             logger.info("position_monitor_cancelled")
 
     async def _trigger_insight_analysis(self, trade: dict) -> None:
-        MIN_TRADES = 50
-        EVERY_N = 10
+        min_trades = 50
+        every_n = 10
         try:
             count = await self._db.count("trades", {"status": "CLOSED"})
-            if count < MIN_TRADES:
+            if count < min_trades:
                 return
-            if count % EVERY_N == 0:
+            if count % every_n == 0:
                 logger.info("insight_analysis_triggered", trade_count=count)
                 asyncio.create_task(
                     self.performance_analyzer.analyze(

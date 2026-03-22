@@ -1,8 +1,8 @@
 """SA-02: Post-Trade Analyst Subagent. Phase 0: silent no-op."""
 
-from .base_agent import BaseSubagent
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
+from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
 
