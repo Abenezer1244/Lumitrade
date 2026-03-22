@@ -4,7 +4,7 @@ dockerfilePath = "backend/Dockerfile"
 
 [deploy]
 startCommand = "/usr/bin/supervisord -n -c /etc/supervisor/conf.d/lumitrade.conf"
-# healthcheckPath = "/health"
-# healthcheckTimeout = 120
+healthcheckPath = "/health"
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 5
