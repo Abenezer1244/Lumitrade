@@ -1,0 +1,40 @@
+# Gitleaks configuration — allow known false positives
+# Spec docs contain example API key patterns, test files use fake keys
+
+[extend]
+# Use default rules
+useDefault = true
+
+[[rules]]
+  id = "allow-spec-docs"
+  description = "Spec documentation contains example API key patterns (not real secrets)"
+  path = '''docs/specs/.*'''
+
+[[rules]]
+  id = "allow-test-files"
+  description = "Test files contain fake API key patterns for security testing"
+  path = '''(tests/|backend/tests/).*'''
+
+[[rules]]
+  id = "allow-env-example"
+  description = ".env.example contains placeholder values"
+  path = '''\.env\.example'''
+
+[[rules]]
+  id = "allow-claude-md"
+  description = "CLAUDE.md contains documentation patterns"
+  path = '''CLAUDE\.md'''
+
+[[rules]]
+  id = "allow-plans"
+  description = "Plan documents may contain example patterns"
+  path = '''docs/superpowers/.*'''
+
+[allowlist]
+  description = "Global allowlist for documentation and test patterns"
+  paths = [
+    '''docs/specs/.*''',
+    '''\.env\.example''',
+    '''CLAUDE\.md''',
+    '''docs/superpowers/.*''',
+  ]
