@@ -1,7 +1,23 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Zap, History, BarChart2, Settings, BookOpen, MessageCircle, TrendingUp, Store, Users, FlaskConical, Key } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  LayoutDashboard,
+  Zap,
+  History,
+  BarChart2,
+  Settings,
+  BookOpen,
+  MessageCircle,
+  TrendingUp,
+  Store,
+  Users,
+  FlaskConical,
+  Key,
+  Menu,
+  X,
+} from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 
 const NAV_ITEMS = [
@@ -21,36 +37,173 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  return (
-    <aside className="w-60 min-h-screen bg-surface border-r border-border flex flex-col fixed left-0 top-0 z-30">
-      <div className="px-5 py-6 border-b border-border">
-        <span className="font-display text-xl font-semibold text-gold tracking-wide">LUMITRADE</span>
-        <p className="text-tertiary text-xs mt-0.5 font-mono">v1.0 · Phase 0</p>
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, []);
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
+
+  const sidebarContent = (
+    <>
+      {/* Logo */}
+      <div
+        className="px-5 py-6 flex items-center justify-between"
+        style={{ borderBottom: "1px solid var(--color-border)" }}
+      >
+        <div>
+          <span
+            className="font-mono text-lg font-bold"
+            style={{ color: "var(--color-brand)" }}
+          >
+            LUMITRADE
+          </span>
+          <p
+            className="mt-0.5 font-mono text-xs"
+            style={{ color: "var(--color-text-tertiary)" }}
+          >
+            v1.0 · Phase 0
+          </p>
+        </div>
+        {/* Mobile close button */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-elevated transition-colors"
+          style={{ color: "var(--color-text-secondary)" }}
+          aria-label="Close navigation"
+        >
+          <X size={18} />
+        </button>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto scrollbar-hide px-3 py-4 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon, phase }) => {
           const active = pathname?.startsWith(href);
+
           return (
-            <Link key={href} href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all duration-150 ${
-                active ? "bg-elevated text-primary border-l-2 border-accent pl-[10px]" : "text-secondary hover:text-primary hover:bg-elevated/50"
-              }`}>
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150"
+              style={
+                active
+                  ? {
+                      background: "var(--color-brand-dim)",
+                      borderLeft: "2px solid var(--color-brand)",
+                      paddingLeft: "10px",
+                      color: "var(--color-text-primary)",
+                    }
+                  : {
+                      color: "var(--color-text-secondary)",
+                    }
+              }
+              onMouseEnter={(e) => {
+                if (!active) {
+                  e.currentTarget.style.color = "var(--color-text-primary)";
+                  e.currentTarget.style.background = "var(--color-bg-elevated)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!active) {
+                  e.currentTarget.style.color = "var(--color-text-secondary)";
+                  e.currentTarget.style.background = "transparent";
+                }
+              }}
+            >
               <Icon size={16} />
-              <span className="font-medium flex-1">{label}</span>
-              {phase > 0 && <span className="text-[10px] text-tertiary">P{phase}</span>}
+              <span className="flex-1 font-medium">{label}</span>
+              {phase > 0 && (
+                <span
+                  className="text-[10px]"
+                  style={{ color: "var(--color-text-tertiary)" }}
+                >
+                  P{phase}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
-      <div className="px-4 py-4 border-t border-border space-y-3">
+
+      {/* Bottom status section */}
+      <div
+        className="px-4 py-4 space-y-3"
+        style={{ borderTop: "1px solid var(--color-border)" }}
+      >
         <div className="flex items-center gap-2">
-          <span className="text-xs font-label px-2 py-0.5 rounded bg-warning-dim text-warning">PAPER</span>
+          <span className="text-xs font-label px-2 py-0.5 rounded bg-warning-dim text-warning">
+            PAPER
+          </span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-tertiary">
+        <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-text-tertiary)" }}>
           <StatusDot status="healthy" />
           <span>All systems online</span>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-3.5 left-4 z-40 lg:hidden p-2 rounded-lg"
+        style={{
+          background: "var(--color-bg-surface)",
+          border: "1px solid var(--color-border)",
+          color: "var(--color-text-primary)",
+        }}
+        aria-label="Open navigation"
+        aria-expanded={mobileOpen}
+      >
+        <Menu size={18} />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`fixed left-0 top-0 z-50 flex w-60 min-h-screen flex-col transition-transform duration-200 ease-out lg:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{
+          background: "var(--color-bg-surface)",
+          backdropFilter: "var(--glass-blur)",
+          WebkitBackdropFilter: "var(--glass-blur)",
+          borderRight: "1px solid var(--color-border)",
+        }}
+        aria-label="Main navigation"
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

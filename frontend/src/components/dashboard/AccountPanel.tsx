@@ -8,9 +8,9 @@ export default function AccountPanel() {
   useEffect(() => {
     fetch("/api/account").then(r => r.json()).then(setAccount).catch(() => {});
   }, []);
-  if (!account) return <div className="bg-surface border border-border rounded-lg p-5 animate-pulse h-36" />;
+  if (!account) return <div className="glass p-5 animate-pulse h-36" />;
   return (
-    <div className="bg-surface border border-border rounded-lg p-5">
+    <div className="glass p-5" aria-live="polite" aria-atomic="true">
       <p className="text-label text-tertiary mb-2">Account</p>
       <p className="text-metric text-primary">${parseFloat(account.balance).toFixed(2)}</p>
       <p className="text-xs text-secondary mt-1">Equity: ${parseFloat(account.equity || "0").toFixed(2)}</p>

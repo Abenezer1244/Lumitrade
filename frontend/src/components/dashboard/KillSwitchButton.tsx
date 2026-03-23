@@ -46,7 +46,7 @@ export default function KillSwitchButton() {
 
   if (state === "success") {
     return (
-      <div className="bg-loss/10 border border-loss/30 rounded-lg p-4">
+      <div className="glass p-4" style={{ borderColor: "var(--color-loss)", borderWidth: 1 }} role="alert" aria-live="assertive">
         <div className="flex items-center gap-2">
           <svg className="w-5 h-5 text-loss" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -68,11 +68,11 @@ export default function KillSwitchButton() {
 
   if (state === "idle") {
     return (
-      <div className="bg-surface border border-border rounded-lg p-4">
+      <div className="glass p-4">
         <p className="text-label text-tertiary mb-2">Emergency Control</p>
         <button
           onClick={handleActivate}
-          className="w-full py-2.5 px-4 bg-loss/10 border border-loss/30 rounded-lg text-sm font-bold text-loss hover:bg-loss/20 transition-colors"
+          className="w-full py-2.5 px-4 bg-loss-dim border border-loss/30 rounded-lg text-sm font-bold text-loss hover:bg-loss/20 transition-colors"
         >
           Kill Switch
         </button>
@@ -82,7 +82,7 @@ export default function KillSwitchButton() {
 
   // confirming | loading | error states
   return (
-    <div className="bg-surface border border-loss/30 rounded-lg p-4">
+    <div className="glass p-4" style={{ borderColor: "var(--color-loss)", borderWidth: 1 }}>
       <p className="text-label text-loss mb-2">Confirm Emergency Halt</p>
       <p className="text-xs text-secondary mb-3">
         This will immediately halt all trading activity. Open positions will be preserved.
@@ -98,27 +98,27 @@ export default function KillSwitchButton() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={state === "loading"}
-            className="w-full bg-elevated border border-border rounded px-3 py-2 text-sm font-mono text-primary placeholder:text-tertiary focus:outline-none focus:border-loss/50"
+            className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm font-mono text-primary placeholder:text-tertiary focus:outline-none focus:border-loss/50"
             placeholder={CONFIRMATION_PHRASE}
             autoComplete="off"
             spellCheck={false}
           />
         </div>
         {state === "error" && errorMessage && (
-          <p className="text-xs text-loss">{errorMessage}</p>
+          <p className="text-xs text-loss" role="alert">{errorMessage}</p>
         )}
         <div className="flex gap-2">
           <button
             onClick={handleCancel}
             disabled={state === "loading"}
-            className="flex-1 py-2 px-3 bg-elevated border border-border rounded text-xs text-secondary hover:text-primary transition-colors disabled:opacity-50"
+            className="flex-1 py-2 px-3 bg-elevated border border-border rounded-lg text-xs text-secondary hover:text-primary transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={!isConfirmed || state === "loading"}
-            className={`flex-1 py-2 px-3 rounded text-xs font-bold transition-colors ${
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors ${
               isConfirmed && state !== "loading"
                 ? "bg-loss text-white hover:bg-loss/80"
                 : "bg-elevated text-tertiary border border-border cursor-not-allowed"

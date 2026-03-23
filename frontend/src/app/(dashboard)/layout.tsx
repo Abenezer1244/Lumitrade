@@ -1,4 +1,5 @@
 import Sidebar from "@/components/layout/Sidebar";
+import TopBar from "@/components/layout/TopBar";
 
 export default function DashboardLayout({
   children,
@@ -8,7 +9,8 @@ export default function DashboardLayout({
   return (
     <>
       <Sidebar />
-      <main className="ml-60 p-6 min-h-screen">{children}</main>
+      <TopBar />
+      <main className="lg:ml-60 pt-14 p-4 lg:p-6 min-h-screen">{children}</main>
     </>
   );
 }

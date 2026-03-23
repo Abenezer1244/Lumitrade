@@ -11,9 +11,9 @@ interface DailyData {
 export default function TodayPanel() {
   const [data, setData] = useState<DailyData | null>(null);
   useEffect(() => { fetch("/api/account").then(r => r.json()).then(setData).catch(() => {}); }, []);
-  if (!data) return <div className="bg-surface border border-border rounded-lg p-5 animate-pulse h-36" />;
+  if (!data) return <div className="glass p-5 animate-pulse h-36" />;
   return (
-    <div className="bg-surface border border-border rounded-lg p-5">
+    <div className="glass p-5" aria-live="polite" aria-atomic="true">
       <p className="text-label text-tertiary mb-2">Today</p>
       <PnlDisplay value={data.daily_pnl_usd} size="lg" />
       <div className="flex gap-4 mt-3">

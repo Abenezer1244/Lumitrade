@@ -12,7 +12,7 @@ export default function SystemStatusPanel() {
   const { health, loading } = useSystemStatus();
 
   if (loading || !health) {
-    return <div className="bg-surface border border-border rounded-lg p-5 animate-pulse h-48" />;
+    return <div className="glass p-5 animate-pulse h-48" />;
   }
 
   const components: ComponentInfo[] = [
@@ -53,7 +53,7 @@ export default function SystemStatusPanel() {
     health.status === "degraded" ? "text-warning" : "text-loss";
 
   return (
-    <div className="bg-surface border border-border rounded-lg p-5">
+    <div className="glass p-5" aria-live="polite" aria-atomic="true">
       <div className="flex items-center justify-between mb-3">
         <p className="text-label text-tertiary">System Status</p>
         <span className={`text-xs font-bold uppercase ${overallStatusColor}`}>{health.status}</span>

@@ -5,10 +5,9 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
-    name: Deploy
+  deploy-backend:
+    name: Deploy Backend
     runs-on: ubuntu-latest
-    needs: []
 
     steps:
       - name: Checkout
@@ -17,19 +16,47 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy to Railway
-        run: railway up --detach
+      - name: Deploy backend service
+        run: railway up --detach --service lumitrade-engine
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Wait for health check
+      - name: Wait for backend health check
         run: |
-          echo "Waiting 90s for deployment..."
+          echo "Waiting 90s for backend deployment..."
           sleep 90
           HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://lumitrade-engine.railway.app/health || echo "000")
+            ${{ vars.BACKEND_HEALTH_URL || 'https://lumitrade-engine-production.up.railway.app/health' }} || echo "000")
           if [ "$HEALTH" != "200" ]; then
-            echo "Health check failed: $HEALTH"
+            echo "Backend health check failed: $HEALTH"
             exit 1
           fi
-          echo "Deployment healthy."
+          echo "Backend deployment healthy."
+
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy frontend service
+        run: railway up --detach --service lumitrade-dashboard
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Wait for frontend health check
+        run: |
+          echo "Waiting 90s for frontend deployment..."
+          sleep 90
+          HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
+            ${{ vars.FRONTEND_URL || 'https://lumitrade-dashboard-production-0507.up.railway.app' }} || echo "000")
+          if [ "$HEALTH" != "200" ]; then
+            echo "Frontend health check failed: $HEALTH"
+            exit 1
+          fi
+          echo "Frontend deployment healthy."

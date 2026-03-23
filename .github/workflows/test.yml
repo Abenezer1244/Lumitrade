@@ -37,10 +37,29 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest tests/unit/ tests/chaos/ tests/integration/ tests/security/ -v \
+          pytest tests/unit/ tests/chaos/ tests/integration/ tests/security/ tests/performance/ -v
+        env:
+          OANDA_API_KEY_DATA: test_key_data
+          OANDA_API_KEY_TRADING: test_key_trading
+          OANDA_ACCOUNT_ID: test_account
+          OANDA_ENVIRONMENT: practice
+          ANTHROPIC_API_KEY: test_key
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_KEY: test_service_key
+          TELNYX_API_KEY: test_telnyx_key
+          TELNYX_FROM_NUMBER: "+10000000000"
+          ALERT_SMS_TO: "+10000000001"
+          SENDGRID_API_KEY: test_sg_key
+          ALERT_EMAIL_TO: test@test.com
+          INSTANCE_ID: ci-test
+          TRADING_MODE: PAPER
+
+      - name: Coverage report
+        run: |
+          pytest tests/unit/ tests/chaos/ tests/integration/ tests/security/ tests/performance/ -v \
             --cov=lumitrade \
             --cov-report=term-missing \
-            --cov-fail-under=35
+            --cov-fail-under=75
         env:
           OANDA_API_KEY_DATA: test_key_data
           OANDA_API_KEY_TRADING: test_key_trading
