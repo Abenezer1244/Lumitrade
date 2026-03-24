@@ -213,6 +213,15 @@ class OrchestratorService:
         logger.info("signal_to_trade_loop_started", pairs=self.config.pairs)
         try:
             while True:
+                # Refresh account balance from OANDA every cycle
+                try:
+                    acct = await self.oanda.get_account_summary()
+                    if acct and self.state:
+                        self.state._state["account_balance"] = str(acct.get("balance", "0"))
+                        self.state._state["account_equity"] = str(acct.get("equity", acct.get("NAV", "0")))
+                except Exception:
+                    pass  # Non-critical — balance stays at last known value
+
                 for pair in self.config.pairs:
                     # Kill switch check — skip all scanning if halted
                     if self.state and self.state.kill_switch_active:
