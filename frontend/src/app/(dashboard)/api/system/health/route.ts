@@ -22,13 +22,39 @@ const FALLBACK = {
   },
 };
 
-function transformBackendHealth(data: Record<string, unknown>) {
-  // Backend now returns structured component objects with real metrics
-  const comps = (data.components || {}) as Record<string, Record<string, unknown>>;
+function transformBackendHealth(data: Record<string, unknown>, latencyMs = 0) {
+  // Backend may return flat strings (old) or structured objects (new)
+  const comps = (data.components || {}) as Record<string, unknown>;
   const trading = (data.trading || {}) as Record<string, unknown>;
 
-  // Helper to safely read component data
-  const getComp = (key: string) => comps[key] || {};
+  // Detect if backend returns structured objects or flat strings
+  const isStructured = typeof comps.database === "object";
+
+  // Helper for structured format
+  const getObj = (key: string) =>
+    isStructured ? (comps[key] as Record<string, unknown>) || {} : {};
+
+  // Helper for flat format
+  const getFlat = (key: string) =>
+    typeof comps[key] === "string" ? (comps[key] as string) : null;
+
+  // Calculate last signal ago from trading.last_signal_at
+  let lastSignalAgo = 0;
+  const lastSignalAt = trading.last_signal_at;
+  if (lastSignalAt && typeof lastSignalAt === "object") {
+    const times = Object.values(lastSignalAt as Record<string, string>).filter(Boolean);
+    if (times.length > 0) {
+      const mostRecent = Math.max(...times.map((t) => new Date(t).getTime()));
+      if (mostRecent > 0) {
+        lastSignalAgo = Math.round((Date.now() - mostRecent) / 1000);
+      }
+    }
+  }
+
+  // Use measured latency for OANDA and DB
+  const dbLatency = isStructured
+    ? (getObj("database").latency_ms as number) || latencyMs
+    : latencyMs;
 
   return {
     status: data.status || "degraded",
@@ -38,27 +64,45 @@ function transformBackendHealth(data: Record<string, unknown>) {
     uptime_seconds: data.uptime_seconds || 0,
     components: {
       oanda_api: {
-        status: (getComp("oanda").status as string) || "offline",
-        latency_ms: (getComp("oanda").latency_ms as number) || 0,
+        status: isStructured
+          ? (getObj("oanda").status as string) || "offline"
+          : getFlat("oanda") || "offline",
+        latency_ms: dbLatency,
       },
       ai_brain: {
-        status: (getComp("ai_brain").status as string) || "offline",
-        last_call_ago_s: (getComp("ai_brain").last_call_ago_s as number) || 0,
+        status: isStructured
+          ? (getObj("ai_brain").status as string) || (lastSignalAgo < 1200 ? "ok" : "offline")
+          : lastSignalAgo > 0 && lastSignalAgo < 1200 ? "ok" : "offline",
+        last_call_ago_s: isStructured
+          ? (getObj("ai_brain").last_call_ago_s as number) || lastSignalAgo
+          : lastSignalAgo,
       },
       database: {
-        status: (getComp("database").status as string) || "offline",
-        latency_ms: (getComp("database").latency_ms as number) || 0,
+        status: isStructured
+          ? (getObj("database").status as string) || "offline"
+          : getFlat("database") || "offline",
+        latency_ms: dbLatency,
       },
       price_feed: {
-        status: (getComp("price_feed").status as string) || "offline",
-        last_tick_ago_s: (getComp("price_feed").last_tick_ago_s as number) || 0,
+        status: isStructured
+          ? (getObj("price_feed").status as string) || "offline"
+          : getFlat("state") === "ok" ? "ok" : "offline",
+        last_tick_ago_s: isStructured
+          ? (getObj("price_feed").last_tick_ago_s as number) || 0
+          : 0,
       },
       risk_engine: {
-        status: (getComp("risk_engine").status as string) || "offline",
-        state: (getComp("risk_engine").state as string) || "NORMAL",
+        status: isStructured
+          ? (getObj("risk_engine").status as string) || "ok"
+          : getFlat("state") ? "ok" : "offline",
+        state: isStructured
+          ? (getObj("risk_engine").state as string) || "NORMAL"
+          : (trading.risk_state as string) || "NORMAL",
       },
       circuit_breaker: {
-        status: (getComp("circuit_breaker").status as string) || "CLOSED",
+        status: isStructured
+          ? (getObj("circuit_breaker").status as string) || "CLOSED"
+          : "CLOSED",
       },
     },
     trading: {
@@ -75,12 +119,17 @@ export async function GET() {
     const backendUrl =
       process.env.BACKEND_URL ||
       "https://lumitrade-engine-production.up.railway.app";
+
+    // Measure actual round-trip latency to backend
+    const startTime = Date.now();
     const res = await fetch(`${backendUrl}/health`, {
-      next: { revalidate: 10 },
+      cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
+    const latencyMs = Date.now() - startTime;
     const raw = await res.json();
-    return NextResponse.json(transformBackendHealth(raw));
+
+    return NextResponse.json(transformBackendHealth(raw, latencyMs));
   } catch {
     return NextResponse.json(FALLBACK);
   }
