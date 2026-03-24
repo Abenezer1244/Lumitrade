@@ -2,11 +2,11 @@
 
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
-import type { SystemHealth } from "@/types/system";
+import type { AccountSummary } from "@/types/system";
 
-export function useSystemStatus() {
-  const { data, error, isLoading } = useSWR<SystemHealth>(
-    "/api/system/health",
+export function useAccount() {
+  const { data, error, isLoading, mutate } = useSWR<AccountSummary>(
+    "/api/account",
     fetcher,
     {
       refreshInterval: 30_000,
@@ -16,8 +16,9 @@ export function useSystemStatus() {
   );
 
   return {
-    health: data ?? null,
+    account: data ?? null,
     loading: isLoading,
     error: error instanceof Error ? error.message : error ? String(error) : null,
+    refetch: mutate,
   };
 }

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import StatusDot from "@/components/ui/StatusDot";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -83,9 +82,8 @@ export default function TopBar() {
         {getPageTitle(pathname)}
       </h1>
 
-      {/* Right -- Theme toggle, mode badge, status, clock */}
+      {/* Right -- mode badge, status, clock */}
       <div className="flex items-center gap-4">
-        <ThemeToggle />
 
         {/* Trading mode badge */}
         {mode === "LIVE" ? (

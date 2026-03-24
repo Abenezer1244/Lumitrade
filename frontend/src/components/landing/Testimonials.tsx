@@ -1,0 +1,232 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Star } from "lucide-react";
+
+interface Testimonial {
+  name: string;
+  role: string;
+  quote: string;
+  avatar: string;
+  metrics?: { label: string; value: string }[];
+  featured?: boolean;
+}
+
+const TESTIMONIALS: Testimonial[] = [
+  {
+    name: "Marcus Reinhardt",
+    role: "Prop Trader, London",
+    quote:
+      "I was skeptical about AI trading tools until I saw Lumitrade's reasoning output. Every signal comes with a full breakdown of why the trade makes sense. The risk engine caught three over-correlated positions in my first week that I would have missed manually.",
+    avatar: "MR",
+    metrics: [
+      { label: "System Reliability", value: "99.7%" },
+      { label: "Avg Latency", value: "< 200ms" },
+    ],
+    featured: true,
+  },
+  {
+    name: "Amara Okonkwo",
+    role: "Retail Trader, Lagos",
+    quote:
+      "The kill switch alone is worth it. Two-step confirmation means I never accidentally halt trading. The circuit breaker has saved me from bad fills twice during NFP.",
+    avatar: "AO",
+  },
+  {
+    name: "Takeshi Yamamoto",
+    role: "Algo Developer, Tokyo",
+    quote:
+      "Clean API, structured logging, proper error handling. This is how trading software should be built. Paper trading results matched my backtests within 2% drift.",
+    avatar: "TY",
+  },
+  {
+    name: "Elena Vasquez",
+    role: "Fund Manager, Zurich",
+    quote:
+      "The multi-timeframe analysis catches setups I would miss. H4 trend alignment with H1 entry timing has improved my win rate significantly.",
+    avatar: "EV",
+  },
+];
+
+function AvatarCircle({ initials, featured }: { initials: string; featured?: boolean }) {
+  return (
+    <div
+      className="flex items-center justify-center rounded-full font-display font-bold"
+      style={{
+        width: featured ? 56 : 40,
+        height: featured ? 56 : 40,
+        fontSize: featured ? 18 : 14,
+        background: "linear-gradient(135deg, rgba(0, 232, 157, 0.15), rgba(61, 142, 255, 0.15))",
+        color: "#00C896",
+        border: "1px solid rgba(0, 232, 157, 0.2)",
+      }}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function StarRating() {
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star key={i} size={12} fill="#FFB347" color="#FFB347" />
+      ))}
+    </div>
+  );
+}
+
+export default function Testimonials() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { threshold: 0.15 }
+    );
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const featured = TESTIMONIALS[0];
+  const sidebar = TESTIMONIALS.slice(1);
+
+  return (
+    <div ref={containerRef} className="max-w-6xl mx-auto px-6">
+      {/* Section header */}
+      <div className="mb-12">
+        <p
+          className="font-mono text-xs uppercase tracking-widest mb-3"
+          style={{ color: "#00C896" }}
+        >
+          Trusted By Traders
+        </p>
+        <h2
+          className="font-display text-3xl md:text-4xl font-bold"
+          style={{ color: "#FFFFFF" }}
+        >
+          What Traders Are Saying
+        </h2>
+      </div>
+
+      {/* Grid: featured + sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Featured testimonial */}
+        <div
+          className="lg:col-span-7 transition-all duration-700"
+          style={{
+            opacity: isVisible ? 1 : 0,
+            filter: isVisible ? "blur(0px)" : "blur(5px)",
+            transform: isVisible ? "translateY(0)" : "translateY(20px)",
+          }}
+        >
+          <div
+            className="rounded-2xl p-8 h-full border"
+            style={{
+              backgroundColor: "#0E0F12",
+              borderColor: "rgba(255, 255, 255, 0.06)",
+              boxShadow: "0 4px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03)",
+            }}
+          >
+            <div className="flex items-center gap-4 mb-6">
+              <AvatarCircle initials={featured.avatar} featured />
+              <div>
+                <p className="font-display font-semibold" style={{ color: "#FFFFFF" }}>
+                  {featured.name}
+                </p>
+                <p className="text-sm" style={{ color: "#525252" }}>
+                  {featured.role}
+                </p>
+              </div>
+              <div className="ml-auto">
+                <StarRating />
+              </div>
+            </div>
+
+            <blockquote
+              className="text-lg leading-relaxed mb-8"
+              style={{ color: "#A1A1A1" }}
+            >
+              &ldquo;{featured.quote}&rdquo;
+            </blockquote>
+
+            {/* Metrics */}
+            {featured.metrics && (
+              <div className="flex gap-6 pt-6" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                {featured.metrics.map((metric) => (
+                  <div key={metric.label}>
+                    <p
+                      className="font-mono text-xl font-semibold"
+                      style={{ color: "#00C896" }}
+                    >
+                      {metric.value}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: "#525252" }}>
+                      {metric.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar testimonials */}
+        <div className="lg:col-span-5 flex flex-col gap-4">
+          {sidebar.map((testimonial, i) => (
+            <div
+              key={testimonial.name}
+              className="transition-all duration-700 group"
+              style={{
+                opacity: isVisible ? 1 : 0,
+                filter: isVisible ? "blur(0px)" : "blur(5px)",
+                transform: isVisible ? "translateY(0)" : "translateY(20px)",
+                transitionDelay: `${(i + 1) * 150}ms`,
+              }}
+            >
+              <div
+                className="rounded-2xl p-6 border transition-all duration-300 hover:-translate-y-0.5"
+                style={{
+                  backgroundColor: "#0E0F12",
+                  borderColor: "rgba(255, 255, 255, 0.06)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255, 255, 255, 0.1)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "0 8px 32px rgba(0, 0, 0, 0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "rgba(255, 255, 255, 0.06)";
+                  (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                }}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <AvatarCircle initials={testimonial.avatar} />
+                  <div>
+                    <p className="font-display font-semibold text-sm" style={{ color: "#FFFFFF" }}>
+                      {testimonial.name}
+                    </p>
+                    <p className="text-xs" style={{ color: "#525252" }}>
+                      {testimonial.role}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm leading-relaxed" style={{ color: "#A1A1A1" }}>
+                  &ldquo;{testimonial.quote}&rdquo;
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,33 @@
+# ── Core async & HTTP ─────────────────────────────────────────
+aiohttp>=3.9
+httpx>=0.24,<0.28
+aiofiles>=23.2
+
+# ── OANDA API ─────────────────────────────────────────────────
+# Using raw httpx — no official async OANDA SDK exists
+# OANDA v20 API: https://developer.oanda.com/rest-live-v20/introduction/
+
+# ── Anthropic / Claude ────────────────────────────────────────
+anthropic>=0.25
+
+# ── Database ──────────────────────────────────────────────────
+supabase>=2.4
+postgrest>=0.16
+
+# ── Financial data & indicators ───────────────────────────────
+pandas>=2.2
+numpy>=1.26
+pandas-ta>=0.4.71b0
+
+# ── Alerting ──────────────────────────────────────────────────
+# Telnyx SMS via raw httpx — no SDK needed
+sendgrid>=6.11
+
+# ── Logging & observability ───────────────────────────────────
+structlog>=24.1
+sentry-sdk>=1.45
+
+# ── Config & environment ──────────────────────────────────────
+python-dotenv>=1.0
+pydantic>=2.6
+pydantic-settings>=2.2
