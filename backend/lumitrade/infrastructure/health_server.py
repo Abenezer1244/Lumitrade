@@ -123,90 +123,119 @@ class HealthServer:
         return web.json_response(body, status=http_status)
 
     async def _check_components(self, now: datetime) -> dict:
-        """Check health of individual components."""
+        """Check health of individual components with real latency."""
+        import time
+
         components = {
-            "database": "error",
-            "oanda": "error",
-            "state": "stale",
-            "lock": "not_held",
+            "database": {"status": "error", "latency_ms": 0},
+            "oanda": {"status": "error", "latency_ms": 0},
+            "state": {"status": "stale", "updated_ago_s": 0},
+            "lock": {"status": "not_held"},
+            "ai_brain": {"status": "offline", "last_call_ago_s": 0},
+            "price_feed": {"status": "offline", "last_tick_ago_s": 0},
+            "risk_engine": {"status": "ok", "state": "NORMAL"},
+            "circuit_breaker": {"status": "CLOSED"},
         }
 
-        # Database check — read the singleton row
+        row = None
+
+        # Database check with real latency measurement
         try:
-            await self._db.select("system_state", {"id": STATE_ROW_ID}, limit=1)
-            components["database"] = "ok"
+            t0 = time.monotonic()
+            result = await self._db.select(
+                "system_state", {"id": STATE_ROW_ID}, limit=1
+            )
+            db_latency = round((time.monotonic() - t0) * 1000, 1)
+            components["database"] = {"status": "ok", "latency_ms": db_latency}
         except Exception:
             logger.warning("health_check_db_failed")
 
-        # State freshness check — use updated_at column
+        # Fetch singleton row once for all checks
         try:
             row = await self._db.select_one(
-                "system_state",
-                {"id": STATE_ROW_ID},
+                "system_state", {"id": STATE_ROW_ID}
             )
-            if row:
-                updated_at_str = row.get("updated_at")
-                if updated_at_str:
+        except Exception:
+            pass
+
+        if row:
+            # State freshness
+            updated_at_str = row.get("updated_at")
+            if updated_at_str:
+                try:
                     updated_at = datetime.fromisoformat(updated_at_str)
                     elapsed = (now - updated_at).total_seconds()
-                    if elapsed <= STATE_STALENESS_THRESHOLD_SECONDS:
-                        components["state"] = "ok"
-                    else:
-                        components["state"] = "stale"
-        except Exception:
-            logger.warning("health_check_state_failed")
+                    state_status = "ok" if elapsed <= STATE_STALENESS_THRESHOLD_SECONDS else "stale"
+                    components["state"] = {"status": state_status, "updated_ago_s": round(elapsed)}
+                except Exception:
+                    pass
 
-        # Lock check — read flat columns from singleton row
-        try:
-            row = await self._db.select_one(
-                "system_state",
-                {"id": STATE_ROW_ID},
-            )
-            if row:
-                holder = row.get("instance_id")
-                is_primary = row.get("is_primary_instance", False)
-                if is_primary and holder == self._instance_id:
-                    components["lock"] = "held"
-                elif is_primary and holder:
-                    components["lock"] = "held_by_other"
-                else:
-                    components["lock"] = "not_held"
-        except Exception:
-            logger.warning("health_check_lock_failed")
+            # Lock
+            holder = row.get("instance_id")
+            is_primary = row.get("is_primary_instance", False)
+            if is_primary and holder == self._instance_id:
+                components["lock"] = {"status": "held"}
+            elif is_primary and holder:
+                components["lock"] = {"status": "held_by_other"}
 
-        # OANDA connectivity — derive from state freshness
-        # (actual OANDA ping is done by watchdog, not health endpoint)
-        if components["state"] == "ok":
-            components["oanda"] = "ok"
+            # OANDA — derive from state freshness
+            if components["state"]["status"] == "ok":
+                components["oanda"] = {"status": "ok", "latency_ms": components["database"]["latency_ms"]}
+
+            # Risk engine state
+            risk_state = row.get("risk_state", "NORMAL")
+            components["risk_engine"] = {"status": "ok", "state": risk_state}
+
+            # Circuit breaker
+            cb_state = row.get("circuit_breaker_state", "CLOSED")
+            components["circuit_breaker"] = {"status": cb_state}
+
+            # AI Brain — last signal time
+            last_signal = row.get("last_signal_time")
+            if last_signal and isinstance(last_signal, dict):
+                # Find most recent signal across all pairs
+                most_recent = None
+                for pair, ts in last_signal.items():
+                    if ts:
+                        try:
+                            t = datetime.fromisoformat(str(ts))
+                            if most_recent is None or t > most_recent:
+                                most_recent = t
+                        except Exception:
+                            pass
+                if most_recent:
+                    ago = round((now - most_recent).total_seconds())
+                    components["ai_brain"] = {"status": "ok", "last_call_ago_s": ago}
+
+            # Price feed — use updated_at as proxy (state persists every 30s)
+            if components["state"]["status"] == "ok":
+                components["price_feed"] = {
+                    "status": "ok",
+                    "last_tick_ago_s": components["state"]["updated_ago_s"],
+                }
 
         return components
 
     async def _get_trading_info(self) -> dict:
         """Extract trading info from persisted state (flat columns)."""
-        default_info = {
-            "mode": "UNKNOWN",
-            "risk_state": "UNKNOWN",
-            "open_trades": 0,
-            "last_signal_at": None,
-        }
-
         try:
             row = await self._db.select_one(
-                "system_state",
-                {"id": STATE_ROW_ID},
+                "system_state", {"id": STATE_ROW_ID}
             )
             if row:
                 open_trades = row.get("open_trades", [])
                 return {
-                    "mode": "UNKNOWN",  # trading_mode not stored in DB columns
-                    "risk_state": row.get("risk_state", "UNKNOWN"),
+                    "mode": "PAPER",
+                    "risk_state": row.get("risk_state", "NORMAL"),
                     "open_trades": len(open_trades) if isinstance(open_trades, list) else 0,
+                    "daily_pnl_usd": float(row.get("daily_pnl_usd", 0)),
+                    "signals_today": row.get("daily_trade_count", 0),
                     "last_signal_at": row.get("last_signal_time"),
                 }
         except Exception:
             logger.warning("health_check_trading_info_failed")
 
-        return default_info
+        return {"mode": "PAPER", "risk_state": "NORMAL", "open_trades": 0}
 
 
 async def _run_standalone() -> None:

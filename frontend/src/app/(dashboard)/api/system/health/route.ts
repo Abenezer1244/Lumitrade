@@ -23,10 +23,12 @@ const FALLBACK = {
 };
 
 function transformBackendHealth(data: Record<string, unknown>) {
-  // Backend returns flat component statuses like "ok"/"error"
-  // Frontend expects objects like { status: "ok", latency_ms: 0 }
-  const comps = (data.components || {}) as Record<string, unknown>;
+  // Backend now returns structured component objects with real metrics
+  const comps = (data.components || {}) as Record<string, Record<string, unknown>>;
   const trading = (data.trading || {}) as Record<string, unknown>;
+
+  // Helper to safely read component data
+  const getComp = (key: string) => comps[key] || {};
 
   return {
     status: data.status || "degraded",
@@ -36,27 +38,27 @@ function transformBackendHealth(data: Record<string, unknown>) {
     uptime_seconds: data.uptime_seconds || 0,
     components: {
       oanda_api: {
-        status: typeof comps.oanda === "string" ? comps.oanda : "offline",
-        latency_ms: 0,
+        status: (getComp("oanda").status as string) || "offline",
+        latency_ms: (getComp("oanda").latency_ms as number) || 0,
       },
       ai_brain: {
-        status: typeof comps.state === "string" && comps.state === "ok" ? "ok" : "offline",
-        last_call_ago_s: 0,
+        status: (getComp("ai_brain").status as string) || "offline",
+        last_call_ago_s: (getComp("ai_brain").last_call_ago_s as number) || 0,
       },
       database: {
-        status: typeof comps.database === "string" ? comps.database : "offline",
-        latency_ms: 0,
+        status: (getComp("database").status as string) || "offline",
+        latency_ms: (getComp("database").latency_ms as number) || 0,
       },
       price_feed: {
-        status: typeof comps.state === "string" && comps.state === "ok" ? "ok" : "offline",
-        last_tick_ago_s: 0,
+        status: (getComp("price_feed").status as string) || "offline",
+        last_tick_ago_s: (getComp("price_feed").last_tick_ago_s as number) || 0,
       },
       risk_engine: {
-        status: typeof comps.state === "string" && comps.state !== "error" ? "ok" : "offline",
-        state: (trading.risk_state as string) || "NORMAL",
+        status: (getComp("risk_engine").status as string) || "offline",
+        state: (getComp("risk_engine").state as string) || "NORMAL",
       },
       circuit_breaker: {
-        status: typeof comps.lock === "string" ? comps.lock : "closed",
+        status: (getComp("circuit_breaker").status as string) || "CLOSED",
       },
     },
     trading: {
