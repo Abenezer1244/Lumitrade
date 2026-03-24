@@ -17,7 +17,7 @@ export default function SignalCard({ signal }: Props) {
 
   return (
     <div
-      className={`bg-surface border border-border rounded-lg p-3 transition-colors ${
+      className={`glass p-3 transition-colors ${
         canExpand ? "cursor-pointer hover:border-accent/40" : ""
       }`}
       onClick={() => canExpand && setExpanded(!expanded)}
@@ -43,7 +43,7 @@ export default function SignalCard({ signal }: Props) {
           <span className="text-[10px] font-bold uppercase text-accent px-1.5 py-0.5 bg-accent/10 rounded">Executed</span>
         )}
         {signal.rejection_reason && !signal.executed && (
-          <span className="text-[10px] font-bold uppercase text-loss px-1.5 py-0.5 bg-loss/10 rounded">Rejected</span>
+          <span className="text-[10px] font-bold uppercase text-loss px-1.5 py-0.5 bg-loss-dim rounded">Rejected</span>
         )}
         {canExpand && (
           <svg
@@ -62,7 +62,17 @@ export default function SignalCard({ signal }: Props) {
       <p className="text-xs text-secondary mt-1.5 line-clamp-1">{signal.summary}</p>
 
       {/* Expanded Detail Panel */}
-      {expanded && canExpand && <SignalDetailPanel signal={signal} />}
+      {canExpand && (
+        <div
+          className="overflow-hidden transition-all duration-200 ease-in-out"
+          style={{
+            maxHeight: expanded ? "2000px" : "0",
+            opacity: expanded ? 1 : 0,
+          }}
+        >
+          <SignalDetailPanel signal={signal} />
+        </div>
+      )}
     </div>
   );
 }
