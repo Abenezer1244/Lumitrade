@@ -201,8 +201,8 @@ class StateManager:
                     "confidence_threshold_override": self._state.get(
                         "confidence_threshold_override"
                     ),
-                    "account_balance": self._state.get("account_balance", "0"),
-                    "account_equity": self._state.get("account_equity", "0"),
+                    "daily_opening_balance": self._state.get("account_balance", "0"),
+                    "weekly_opening_balance": self._state.get("account_equity", "0"),
                     "updated_at": now.isoformat(),
                 },
             )

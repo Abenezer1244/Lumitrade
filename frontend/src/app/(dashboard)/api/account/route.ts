@@ -58,8 +58,8 @@ export async function GET() {
         const rows = await stateRes.json();
         if (rows?.[0]) {
           const state = rows[0];
-          if (state.account_balance) balance = String(state.account_balance);
-          if (state.account_equity) equity = String(state.account_equity);
+          if (state.daily_opening_balance) balance = String(state.daily_opening_balance);
+          if (state.weekly_opening_balance) equity = String(state.weekly_opening_balance);
           // Get mode from state if health endpoint returned UNKNOWN
           if (mode === "PAPER" || mode === "UNKNOWN") {
             mode = state.trading_mode || "PAPER";
