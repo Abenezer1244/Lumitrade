@@ -103,9 +103,9 @@ class HealthServer:
         components = await self._check_components(now)
         trading_info = await self._get_trading_info()
 
-        # Determine overall status
+        # Determine overall status — components are now dicts with "status" key
         is_healthy = all(
-            v in ("ok", "held")
+            (v.get("status") if isinstance(v, dict) else v) in ("ok", "held", "CLOSED")
             for v in components.values()
         )
         status = "healthy" if is_healthy else "degraded"
