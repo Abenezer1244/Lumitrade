@@ -371,7 +371,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-[100dvh]" style={{ backgroundColor: "#0D1B2A" }}>
+    <div className="min-h-[100dvh] relative" style={{ backgroundColor: "transparent" }}>
       {/* ── Loading Screen ──────────────────────────────── */}
       {!loadingComplete && <LoadingScreen onComplete={handleLoadingComplete} />}
 
@@ -585,13 +585,13 @@ export default function LandingPage() {
       <div
         ref={mainContentRef}
         className="relative z-20"
-        style={{ backgroundColor: "#0D1B2A" }}
+        style={{ backgroundColor: "rgba(13, 27, 42, 0.75)" }}
       >
         {/* Gradient transition from 3D scene */}
         <div
           className="h-32 -mt-32 relative z-20"
           style={{
-            background: "linear-gradient(to bottom, transparent, #0D1B2A)",
+            background: "linear-gradient(to bottom, transparent, rgba(13, 27, 42, 0.75))",
           }}
         />
 
@@ -1104,7 +1104,7 @@ export default function LandingPage() {
         <footer
           className="relative z-30 py-16 px-6"
           style={{
-            backgroundColor: "#050506",
+            backgroundColor: "rgba(5, 5, 6, 0.85)",
             borderTop: "1px solid rgba(255, 255, 255, 0.04)",
           }}
         >
