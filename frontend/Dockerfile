@@ -1,7 +1,8 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# Support both contexts: from repo root (COPY frontend/) or from frontend/ dir (COPY .)
+COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY . .
