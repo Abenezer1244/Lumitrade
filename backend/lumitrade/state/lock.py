@@ -87,7 +87,7 @@ class DistributedLock:
 
             # We already hold the lock — refresh
             if current_holder == instance_id:
-                await self._update_lock(instance_id, now)
+                await self._update_lock(instance_id, now, expected_holder=instance_id)
                 logger.info(
                     "lock_reacquired",
                     instance_id=instance_id,
@@ -96,8 +96,8 @@ class DistributedLock:
 
             # Check if no holder or lock is expired
             if current_holder is None or not row.get("is_primary_instance"):
-                # No active holder — claim it
-                await self._update_lock(instance_id, now)
+                # No active holder — conditional claim (only if still vacant)
+                await self._update_lock(instance_id, now, expected_holder=current_holder)
                 logger.info(
                     "lock_acquired",
                     instance_id=instance_id,
@@ -108,8 +108,9 @@ class DistributedLock:
             if lock_expires_at_str:
                 expires_at = datetime.fromisoformat(lock_expires_at_str)
                 if now > expires_at:
-                    # Lock holder is presumed dead — take over
-                    await self._update_lock(instance_id, now)
+                    # Lock holder is presumed dead — conditional takeover
+                    # Only succeeds if the holder hasn't changed since we read
+                    await self._update_lock(instance_id, now, expected_holder=current_holder)
                     logger.warning(
                         "lock_takeover",
                         instance_id=instance_id,
@@ -272,17 +273,32 @@ class DistributedLock:
         )
         return self._renew_task
 
-    async def _update_lock(self, instance_id: str, now: datetime) -> None:
-        """Write the lock renewal to system_state singleton row."""
-        await self._db.update(
-            "system_state",
-            {"id": LOCK_ROW_ID},
-            {
-                "instance_id": instance_id,
-                "is_primary_instance": True,
-                "lock_expires_at": (
-                    now + timedelta(seconds=LOCK_TTL_SECONDS)
-                ).isoformat(),
-                "updated_at": now.isoformat(),
-            },
-        )
+    async def _update_lock(
+        self,
+        instance_id: str,
+        now: datetime,
+        expected_holder: str | None = None,
+    ) -> bool:
+        """
+        Write the lock renewal to system_state singleton row.
+        Uses conditional update when expected_holder is set to prevent
+        race conditions (only updates if the current holder matches).
+        Returns True if the update succeeded.
+        """
+        lock_data = {
+            "instance_id": instance_id,
+            "is_primary_instance": True,
+            "lock_expires_at": (
+                now + timedelta(seconds=LOCK_TTL_SECONDS)
+            ).isoformat(),
+            "updated_at": now.isoformat(),
+        }
+
+        if expected_holder is not None:
+            # Conditional update: only if current holder matches expected
+            filters = {"id": LOCK_ROW_ID, "instance_id": expected_holder}
+        else:
+            filters = {"id": LOCK_ROW_ID}
+
+        await self._db.update("system_state", filters, lock_data)
+        return True
