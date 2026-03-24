@@ -39,7 +39,7 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
 
     // Camera
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 2000);
-    camera.position.set(0, 0, 5);
+    camera.position.set(0, 0, 8);
 
     // Renderer
     const renderer = new THREE.WebGLRenderer({
@@ -60,25 +60,25 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    const pointLight = new THREE.PointLight(0x00e89d, 0.4, 20);
+    const pointLight = new THREE.PointLight(0x00c896, 0.6, 30);
     pointLight.position.set(0, 0, 3);
     scene.add(pointLight);
 
-    // Central icosahedron (wireframe, emerald-tinted)
-    const icoGeometry = new THREE.IcosahedronGeometry(1.2, 1);
+    // Central icosahedron (wireframe, emerald-tinted) — LARGE to fill viewport
+    const icoGeometry = new THREE.IcosahedronGeometry(3.5, 2);
     const icoMaterial = new THREE.MeshPhongMaterial({
-      color: 0x00e89d,
+      color: 0x00c896,
       wireframe: true,
       transparent: true,
-      opacity: 0.25,
-      emissive: 0x00e89d,
-      emissiveIntensity: 0.1,
+      opacity: 0.18,
+      emissive: 0x00c896,
+      emissiveIntensity: 0.15,
     });
     const centralMesh = new THREE.Mesh(icoGeometry, icoMaterial);
     scene.add(centralMesh);
 
     // Inner solid icosahedron (subtle glow core)
-    const innerGeo = new THREE.IcosahedronGeometry(0.6, 2);
+    const innerGeo = new THREE.IcosahedronGeometry(1.8, 2);
     const innerMat = new THREE.MeshPhongMaterial({
       color: 0x00e89d,
       transparent: true,
@@ -92,10 +92,10 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
     // Orbiting spheres
     const orbitSpheres: THREE.Mesh[] = [];
     const orbitColors = [0x3d8eff, 0x00e89d, 0x00c4ff, 0xffb347, 0x8b5cf6];
-    const orbitRadii = [2.2, 2.6, 3.0, 2.4, 2.8];
+    const orbitRadii = [5.0, 6.0, 7.0, 5.5, 6.5];
 
     for (let i = 0; i < 5; i++) {
-      const sphereGeo = new THREE.SphereGeometry(0.06, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(0.12, 16, 16);
       const sphereMat = new THREE.MeshPhongMaterial({
         color: orbitColors[i],
         emissive: orbitColors[i],
@@ -108,7 +108,7 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
       orbitSpheres.push(sphere);
 
       // Glow around each sphere
-      const glowGeo = new THREE.SphereGeometry(0.15, 16, 16);
+      const glowGeo = new THREE.SphereGeometry(0.3, 16, 16);
       const glowMat = new THREE.MeshBasicMaterial({
         color: orbitColors[i],
         transparent: true,
@@ -123,9 +123,9 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
     const linePositions = new Float32Array(5 * 2 * 3); // 5 lines, 2 points each, 3 coords
     lineGeometry.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
     const lineMaterial = new THREE.LineBasicMaterial({
-      color: 0x00e89d,
+      color: 0x00c896,
       transparent: true,
-      opacity: 0.08,
+      opacity: 0.15,
     });
     const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
     scene.add(lines);
@@ -147,10 +147,10 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
     particleGeometry.setAttribute("size", new THREE.BufferAttribute(particleSizes, 1));
 
     const particleMaterial = new THREE.PointsMaterial({
-      color: 0x4a5e80,
-      size: 0.03,
+      color: 0x6a8ebd,
+      size: 0.05,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.7,
       sizeAttenuation: true,
     });
     const particles = new THREE.Points(particleGeometry, particleMaterial);
@@ -215,8 +215,8 @@ export default function ThreeScene({ visible }: ThreeSceneProps) {
       innerMesh.rotation.y = elapsed * 0.15;
 
       // Camera zoom on scroll
-      const baseZ = 5;
-      const scrollZ = baseZ - sp * 2.5;
+      const baseZ = 8;
+      const scrollZ = baseZ - sp * 3;
       ref.camera.position.z = scrollZ;
 
       // Orbit spheres
