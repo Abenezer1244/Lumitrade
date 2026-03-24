@@ -103,13 +103,21 @@ class HealthServer:
         components = await self._check_components(now)
         trading_info = await self._get_trading_info()
 
-        # Determine overall status — components are now dicts with "status" key
-        is_healthy = all(
-            (v.get("status") if isinstance(v, dict) else v) in ("ok", "held", "CLOSED")
-            for v in components.values()
+        # Determine overall status — healthy if DB is ok (other components may still be starting)
+        db_status = components.get("database", {})
+        db_ok = (db_status.get("status") if isinstance(db_status, dict) else db_status) == "ok"
+
+        # Count how many critical components are ok
+        ok_count = sum(
+            1 for v in components.values()
+            if (v.get("status") if isinstance(v, dict) else v) in ("ok", "held", "CLOSED")
         )
-        status = "healthy" if is_healthy else "degraded"
-        http_status = 200 if is_healthy else 503
+        total = len(components)
+
+        # Healthy if DB is up (core requirement). Degraded only if DB is down.
+        is_healthy = db_ok
+        status = "healthy" if ok_count == total else ("degraded" if db_ok else "down")
+        http_status = 200 if db_ok else 503
 
         body = {
             "status": status,
