@@ -247,6 +247,7 @@ class ApprovedOrder:
     take_profit: Decimal
     risk_amount_usd: Decimal
     risk_pct: Decimal
+    confidence: Decimal
     account_balance_at_approval: Decimal
     approved_at: datetime
     expiry: datetime

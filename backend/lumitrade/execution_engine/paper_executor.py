@@ -11,6 +11,7 @@ from uuid import uuid4
 from ..core.enums import OrderStatus
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.secure_logger import get_logger
+from ..utils.pip_math import pips_between
 
 logger = get_logger(__name__)
 
@@ -20,7 +21,7 @@ class PaperExecutor:
         self, order: ApprovedOrder, current_price: Decimal,
     ) -> OrderResult:
         fill_price = current_price
-        slippage = abs(order.entry_price - fill_price)
+        slippage = pips_between(order.entry_price, fill_price, order.pair)
         logger.info(
             "paper_trade_executed",
             pair=order.pair,

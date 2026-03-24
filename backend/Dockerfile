@@ -16,5 +16,7 @@ RUN useradd --no-create-home --shell /bin/false lumitrade && \
     mkdir -p /var/log/lumitrade && \
     chown -R lumitrade:lumitrade /app /var/log/lumitrade
 USER lumitrade
-# Railway manages its own healthcheck via railway.toml — no Docker HEALTHCHECK needed
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/lumitrade.conf"]

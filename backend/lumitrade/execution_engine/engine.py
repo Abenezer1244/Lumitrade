@@ -102,7 +102,7 @@ class ExecutionEngine:
             await self._db.insert(
                 "trades",
                 {
-                    "account_id": self.config.oanda_account_id,
+                    "account_id": self.config.account_uuid,
                     "signal_id": str(order.signal_id),
                     "broker_trade_id": result.broker_trade_id,
                     "pair": order.pair,
@@ -112,7 +112,7 @@ class ExecutionEngine:
                     "stop_loss": str(order.stop_loss),
                     "take_profit": str(order.take_profit),
                     "position_size": abs(order.units),
-                    "confidence_score": str(order.risk_pct),
+                    "confidence_score": str(order.confidence),
                     "slippage_pips": str(result.slippage_pips),
                     "status": "OPEN",
                     "session": "",

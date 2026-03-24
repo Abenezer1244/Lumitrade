@@ -1,0 +1,83 @@
+# Git
+.git
+.gitignore
+
+# IDE / Editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Agent configs
+.claude
+.claude-flow
+.swarm
+.agent
+.agents
+.augment
+.codebuddy
+.commandcode
+.continue
+.cortex
+.crush
+.factory
+.goose
+.iflow
+.junie
+.kilocode
+.kiro
+.kode
+.mcpjam
+.mux
+.neovate
+.openhands
+.pi
+.pochi
+.qoder
+.qwen
+.roo
+.superpowers
+.trae
+.vibe
+.windsurf
+.zencoder
+.adal
+.mcp.json
+
+# Node
+node_modules
+frontend/node_modules
+frontend/.next
+
+# Python
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Environment
+.env
+.env.*
+*.pem
+*.key
+
+# Logs
+logs
+*.log
+
+# Screenshots / images
+*.png
+*.jpg
+*.jpeg
+
+# Docs (not needed in image)
+docs
+tasks
+skills
+scripts
+
+# Tests (not needed in production image)
+backend/tests
+frontend/e2e
+frontend/playwright.config.ts

@@ -149,6 +149,7 @@ class RiskEngine:
             take_profit=proposal.take_profit,
             risk_amount_usd=risk_amount_usd,
             risk_pct=risk_pct,
+            confidence=proposal.confidence_adjusted,
             account_balance_at_approval=account_balance,
             approved_at=now,
             expiry=now + timedelta(seconds=30),
