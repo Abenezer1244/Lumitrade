@@ -11,9 +11,11 @@ import asyncio
 import signal
 import sys
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 from .config import LumitradeConfig
+from .core.models import ApprovedOrder
 from .infrastructure.alert_service import AlertService
 from .infrastructure.db import DatabaseClient
 from .infrastructure.oanda_client import OandaClient, OandaTradingClient
@@ -161,7 +163,7 @@ class OrchestratorService:
                 name="price_stream",
             ),
             asyncio.create_task(
-                self.scanner.scan_loop(), name="signal_scan"
+                self._signal_to_trade_loop(), name="signal_scan"
             ),
             asyncio.create_task(
                 self.exec_eng.position_monitor(), name="position_monitor"
@@ -204,6 +206,86 @@ class OrchestratorService:
         await self.lock.release(self.config.instance_id)
         await self.oanda.close()
         logger.info("lumitrade_stopped")
+
+    async def _signal_to_trade_loop(self) -> None:
+        """Full pipeline: scan → risk evaluate → execute if approved."""
+        logger.info("signal_to_trade_loop_started", pairs=self.config.pairs)
+        try:
+            while True:
+                for pair in self.config.pairs:
+                    # Kill switch check — skip all scanning if halted
+                    if self.state and self.state.kill_switch_active:
+                        logger.info("kill_switch_active_skipping_scan")
+                        break
+
+                    try:
+                        # 1. Scan for signal
+                        proposal = await self.scanner.execute_scan(pair)
+                        if not proposal:
+                            continue
+                        if proposal.action.value == "HOLD":
+                            logger.info("signal_hold_skipped", pair=pair)
+                            continue
+                        if proposal.confidence_adjusted < self.config.min_confidence:
+                            logger.info(
+                                "signal_below_threshold",
+                                pair=pair,
+                                confidence=str(proposal.confidence_adjusted),
+                                threshold=str(self.config.min_confidence),
+                            )
+                            continue
+
+                        # 2. Get account balance for risk sizing
+                        account = await self.oanda.get_account_summary()
+                        balance = Decimal(str(account.get("balance", "0")))
+
+                        # 3. Risk evaluation
+                        logger.info(
+                            "signal_evaluating_risk",
+                            pair=pair,
+                            action=proposal.action.value,
+                            confidence=str(proposal.confidence_adjusted),
+                            balance=str(balance),
+                        )
+                        result = await self.risk_eng.evaluate(proposal, balance)
+                        if not isinstance(result, ApprovedOrder):
+                            logger.info(
+                                "signal_risk_rejected",
+                                pair=pair,
+                                reason=getattr(result, "rule_violated", "unknown"),
+                            )
+                            continue
+                        approved = result
+
+                        # 4. Execute trade
+                        current_price = proposal.entry_price
+                        logger.info(
+                            "signal_executing_trade",
+                            pair=pair,
+                            action=proposal.action.value,
+                            confidence=str(proposal.confidence_adjusted),
+                            price=str(current_price),
+                        )
+                        await self.exec_eng.execute_order(approved, current_price)
+                        logger.info(
+                            "trade_executed_successfully",
+                            pair=pair,
+                            action=proposal.action.value,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "signal_to_trade_error",
+                            pair=pair,
+                            error=str(e),
+                        )
+
+                    # Stagger between pairs
+                    await asyncio.sleep(5)
+
+                # Wait for next scan cycle
+                await asyncio.sleep(self.config.signal_interval_minutes * 60)
+        except asyncio.CancelledError:
+            logger.info("signal_to_trade_loop_cancelled")
 
     async def _risk_monitor_loop(self) -> None:
         """SA-03: Run risk monitor every 30 minutes while positions open."""

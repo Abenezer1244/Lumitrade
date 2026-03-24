@@ -32,8 +32,7 @@ jobs:
         run: ruff check lumitrade/ tests/
 
       - name: Type check with mypy
-        run: mypy lumitrade/ --ignore-missing-imports || echo "::warning::mypy found type errors (non-blocking)"
-        continue-on-error: true
+        run: mypy lumitrade/ --ignore-missing-imports
 
       - name: Run unit tests
         run: |
@@ -78,7 +77,6 @@ jobs:
 
       - name: Secrets scan (gitleaks)
         uses: gitleaks/gitleaks-action@v2
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml

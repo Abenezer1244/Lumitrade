@@ -86,11 +86,11 @@ class SignalScanner:
 
         async with self._pair_locks[pair]:
             try:
-                await self._execute_scan(pair)
+                await self.execute_scan(pair)
             except Exception as e:
                 logger.error("scan_failed", pair=pair, error=str(e))
 
-    async def _execute_scan(self, pair: str) -> SignalProposal | None:
+    async def execute_scan(self, pair: str) -> SignalProposal | None:
         """Execute a full signal scan for one pair."""
         logger.info("signal_scan_started", pair=pair)
 
@@ -225,7 +225,7 @@ class SignalScanner:
         try:
             await self._db.insert("signals", {
                 "id": str(proposal.signal_id),
-                "account_id": self.config.oanda_account_id,
+                "account_id": self.config.account_uuid,
                 "pair": proposal.pair,
                 "action": proposal.action.value,
                 "confidence_raw": str(proposal.confidence_raw),
@@ -255,7 +255,7 @@ class SignalScanner:
         """Log AI prompt/response for audit."""
         try:
             await self._db.insert("ai_interaction_log", {
-                "account_id": self.config.oanda_account_id,
+                "account_id": self.config.account_uuid,
                 "prompt_hash": prompt_hash,
                 "response_text": response[:5000],
                 "retry_count": attempt,
