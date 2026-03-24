@@ -585,15 +585,8 @@ export default function LandingPage() {
       <div
         ref={mainContentRef}
         className="relative z-20"
-        style={{ backgroundColor: "rgba(13, 27, 42, 0.35)" }}
       >
-        {/* Gradient transition from 3D scene */}
-        <div
-          className="h-32 -mt-32 relative z-20"
-          style={{
-            background: "linear-gradient(to bottom, transparent, rgba(13, 27, 42, 0.35))",
-          }}
-        />
+        {/* No gradient — let Three.js show through fully */}
 
         {/* ── SECTION A: Pain Points ──────────────────────── */}
         <section className="py-24 md:py-32 px-6 reveal-section">
@@ -1104,7 +1097,7 @@ export default function LandingPage() {
         <footer
           className="relative z-30 py-16 px-6"
           style={{
-            backgroundColor: "rgba(5, 5, 6, 0.5)",
+            backgroundColor: "rgba(13, 27, 42, 0.3)",
             borderTop: "1px solid rgba(255, 255, 255, 0.04)",
           }}
         >
