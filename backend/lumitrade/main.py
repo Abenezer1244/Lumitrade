@@ -153,6 +153,7 @@ class OrchestratorService:
         self.exec_eng = ExecutionEngine(
             self.config, self.oanda_trade, self.state, self.db,
             self.alerts, self.subagents,
+            oanda_read_client=self.oanda,
         )
         self.watchdog = Watchdog(self.config, self.state, self.alerts)
 
