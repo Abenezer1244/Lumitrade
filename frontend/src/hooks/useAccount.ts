@@ -9,9 +9,9 @@ export function useAccount() {
     "/api/account",
     fetcher,
     {
-      refreshInterval: 30_000,
-      revalidateOnFocus: false,
-      dedupingInterval: 5_000,
+      refreshInterval: 2_000,
+      revalidateOnFocus: true,
+      dedupingInterval: 1_000,
     }
   );
 
