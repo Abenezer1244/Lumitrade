@@ -170,7 +170,7 @@ class OrchestratorService:
                 self.exec_eng.position_monitor(), name="position_monitor"
             ),
             asyncio.create_task(
-                self.state.persist_loop(), name="state_persist"
+                self.state.persist_loop(oanda_client=self.oanda), name="state_persist"
             ),
             asyncio.create_task(
                 self.lock.renew_loop(self.config.instance_id),

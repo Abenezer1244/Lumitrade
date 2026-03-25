@@ -40,7 +40,7 @@ from ..infrastructure.secure_logger import get_logger
 logger = get_logger(__name__)
 
 STATE_ROW_ID = "singleton"
-PERSIST_INTERVAL_SECONDS = 30
+PERSIST_INTERVAL_SECONDS = 5
 
 
 class StateManager:
@@ -213,12 +213,13 @@ class StateManager:
         except Exception:
             logger.exception("state_persist_failed")
 
-    async def persist_loop(self) -> None:
+    async def persist_loop(self, oanda_client=None) -> None:
         """
-        Background task that calls save() every PERSIST_INTERVAL_SECONDS.
-        Runs until shutdown event is set or task is cancelled.
+        Background task that saves state and refreshes OANDA balance.
+        Runs every PERSIST_INTERVAL_SECONDS (30s).
         """
         self._shutdown_event.clear()
+        self._oanda = oanda_client
         logger.info(
             "state_persist_loop_started",
             interval_seconds=PERSIST_INTERVAL_SECONDS,
@@ -229,12 +230,23 @@ class StateManager:
                 await asyncio.sleep(PERSIST_INTERVAL_SECONDS)
             except asyncio.CancelledError:
                 logger.info("state_persist_loop_cancelled")
-                # Final save before exit
                 await self.save()
                 return
 
             if self._shutdown_event.is_set():
                 break
+
+            # Refresh OANDA balance every persist cycle
+            if self._oanda:
+                try:
+                    acct = await self._oanda.get_account_summary()
+                    if acct:
+                        self._state["account_balance"] = str(acct.get("balance", "0"))
+                        self._state["account_equity"] = str(
+                            acct.get("equity", acct.get("NAV", "0"))
+                        )
+                except Exception:
+                    pass
 
             await self.save()
 
