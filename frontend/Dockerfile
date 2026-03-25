@@ -1,11 +1,10 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Support both contexts: from repo root (COPY frontend/) or from frontend/ dir (COPY .)
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-COPY . .
+COPY frontend/ .
 
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
