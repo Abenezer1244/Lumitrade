@@ -11,7 +11,7 @@ export default function DashboardLayout({
     <ToastProvider>
       <Sidebar />
       <TopBar />
-      <main id="main-content" className="lg:ml-60 pt-16 p-4 lg:p-6 min-h-screen">
+      <main id="main-content" className="lg:ml-60 pt-20 p-4 lg:p-6 min-h-screen">
         {children}
       </main>
     </ToastProvider>
