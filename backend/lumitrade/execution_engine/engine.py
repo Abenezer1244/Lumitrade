@@ -62,24 +62,24 @@ class ExecutionEngine:
             logger.warning("order_expired", order_ref=str(order.order_ref))
             return None
 
-        mode = TradingMode(self.config.trading_mode)
         try:
-            if mode == TradingMode.PAPER:
-                result = await self._paper_executor.execute(order, current_price)
-            else:
-                state = await self._circuit_breaker.check_and_transition()
-                if state == state.OPEN:
-                    logger.error(
-                        "circuit_breaker_open_order_rejected",
-                        order_ref=str(order.order_ref),
-                    )
-                    return None
-                try:
-                    result = await self._oanda_executor.execute(order)
-                    await self._circuit_breaker.record_success()
-                except Exception:
-                    await self._circuit_breaker.record_failure()
-                    raise
+            # Both PAPER and LIVE use real OANDA orders
+            # PAPER connects to practice server, LIVE to production server
+            # This ensures paper trades show real positions on OANDA
+            state = await self._circuit_breaker.check_and_transition()
+            from ..core.enums import CircuitBreakerState
+            if state == CircuitBreakerState.OPEN:
+                logger.error(
+                    "circuit_breaker_open_order_rejected",
+                    order_ref=str(order.order_ref),
+                )
+                return None
+            try:
+                result = await self._oanda_executor.execute(order)
+                await self._circuit_breaker.record_success()
+            except Exception:
+                await self._circuit_breaker.record_failure()
+                raise
 
             machine.transition(OrderStatus.SUBMITTED)
             machine.transition(OrderStatus.ACKNOWLEDGED)
