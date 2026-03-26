@@ -21,7 +21,12 @@ export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
 
-  if (!url || !key) return NextResponse.json({ positions: [] });
+  if (!url || !key) {
+    return NextResponse.json(
+      { error: "Server misconfigured: missing SUPABASE_URL or SERVICE_KEY" },
+      { status: 500 }
+    );
+  }
 
   try {
     const res = await fetch(

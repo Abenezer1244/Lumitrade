@@ -82,15 +82,40 @@ class PerformanceContextBuilder:
         else:
             volatility = "NORMAL"
 
+        # Derive trend_strength from ATR as a proxy.
+        # TODO Phase 2: Use ADX or EMA slope from indicator data for true trend strength.
+        if current_atr > Decimal("0.0020"):
+            trend_strength = "STRONG"
+        elif current_atr < Decimal("0.0008"):
+            trend_strength = "WEAK"
+        else:
+            trend_strength = "MODERATE"
+
+        # Calculate drawdown and weekly growth from system_state
+        current_drawdown = Decimal("0")
+        account_growth_this_week = Decimal("0")
+        try:
+            state_row = await self.db.select_one("system_state", {"id": "singleton"})
+            if state_row:
+                current_balance = Decimal(str(state_row.get("daily_opening_balance", "0")))
+                weekly_opening = Decimal(str(state_row.get("weekly_opening_balance", "0")))
+                if weekly_opening > 0:
+                    account_growth_this_week = (current_balance - weekly_opening) / weekly_opening
+                peak_balance = max(current_balance, weekly_opening)
+                if peak_balance > 0:
+                    current_drawdown = (peak_balance - current_balance) / peak_balance
+        except Exception as e:
+            logger.warning("drawdown_growth_calc_failed", error=str(e))
+
         return PerformanceContext(
             last_10_win_rate=win_rate,
             last_10_avg_pips=avg_pips,
             consecutive_wins=consecutive_wins,
             consecutive_losses=consecutive_losses,
-            current_drawdown_from_peak=Decimal("0"),
-            account_growth_this_week=Decimal("0"),
+            current_drawdown_from_peak=current_drawdown,
+            account_growth_this_week=account_growth_this_week,
             market_volatility=volatility,
-            trend_strength="MODERATE",
+            trend_strength=trend_strength,
             sample_size=len(recent_trades),
             is_sufficient_data=True,
         )

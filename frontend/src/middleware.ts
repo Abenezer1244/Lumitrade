@@ -30,11 +30,11 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Auth check — allow through if no user (temporarily relaxed for rate limit)
-  // TODO: Re-enable strict auth after email rate limit resets
+  // Redirect unauthenticated users to login, preserving the intended destination
   if (!user) {
-    // Allow dashboard access without auth for now
-    return response;
+    const redirectUrl = new URL("/auth/login", request.url);
+    redirectUrl.searchParams.set("redirect", request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
   return response;

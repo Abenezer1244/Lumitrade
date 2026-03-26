@@ -27,7 +27,12 @@ export async function GET() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
 
-  if (!url || !key) return NextResponse.json(EMPTY_ANALYTICS);
+  if (!url || !key) {
+    return NextResponse.json(
+      { error: "Server misconfigured: missing SUPABASE_URL or SERVICE_KEY" },
+      { status: 500 }
+    );
+  }
 
   try {
     const res = await fetch(
@@ -44,6 +49,21 @@ export async function GET() {
       return NextResponse.json(EMPTY_ANALYTICS);
     }
 
+    // Fetch real starting balance from OANDA via system_state
+    let startingBalance = 100000;
+    try {
+      const balRes = await fetch(
+        `${url}/rest/v1/system_state?id=eq.singleton&select=daily_opening_balance`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: "no-store" }
+      );
+      if (balRes.ok) {
+        const rows = await balRes.json();
+        if (rows?.[0]?.daily_opening_balance) {
+          startingBalance = parseFloat(rows[0].daily_opening_balance) || 100000;
+        }
+      }
+    } catch { /* use default */ }
+
     const wins = trades.filter((t) => t.outcome === "WIN");
     const losses = trades.filter((t) => t.outcome === "LOSS");
 
@@ -57,16 +77,16 @@ export async function GET() {
     );
 
     // Equity curve
-    let equity = 100000;
+    let equity = startingBalance;
     const equityCurve = trades.map((t) => {
       equity += parsePnl(t);
       return { date: t.closed_at, equity: Math.round(equity * 100) / 100 };
     });
 
     // Max drawdown
-    let peak = 100000;
+    let peak = startingBalance;
     let maxDrawdownPct = 0;
-    let runningEquity = 100000;
+    let runningEquity = startingBalance;
     for (const t of trades) {
       runningEquity += parsePnl(t);
       if (runningEquity > peak) peak = runningEquity;
