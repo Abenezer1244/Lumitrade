@@ -127,36 +127,42 @@ class PromptBuilder:
     async def _get_performance_insights(self, pair: str) -> str:
         """
         Returns recent performance insights for this currency pair.
-        Phase 0: Always returns 'no insights yet' — insufficient data.
-        Per Addition Set 1B.
+        Reads from performance_insights table (written by PerformanceAnalyzer + SA-02).
         """
         if not self.db:
             return "  No performance insights available."
 
         try:
-            insights = await self.db.select(
+            # Get pair-specific insights
+            pair_insights = await self.db.select(
                 "performance_insights",
-                {
-                    "account_id": self.account_id,
-                    "scope": pair,
-                    "applied": False,
-                },
-                order="confidence",
+                {"pair": pair, "is_actionable": True},
+                order="created_at",
                 limit=3,
             )
+            # Get general insights (not pair-specific)
+            general_insights = await self.db.select(
+                "performance_insights",
+                {"pair": None, "is_actionable": True},
+                order="created_at",
+                limit=2,
+            )
+            insights = pair_insights + general_insights
         except Exception:
             return "  No performance insights available."
 
         if not insights:
             return "  No performance insights yet — insufficient trade history."
 
-        lines = [f"Recent performance patterns identified for {pair}:"]
+        lines = [f"Performance patterns identified for {pair}:"]
         for insight in insights:
-            lines.append(f"  - {insight['finding']}")
-            if insight.get("recommendation"):
-                lines.append(
-                    f"    Suggested adjustment: {insight['recommendation']}"
-                )
+            metric = insight.get("metric_name", "unknown")
+            value = insight.get("metric_value", "")
+            insight_type = insight.get("insight_type", "")
+            recommendation = insight.get("recommendation", "")
+            lines.append(f"  - [{insight_type}] {metric}: {value}")
+            if recommendation:
+                lines.append(f"    Action: {recommendation}")
         return "\n".join(lines)
 
     def _format_performance_context(self, ctx: PerformanceContext) -> str:

@@ -13,6 +13,8 @@ Per BDS Section 16.3.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
@@ -118,6 +120,10 @@ class PostTradeAnalystAgent(BaseSubagent):
                     },
                 )
 
+            # Persist analysis as a performance insight for the feedback loop
+            # This gets read by PromptBuilder._get_performance_insights() on next scan
+            await self._store_insight(analysis_trades, response)
+
             return {
                 "analysis": response,
                 "trade_count": len(analysis_trades),
@@ -126,6 +132,34 @@ class PostTradeAnalystAgent(BaseSubagent):
         except Exception as e:
             logger.error("post_trade_analyst_error", error=str(e))
             return {}
+
+    async def _store_insight(self, trades: list, analysis: str) -> None:
+        """Store SA-02 analysis as a performance insight for the feedback loop."""
+        try:
+            # Extract the most traded pair from the analysis batch
+            pair_counts: dict[str, int] = {}
+            for t in trades:
+                p = t.get("pair", "")
+                pair_counts[p] = pair_counts.get(p, 0) + 1
+            top_pair = max(pair_counts, key=pair_counts.get) if pair_counts else None
+
+            now = datetime.now(timezone.utc).isoformat()
+            await self.db.insert("performance_insights", {
+                "account_id": trades[0].get("account_id", "") if trades else "",
+                "insight_type": "POST_TRADE_ANALYSIS",
+                "pair": top_pair,
+                "period_start": trades[0].get("closed_at", now) if trades else now,
+                "period_end": trades[-1].get("closed_at", now) if trades else now,
+                "metric_name": "sa02_pattern_analysis",
+                "metric_value": str(len(trades)),
+                "sample_size": len(trades),
+                "is_actionable": True,
+                "recommendation": analysis[:500],
+                "detail": "{}",
+            })
+            logger.info("post_trade_insight_stored", pair=top_pair, trades=len(trades))
+        except Exception as e:
+            logger.warning("post_trade_insight_store_failed", error=str(e))
 
     @staticmethod
     def _build_trade_summary(trades: list) -> str:
