@@ -22,11 +22,14 @@ const SEVERITY_COLOR: Record<string, string> = {
   INFO:    "#3D8EFF",
 };
 
-// ── Timestamp formatter ─────────────────────────────────────
-function formatTime(ts: string): string {
+// ── Timestamp formatter (UTC, consistent with all other displays) ───
+function formatTimeUTC(ts: string): string {
   try {
     const d = new Date(ts);
-    return d.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const hh = d.getUTCHours().toString().padStart(2, "0");
+    const mm = d.getUTCMinutes().toString().padStart(2, "0");
+    const ss = d.getUTCSeconds().toString().padStart(2, "0");
+    return `${hh}:${mm}:${ss}`;
   } catch {
     return "??:??:??";
   }
@@ -44,7 +47,7 @@ function EventRow({ event, isNew }: { event: AgentEvent; isNew: boolean }) {
     >
       {/* Timestamp */}
       <span className="shrink-0 w-[68px] px-2 py-[3px] text-[#4A5E80] select-none">
-        {formatTime(event.created_at)}
+        {formatTimeUTC(event.created_at)}
       </span>
 
       {/* Agent tag */}

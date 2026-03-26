@@ -30,10 +30,22 @@ export function formatPair(pair: string): string {
 export function formatTime(isoString: string): string {
   const date = new Date(isoString);
   const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const hh = date.getUTCHours().toString().padStart(2, "0");
+  const mm = date.getUTCMinutes().toString().padStart(2, "0");
+  const ss = date.getUTCSeconds().toString().padStart(2, "0");
+
+  // Same UTC day: show HH:MM:SS
+  if (
+    date.getUTCFullYear() === now.getUTCFullYear() &&
+    date.getUTCMonth() === now.getUTCMonth() &&
+    date.getUTCDate() === now.getUTCDate()
+  ) {
+    return `${hh}:${mm}:${ss}`;
   }
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  // Different day: show Mon DD HH:MM
+  const mon = date.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  const dd = date.getUTCDate();
+  return `${mon} ${dd} ${hh}:${mm}`;
 }
 
 export function formatDuration(minutes: number | null): string {
