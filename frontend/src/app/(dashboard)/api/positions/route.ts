@@ -44,7 +44,7 @@ export async function GET() {
     }
 
     // Collect unique pairs from open trades
-    const pairs = [...new Set((data as Record<string, unknown>[]).map((t) => t.pair as string))];
+    const pairs = Array.from(new Set((data as Record<string, unknown>[]).map((t) => t.pair as string)));
 
     // Fetch live prices from backend
     const backendUrl =

@@ -76,8 +76,8 @@ export default function OpenPositionsTable() {
             </thead>
             <tbody>
               {positions.map((p) => {
-                const pnlValue = p.pnl_usd || p.live_pnl_usd || 0;
-                const pips = p.live_pnl_pips || 0;
+                const pnlValue = Number(p.pnl_usd || p.live_pnl_usd || 0);
+                const pips = Number(p.live_pnl_pips || 0);
                 const pipsColor = pips > 0 ? "text-profit" : pips < 0 ? "text-loss" : "text-secondary";
                 return (
                   <tr
