@@ -141,8 +141,15 @@ class DataEngine:
         # 8. Get recent trades on this pair
         recent_trades = await self._get_recent_trades(pair)
 
-        # 9. Classify market regime (STUB — returns UNKNOWN)
-        regime = self._regime.classify(indicators, candles_h4)
+        # 9. Classify market regime
+        regime = self._regime.classify(
+            ema_20=indicators.ema_20,
+            ema_50=indicators.ema_50,
+            ema_200=indicators.ema_200,
+            atr_14=indicators.atr_14,
+            current_price=(latest_tick.bid + latest_tick.ask) / 2,
+            spread_pips=latest_tick.spread_pips,
+        )
 
         # 10. Get current session
         session = get_current_session()
