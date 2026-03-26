@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LayoutDashboard,
   Zap,
@@ -10,6 +10,8 @@ import {
   Settings,
   Menu,
   X,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 
@@ -21,11 +23,28 @@ const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
+const COLLAPSED_KEY = "lumitrade-sidebar-collapsed";
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
-  // Close sidebar on route change (mobile)
+  // Restore collapsed state from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(COLLAPSED_KEY);
+    if (saved === "true") setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(COLLAPSED_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
@@ -46,30 +65,41 @@ export default function Sidebar() {
     } else {
       document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [mobileOpen]);
 
-  const sidebarContent = (
+  const sidebarContent = (isCollapsed: boolean) => (
     <>
       {/* Logo */}
       <div
-        className="px-5 py-6 flex items-center justify-between"
+        className={`flex items-center ${isCollapsed ? "justify-center px-2 py-5" : "justify-between px-5 py-6"}`}
         style={{ borderBottom: "1px solid var(--color-border)" }}
       >
-        <div>
+        {isCollapsed ? (
           <span
-            className="font-mono text-lg font-bold"
+            className="font-mono text-sm font-bold"
             style={{ color: "var(--color-brand)" }}
           >
-            LUMITRADE
+            LT
           </span>
-          <p
-            className="mt-0.5 font-mono text-xs"
-            style={{ color: "var(--color-text-tertiary)" }}
-          >
-            v1.0 · Phase 0
-          </p>
-        </div>
+        ) : (
+          <div>
+            <span
+              className="font-mono text-lg font-bold"
+              style={{ color: "var(--color-brand)" }}
+            >
+              LUMITRADE
+            </span>
+            <p
+              className="mt-0.5 font-mono text-xs"
+              style={{ color: "var(--color-text-tertiary)" }}
+            >
+              v1.0 · Phase 0
+            </p>
+          </div>
+        )}
         {/* Mobile close button */}
         <button
           onClick={() => setMobileOpen(false)}
@@ -82,7 +112,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto scrollbar-hide px-3 py-4 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto scrollbar-hide px-2 py-4 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname?.startsWith(href);
 
@@ -90,13 +120,14 @@ export default function Sidebar() {
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150"
+              title={isCollapsed ? label : undefined}
+              className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} ${isCollapsed ? "px-0 py-2.5" : "px-3 py-2.5"} rounded-lg text-sm transition-all duration-150`}
               style={
                 active
                   ? {
                       background: "var(--color-brand-dim)",
-                      borderLeft: "2px solid var(--color-brand)",
-                      paddingLeft: "10px",
+                      borderLeft: isCollapsed ? "none" : "2px solid var(--color-brand)",
+                      paddingLeft: isCollapsed ? undefined : "10px",
                       color: "var(--color-text-primary)",
                     }
                   : {
@@ -116,27 +147,50 @@ export default function Sidebar() {
                 }
               }}
             >
-              <Icon size={16} />
-              <span className="flex-1 font-medium">{label}</span>
+              <Icon size={isCollapsed ? 20 : 16} />
+              {!isCollapsed && <span className="flex-1 font-medium">{label}</span>}
             </Link>
           );
         })}
       </nav>
 
+      {/* Collapse toggle (desktop only) */}
+      <button
+        onClick={toggleCollapsed}
+        className="hidden lg:flex items-center justify-center py-2 mx-2 mb-2 rounded-lg transition-colors hover:bg-elevated"
+        style={{ color: "var(--color-text-tertiary)" }}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {isCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
+        {!isCollapsed && (
+          <span className="ml-2 text-xs">Collapse</span>
+        )}
+      </button>
+
       {/* Bottom status section */}
       <div
-        className="px-4 py-4 space-y-3"
+        className={`${isCollapsed ? "px-2 py-3" : "px-4 py-4"} space-y-3`}
         style={{ borderTop: "1px solid var(--color-border)" }}
       >
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-label px-2 py-0.5 rounded bg-warning-dim text-warning">
+        <div className="flex items-center justify-center gap-2">
+          <span className={`text-xs font-label px-2 py-0.5 rounded bg-warning-dim text-warning ${isCollapsed ? "text-[9px] px-1" : ""}`}>
             PAPER
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-text-tertiary)" }}>
-          <StatusDot status="healthy" />
-          <span>All systems online</span>
-        </div>
+        {!isCollapsed && (
+          <div
+            className="flex items-center gap-2 text-xs"
+            style={{ color: "var(--color-text-tertiary)" }}
+          >
+            <StatusDot status="healthy" />
+            <span>All systems online</span>
+          </div>
+        )}
+        {isCollapsed && (
+          <div className="flex justify-center">
+            <StatusDot status="healthy" />
+          </div>
+        )}
       </div>
     </>
   );
@@ -169,9 +223,9 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed left-0 top-0 z-50 flex w-60 min-h-screen flex-col transition-transform duration-200 ease-out lg:translate-x-0 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed left-0 top-0 z-50 flex min-h-screen flex-col transition-all duration-200 ease-out lg:translate-x-0 ${
+          mobileOpen ? "translate-x-0 w-60" : "-translate-x-full w-60"
+        } ${collapsed ? "lg:w-16" : "lg:w-60"}`}
         style={{
           background: "var(--color-bg-surface)",
           backdropFilter: "var(--glass-blur)",
@@ -180,7 +234,11 @@ export default function Sidebar() {
         }}
         aria-label="Main navigation"
       >
-        {sidebarContent}
+        {/* Mobile always shows expanded, desktop respects collapsed state */}
+        <div className="lg:hidden">{sidebarContent(false)}</div>
+        <div className="hidden lg:flex lg:flex-col lg:h-screen">
+          {sidebarContent(collapsed)}
+        </div>
       </aside>
     </>
   );
