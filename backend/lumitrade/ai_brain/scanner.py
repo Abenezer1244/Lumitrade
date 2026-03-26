@@ -17,6 +17,7 @@ from ..core.enums import Action, GenerationMethod, TradeDuration
 from ..core.models import SignalProposal
 from ..data_engine.engine import DataEngine
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .claude_client import ClaudeClient
 from .confidence import ConfidenceAdjuster
@@ -44,12 +45,14 @@ class SignalScanner:
         db: DatabaseClient,
         claude: ClaudeClient,
         subagents=None,
+        events: EventPublisher | None = None,
     ):
         self.config = config
         self._data = data_engine
         self._db = db
         self._claude = claude
         self._subagents = subagents
+        self._events = events
         self._validator = AIOutputValidator()
         self._adjuster = ConfidenceAdjuster()
         self._fallback = RuleBasedFallback()
@@ -94,14 +97,32 @@ class SignalScanner:
         """Execute a full signal scan for one pair."""
         logger.info("signal_scan_started", pair=pair)
 
+        # Publish scan start event
+        if self._events:
+            self._events.publish(
+                "SCANNER", "SCAN_START", f"Scanning {pair}...", pair=pair,
+            )
+
         # 1. Get market snapshot
         snapshot = await self._data.get_snapshot(pair)
         if not snapshot:
             logger.warning("scan_no_snapshot", pair=pair)
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} — no market snapshot available",
+                    pair=pair, severity="WARNING",
+                )
             return None
 
         if not snapshot.data_quality.is_tradeable:
             logger.warning("scan_data_not_tradeable", pair=pair)
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} — data quality not tradeable",
+                    pair=pair, severity="WARNING",
+                )
             return None
 
         # 2. Get analyst briefing (SA-01) and attach to snapshot
@@ -112,6 +133,12 @@ class SignalScanner:
                     snapshot,
                 )
                 analyst_briefing = briefing_result.get("briefing", "")
+                if self._events and analyst_briefing:
+                    self._events.publish(
+                        "SA-01", "BRIEFING",
+                        f"Market briefing for {pair}",
+                        detail=analyst_briefing[:500], pair=pair,
+                    )
             except Exception as e:
                 logger.warning(
                     "analyst_briefing_failed", error=str(e),
@@ -127,7 +154,28 @@ class SignalScanner:
             pair, system, prompt, prompt_hash, snapshot
         )
 
-        # 5. Write signal record to DB
+        # 5. Publish signal result
+        if proposal and self._events:
+            if proposal.action.value == "HOLD":
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} — HOLD signal",
+                    pair=pair, severity="WARNING",
+                )
+            else:
+                self._events.publish(
+                    "CLAUDE", "SIGNAL",
+                    f"{proposal.action.value} {pair} @ {proposal.entry_price}"
+                    f" | Confidence: {proposal.confidence_adjusted}",
+                    detail=proposal.summary[:500], pair=pair,
+                    severity="SUCCESS",
+                    metadata={
+                        "confidence": str(proposal.confidence_adjusted),
+                        "entry": str(proposal.entry_price),
+                    },
+                )
+
+        # 6. Write signal record to DB
         if proposal:
             await self._save_signal(proposal)
 

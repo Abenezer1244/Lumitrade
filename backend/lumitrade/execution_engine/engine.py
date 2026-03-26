@@ -5,6 +5,8 @@ Orchestrates order execution, fill verification, and position management.
 Routes to paper or OANDA executor based on TradingMode.
 Per BDS Section 7 and SAS Section 3.2.5.
 """
+from __future__ import annotations
+
 import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -16,6 +18,7 @@ from ..core.exceptions import OrderExpiredError
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.oanda_client import OandaClient, OandaTradingClient
 from ..utils.pip_math import pips_between
 from ..infrastructure.secure_logger import get_logger
@@ -39,6 +42,7 @@ class ExecutionEngine:
         alert_service: AlertService,
         subagents=None,
         oanda_read_client: OandaClient | None = None,
+        events: EventPublisher | None = None,
     ):
         self.config = config
         self._state = state_manager
@@ -46,6 +50,7 @@ class ExecutionEngine:
         self._alerts = alert_service
         self._subagents = subagents
         self._oanda_read = oanda_read_client
+        self._events = events
         self._circuit_breaker = CircuitBreaker()
         self._fill_verifier = FillVerifier(alert_service)
         self._paper_executor = PaperExecutor()
@@ -91,6 +96,27 @@ class ExecutionEngine:
                 f"Trade opened: {order.pair} {order.direction.value} "
                 f"{abs(order.units)} units at {verified.fill_price}"
             )
+
+            # Publish order event to Mission Control
+            if self._events:
+                self._events.publish(
+                    "EXECUTION",
+                    "ORDER",
+                    f"ORDER PLACED: {order.direction.value} {abs(order.units)} {order.pair} @ {verified.fill_price}",
+                    severity="SUCCESS",
+                    pair=order.pair,
+                    metadata={
+                        "direction": order.direction.value,
+                        "units": abs(order.units),
+                        "fill_price": str(verified.fill_price),
+                        "stop_loss": str(order.stop_loss),
+                        "take_profit": str(order.take_profit),
+                        "slippage_pips": str(verified.slippage_pips),
+                        "mode": order.mode.value,
+                        "signal_id": str(order.signal_id),
+                    },
+                )
+
             return verified
         except Exception as e:
             logger.error(
@@ -232,6 +258,23 @@ class ExecutionEngine:
         """Mark a live trade as closed — fetch final details from context."""
         entry = Decimal(str(trade.get("entry_price", "0")))
         pair = trade.get("pair", "")
+
+        # Publish position monitor detection event to Mission Control
+        if self._events:
+            self._events.publish(
+                "EXECUTION",
+                "POSITION_CLOSED_DETECTED",
+                f"Position monitor detected close: {pair} {trade.get('direction', '')}",
+                detail="Trade no longer open on OANDA — marking closed with unknown P&L",
+                severity="WARNING",
+                pair=pair,
+                metadata={
+                    "trade_id": trade.get("id", ""),
+                    "broker_trade_id": trade.get("broker_trade_id", ""),
+                    "direction": trade.get("direction", ""),
+                },
+            )
+
         # Without OANDA trade history API, we mark as closed with unknown P&L
         await self._update_closed_trade(
             trade, entry, Decimal("0"), Decimal("0"), "BREAKEVEN", "UNKNOWN"
@@ -272,6 +315,27 @@ class ExecutionEngine:
                 pnl_pips=str(pnl_pips),
                 exit_reason=exit_reason,
             )
+
+            # Publish trade close event to Mission Control
+            pair = trade.get("pair", "")
+            direction = trade.get("direction", "")
+            if self._events:
+                self._events.publish(
+                    "EXECUTION",
+                    "TRADE_CLOSE",
+                    f"CLOSED: {pair} {direction} | {outcome} | P&L: ${pnl_usd}",
+                    severity="SUCCESS" if outcome == "WIN" else "WARNING",
+                    pair=pair,
+                    metadata={
+                        "trade_id": trade_id,
+                        "direction": direction,
+                        "outcome": outcome,
+                        "pnl_usd": str(pnl_usd),
+                        "pnl_pips": str(pnl_pips),
+                        "exit_price": str(exit_price),
+                        "exit_reason": exit_reason,
+                    },
+                )
 
             # Update state
             if self._state:

@@ -139,21 +139,27 @@ class OrchestratorService:
         from .ai_brain.scanner import SignalScanner
         from .data_engine.engine import DataEngine
         from .execution_engine.engine import ExecutionEngine
+        from .infrastructure.event_publisher import EventPublisher
         from .infrastructure.watchdog import Watchdog
         from .risk_engine.engine import RiskEngine
         from .subagents.subagent_orchestrator import SubagentOrchestrator
 
-        self.subagents = SubagentOrchestrator(self.config, self.db, self.alerts)
+        self.events = EventPublisher(self.db, self.config.account_uuid)
+        self.subagents = SubagentOrchestrator(self.config, self.db, self.alerts, events=self.events)
         self.data_eng = DataEngine(self.config, self.oanda, self.db)
         self.claude = ClaudeClient(self.config)
         self.scanner = SignalScanner(
-            self.config, self.data_eng, self.db, self.claude, self.subagents
+            self.config, self.data_eng, self.db, self.claude, self.subagents,
+            events=self.events,
         )
-        self.risk_eng = RiskEngine(self.config, self.state, self.db)
+        self.risk_eng = RiskEngine(
+            self.config, self.state, self.db, events=self.events,
+        )
         self.exec_eng = ExecutionEngine(
             self.config, self.oanda_trade, self.state, self.db,
             self.alerts, self.subagents,
             oanda_read_client=self.oanda,
+            events=self.events,
         )
         self.watchdog = Watchdog(self.config, self.state, self.alerts)
 

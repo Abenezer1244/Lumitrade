@@ -11,8 +11,11 @@ Position management is the sole responsibility of the ExecutionEngine.
 Per BDS Section 16.4.
 """
 
+from __future__ import annotations
+
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
@@ -43,10 +46,17 @@ class RiskMonitorAgent(BaseSubagent):
     decides whether to close.
     """
 
-    def __init__(self, config, db: DatabaseClient, alerts: AlertService):
+    def __init__(
+        self,
+        config,
+        db: DatabaseClient,
+        alerts: AlertService,
+        events: EventPublisher | None = None,
+    ):
         super().__init__(config)
         self.db = db
         self.alerts = alerts
+        self._events = events
 
     async def run(self, context: dict) -> dict:
         """
@@ -104,6 +114,24 @@ class RiskMonitorAgent(BaseSubagent):
                     direction=direction,
                     thesis_valid=thesis_valid,
                 )
+
+                # Publish thesis check event to Mission Control
+                if self._events:
+                    self._events.publish(
+                        "SA-03",
+                        "THESIS_CHECK",
+                        f"{pair} {direction} thesis: {'VALID' if thesis_valid else 'INVALID'}",
+                        detail=assessment,
+                        pair=pair,
+                        severity="SUCCESS" if thesis_valid else "WARNING",
+                        metadata={
+                            "trade_id": trade_id,
+                            "direction": direction,
+                            "entry": entry,
+                            "current": current,
+                            "thesis_valid": thesis_valid,
+                        },
+                    )
 
                 # NEVER auto-close. Only alert on invalid thesis.
                 if not thesis_valid:

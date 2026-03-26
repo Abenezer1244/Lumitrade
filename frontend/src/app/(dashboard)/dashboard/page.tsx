@@ -3,6 +3,7 @@ import AccountPanel from "@/components/dashboard/AccountPanel";
 import TodayPanel from "@/components/dashboard/TodayPanel";
 import SystemStatusPanel from "@/components/dashboard/SystemStatusPanel";
 import OpenPositionsTable from "@/components/dashboard/OpenPositionsTable";
+import MissionControl from "@/components/dashboard/MissionControl";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
 
@@ -16,10 +17,13 @@ export default function DashboardPage() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3"><OpenPositionsTable /></div>
-        <div className="lg:col-span-2"><SignalFeed limit={8} compact /></div>
+        <div className="lg:col-span-2"><MissionControl /></div>
       </div>
-      <div className="flex items-center justify-end">
-        <KillSwitchButton />
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="lg:col-span-3"><SignalFeed limit={8} compact /></div>
+        <div className="lg:col-span-2 flex items-end justify-end">
+          <KillSwitchButton />
+        </div>
       </div>
     </div>
   );

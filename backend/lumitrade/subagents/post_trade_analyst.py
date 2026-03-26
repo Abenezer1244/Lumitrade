@@ -11,7 +11,10 @@ patterns, and one specific improvement recommendation.
 Per BDS Section 16.3.
 """
 
+from __future__ import annotations
+
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
@@ -49,9 +52,10 @@ class PostTradeAnalystAgent(BaseSubagent):
 
     MIN_TRADES: int = 20
 
-    def __init__(self, config, db: DatabaseClient):
+    def __init__(self, config, db: DatabaseClient, events: EventPublisher | None = None):
         super().__init__(config)
         self.db = db
+        self._events = events
 
     async def run(self, context: dict) -> dict:
         """
@@ -100,6 +104,20 @@ class PostTradeAnalystAgent(BaseSubagent):
                 trade_count=len(analysis_trades),
                 analysis_length=len(response),
             )
+
+            # Publish post-trade analysis event to Mission Control
+            if self._events:
+                self._events.publish(
+                    "SA-02",
+                    "ANALYSIS",
+                    f"Post-trade analysis on {len(analysis_trades)} trades",
+                    detail=response[:500],
+                    metadata={
+                        "trade_count": len(analysis_trades),
+                        "analysis_length": len(response),
+                    },
+                )
+
             return {
                 "analysis": response,
                 "trade_count": len(analysis_trades),

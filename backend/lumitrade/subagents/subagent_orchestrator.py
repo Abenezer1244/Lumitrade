@@ -4,9 +4,12 @@ Lumitrade Subagent Orchestrator
 Manages lifecycle of all 5 subagents. Per SAS v2.0 Section 15.5.
 """
 
+from __future__ import annotations
+
 from ..config import LumitradeConfig
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .intelligence_subagent import IntelligenceSubagent
 from .market_analyst import MarketAnalystAgent
@@ -25,11 +28,13 @@ class SubagentOrchestrator:
         config: LumitradeConfig,
         db: DatabaseClient,
         alerts: AlertService,
+        events: EventPublisher | None = None,
     ):
         self._db = db
+        self._events = events
         self.market_analyst = MarketAnalystAgent(config)
-        self.post_trade = PostTradeAnalystAgent(config, db)
-        self.risk_monitor = RiskMonitorAgent(config, db, alerts)
+        self.post_trade = PostTradeAnalystAgent(config, db, events=events)
+        self.risk_monitor = RiskMonitorAgent(config, db, alerts, events=events)
         self.intelligence = IntelligenceSubagent(config, db, alerts)
         self.onboarding = OnboardingAgent(config, db)
 

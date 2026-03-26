@@ -16,6 +16,7 @@ from ..config import LumitradeConfig
 from ..core.enums import Action, Direction, RiskState, TradingMode
 from ..core.models import ApprovedOrder, RiskRejection, SignalProposal
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .calendar_guard import CalendarGuard
 from .correlation_matrix import CorrelationMatrix
@@ -39,10 +40,12 @@ class RiskEngine:
         config: LumitradeConfig,
         state_manager,
         db: DatabaseClient,
+        events: EventPublisher | None = None,
     ) -> None:
         self._config = config
         self._state_manager = state_manager
         self._db = db
+        self._events = events
         self._position_sizer = PositionSizer()
         self._calendar_guard = CalendarGuard()
         self._correlation_matrix = CorrelationMatrix()
@@ -122,7 +125,19 @@ class RiskEngine:
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
 
-        # ── All checks passed — calculate position size ──────────
+        # ── All checks passed — publish approval event ────────────
+        if self._events:
+            self._events.publish(
+                "RISK_ENGINE", "RISK_CHECK",
+                f"APPROVED {proposal.pair} — all {len(checks)} checks passed",
+                pair=proposal.pair, severity="SUCCESS",
+                metadata={
+                    "checks_passed": len(checks),
+                    "signal_id": str(proposal.signal_id),
+                },
+            )
+
+        # ── Calculate position size ────────────────────────────────
         risk_pct = self._determine_risk_pct(proposal)
         units, risk_amount_usd = self._position_sizer.calculate(
             balance=account_balance,
@@ -168,6 +183,21 @@ class RiskEngine:
             pv = pip_value_per_unit(proposal.pair, proposal.entry_price)
             units = max_units
             risk_amount_usd = Decimal(str(units)) * sl_pips * pv
+
+        # Publish position sizing result
+        if self._events:
+            self._events.publish(
+                "RISK_ENGINE", "POSITION_SIZE",
+                f"{proposal.pair}: {units} units @ {risk_pct*100:.1f}% risk"
+                f" (corr: {corr_multiplier})",
+                pair=proposal.pair, severity="INFO",
+                metadata={
+                    "units": units,
+                    "risk_pct": str(risk_pct),
+                    "risk_usd": str(risk_amount_usd),
+                    "correlation_multiplier": str(corr_multiplier),
+                },
+            )
 
         # Minimum position size gate
         if units < 1000:
@@ -519,6 +549,20 @@ class RiskEngine:
     ) -> RiskRejection:
         """Build a RiskRejection and log to risk_events table."""
         rule_name, _passed, reason, current_value, threshold = check_result
+
+        # Publish rejection event to Mission Control
+        if self._events:
+            self._events.publish(
+                "RISK_ENGINE", "RISK_CHECK",
+                f"REJECTED {proposal.pair} — {rule_name}: {reason}",
+                pair=proposal.pair, severity="WARNING",
+                metadata={
+                    "rule": rule_name,
+                    "current_value": current_value,
+                    "threshold": threshold,
+                    "signal_id": str(proposal.signal_id),
+                },
+            )
 
         rejection = RiskRejection(
             signal_id=proposal.signal_id,
