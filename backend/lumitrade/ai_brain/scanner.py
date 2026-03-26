@@ -104,19 +104,21 @@ class SignalScanner:
             logger.warning("scan_data_not_tradeable", pair=pair)
             return None
 
-        # 2. Get analyst briefing (SA-01 — Phase 0 stub, result unused)
+        # 2. Get analyst briefing (SA-01) and attach to snapshot
+        analyst_briefing = ""
         if self._subagents:
             try:
-                await self._subagents.get_analyst_briefing(
+                briefing_result = await self._subagents.get_analyst_briefing(
                     snapshot,
                 )
+                analyst_briefing = briefing_result.get("briefing", "")
             except Exception as e:
                 logger.warning(
                     "analyst_briefing_failed", error=str(e),
                 )
 
-        # 3. Build prompt
-        prompt = await self._prompt_builder.build_prompt(snapshot)
+        # 3. Build prompt (includes analyst briefing if available)
+        prompt = await self._prompt_builder.build_prompt(snapshot, analyst_briefing=analyst_briefing)
         system = self._prompt_builder.get_system_prompt()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 

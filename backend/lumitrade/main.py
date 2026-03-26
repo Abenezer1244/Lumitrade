@@ -302,21 +302,45 @@ class OrchestratorService:
         while True:
             await asyncio.sleep(1800)  # 30 minutes
             try:
-                if self.state:
-                    state_data = await self.state.get()
-                    open_trades = (
-                        state_data.get("open_trades", [])
-                        if state_data
-                        else []
+                # Fetch real open trades from DB with full details
+                open_trades = await self.db.select(
+                    "trades",
+                    {"status": "OPEN", "account_id": self.config.account_uuid},
+                )
+                if open_trades:
+                    # Get current prices for each pair
+                    pairs_in_trades = list({t["pair"] for t in open_trades})
+                    try:
+                        pricing = await self.oanda_data.get_pricing(pairs_in_trades)
+                        prices = {}
+                        for p in pricing.get("prices", []):
+                            inst = p.get("instrument", "")
+                            bids = p.get("bids", [])
+                            asks = p.get("asks", [])
+                            if bids and asks:
+                                mid = (float(bids[0]["price"]) + float(asks[0]["price"])) / 2
+                                prices[inst] = mid
+                    except Exception:
+                        prices = {}
+
+                    # Enrich trades with current price
+                    enriched = []
+                    for t in open_trades:
+                        enriched.append({
+                            "trade_id": t.get("id", ""),
+                            "pair": t.get("pair", ""),
+                            "direction": t.get("direction", ""),
+                            "entry_price": t.get("entry_price", 0),
+                            "current_price": prices.get(t.get("pair", ""), 0),
+                        })
+
+                    snapshot = await self.data_eng.get_snapshot(
+                        pairs_in_trades[0]
                     )
-                    if open_trades:
-                        snapshot = await self.data_eng.get_snapshot(
-                            self.config.pairs[0]
+                    if snapshot:
+                        await self.subagents.run_risk_monitor(
+                            enriched, snapshot
                         )
-                        if snapshot:
-                            await self.subagents.run_risk_monitor(
-                                open_trades, snapshot
-                            )
             except asyncio.CancelledError:
                 break
             except Exception as e:

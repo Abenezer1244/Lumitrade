@@ -68,6 +68,7 @@ class HealthServer:
         self._app.router.add_get("/prices", self._handle_prices)
         self._app.router.add_get("/settings", self._handle_get_settings)
         self._app.router.add_post("/settings", self._handle_post_settings)
+        self._app.router.add_post("/onboarding", self._handle_onboarding)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -324,6 +325,37 @@ class HealthServer:
             return web.json_response({"error": "Failed to save"}, status=500)
 
         return web.json_response(clamped)
+
+    async def _handle_onboarding(self, request: web.Request) -> web.Response:
+        """POST /onboarding — conversational onboarding via SA-05."""
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        message = body.get("message", "")
+        account_id = body.get("account_id", "default")
+
+        if not message:
+            return web.json_response({"error": "Missing 'message'"}, status=400)
+
+        try:
+            from ..config import LumitradeConfig
+            from ..subagents.onboarding_agent import OnboardingAgent
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            agent = OnboardingAgent(config, self._db)
+            result = await agent.run({
+                "user_message": message,
+                "account_id": account_id,
+            })
+            return web.json_response(result)
+        except Exception as e:
+            logger.error("onboarding_endpoint_error", error=str(e))
+            return web.json_response(
+                {"response": "Onboarding service encountered an error.", "completed": False},
+                status=500,
+            )
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
         """

@@ -285,8 +285,33 @@ class ExecutionEngine:
                 daily_pnl = Decimal(str(state._state.get("daily_pnl", "0")))
                 state._state["daily_pnl"] = str(daily_pnl + pnl_usd)
 
+            # Trigger SA-02 post-trade analysis + performance insights
+            asyncio.create_task(
+                self._run_post_trade_analysis(trade),
+                name=f"post_trade_{trade_id[:8]}",
+            )
+
         except Exception as e:
             logger.error("trade_close_update_failed", trade_id=trade_id, error=str(e))
+
+    async def _run_post_trade_analysis(self, trade: dict) -> None:
+        """Fire SA-02 post-trade analyst and insight analysis after trade closes."""
+        try:
+            if self._subagents:
+                recent = await self._db.select(
+                    "trades",
+                    {"status": "CLOSED", "account_id": self.config.account_uuid},
+                    order="closed_at",
+                    limit=20,
+                )
+                await self._subagents.run_post_trade(
+                    trade=trade,
+                    signal={"recent_trades": recent},
+                )
+        except Exception as e:
+            logger.warning("post_trade_analysis_failed", error=str(e))
+
+        await self._trigger_insight_analysis(trade)
 
     async def _trigger_insight_analysis(self, trade: dict) -> None:
         min_trades = 50

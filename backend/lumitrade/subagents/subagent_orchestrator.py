@@ -26,6 +26,7 @@ class SubagentOrchestrator:
         db: DatabaseClient,
         alerts: AlertService,
     ):
+        self._db = db
         self.market_analyst = MarketAnalystAgent(config)
         self.post_trade = PostTradeAnalystAgent(config, db)
         self.risk_monitor = RiskMonitorAgent(config, db, alerts)
@@ -33,16 +34,60 @@ class SubagentOrchestrator:
         self.onboarding = OnboardingAgent(config, db)
 
     async def get_analyst_briefing(self, snapshot) -> dict:
-        return await self.market_analyst.run({"snapshot": snapshot})
+        return await self.market_analyst.run({
+            "pair": snapshot.pair,
+            "indicators": {
+                "rsi_14": str(snapshot.indicators.rsi_14),
+                "macd_line": str(snapshot.indicators.macd_line),
+                "macd_signal": str(snapshot.indicators.macd_signal),
+                "ema_20": str(snapshot.indicators.ema_20),
+                "ema_50": str(snapshot.indicators.ema_50),
+                "ema_200": str(snapshot.indicators.ema_200),
+                "atr_14": str(snapshot.indicators.atr_14),
+                "bb_upper": str(snapshot.indicators.bb_upper),
+                "bb_lower": str(snapshot.indicators.bb_lower),
+            },
+            "candles": [
+                {"o": str(c.open), "h": str(c.high), "l": str(c.low), "c": str(c.close)}
+                for c in (snapshot.candles_h1 or [])[-30:]
+            ],
+        })
 
     async def run_post_trade(self, trade, signal) -> None:
-        await self.post_trade.run({"trade": trade, "signal": signal})
+        recent_trades = signal.get("recent_trades", []) if isinstance(signal, dict) else []
+        await self.post_trade.run({"recent_trades": recent_trades, "closed_trade": trade})
 
     async def run_risk_monitor(self, open_trades, market_data) -> None:
-        await self.risk_monitor.run({"trades": open_trades, "market": market_data})
+        await self.risk_monitor.run({"open_trades": open_trades, "market": market_data})
 
     async def run_weekly_intelligence(self, account_id: str) -> None:
-        await self.intelligence.run({"account_id": account_id})
+        # Fetch real context for the intelligence report
+        try:
+            recent_trades = await self._db.select(
+                "trades",
+                {"status": "CLOSED", "account_id": account_id},
+                order="closed_at",
+                limit=20,
+            ) if hasattr(self, "_db") else []
+        except Exception:
+            recent_trades = []
+
+        try:
+            state_row = await self._db.select_one(
+                "system_state", {"id": "singleton"}
+            ) if hasattr(self, "_db") else {}
+            account_summary = {
+                "balance": state_row.get("daily_opening_balance", "0") if state_row else "0",
+                "weekly_opening": state_row.get("weekly_opening_balance", "0") if state_row else "0",
+            }
+        except Exception:
+            account_summary = {}
+
+        await self.intelligence.run({
+            "recent_trades": recent_trades,
+            "account_summary": account_summary,
+            "pairs": ["EUR_USD", "GBP_USD", "USD_JPY"],
+        })
 
     async def run_onboarding(self, account_id: str, message: str) -> str:
         result = await self.onboarding.run(

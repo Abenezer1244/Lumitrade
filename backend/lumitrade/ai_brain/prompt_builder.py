@@ -59,7 +59,7 @@ class PromptBuilder:
         """Return the static system prompt."""
         return SYSTEM_PROMPT
 
-    async def build_prompt(self, snapshot: MarketSnapshot) -> str:
+    async def build_prompt(self, snapshot: MarketSnapshot, analyst_briefing: str = "") -> str:
         """Assemble the full user prompt from a MarketSnapshot."""
         ind = snapshot.indicators
         acc = snapshot.account_context
@@ -112,6 +112,9 @@ class PromptBuilder:
             "",
             "=== PERFORMANCE INSIGHTS ===",
             perf_insights,
+            "",
+            "=== ANALYST BRIEFING (SA-01) ===",
+            analyst_briefing if analyst_briefing else "No briefing available.",
             "",
             "=== YOUR TASK ===",
             f"Analyze {snapshot.pair} and return your trading decision as JSON.",
