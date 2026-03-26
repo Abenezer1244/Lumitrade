@@ -16,8 +16,8 @@ from ..infrastructure.secure_logger import get_logger
 logger = get_logger(__name__)
 
 STALE_THRESHOLD_SECONDS = 5
-SPIKE_STD_MULTIPLIER = Decimal("3.0")
-ROLLING_WINDOW = 20
+SPIKE_STD_MULTIPLIER = Decimal("5.0")  # 5 stddev — avoid false positives on normal tick noise
+ROLLING_WINDOW = 100  # ~25 seconds of ticks at 250ms — larger window = more stable baseline
 MAX_SPREAD_PIPS = Decimal("5.0")  # Hard ceiling — config threshold is lower
 
 
@@ -33,8 +33,8 @@ class DataValidator:
         spike_detected = self._check_spike(tick)
         spread_ok = self._check_spread(tick)
 
-        if not spike_detected:
-            self._update_price_history(tick)
+        # Always update history — skipping on spike causes stale-window lockout
+        self._update_price_history(tick)
 
         quality = DataQuality(
             is_fresh=is_fresh,
@@ -106,7 +106,11 @@ class DataValidator:
         return c.low <= c.open <= c.high and c.low <= c.close <= c.high
 
     def _check_gaps(self, candles: list[Candle]) -> bool:
-        """Detect unexpected gaps between consecutive candles."""
+        """Detect unexpected gaps between consecutive candles.
+
+        Weekend gaps (Fri 21:00 UTC → Sun/Mon) are normal in forex
+        and should NOT fail validation.
+        """
         tf_seconds = {
             "M5": 300,
             "M15": 900,
@@ -121,6 +125,10 @@ class DataValidator:
         for i in range(1, len(candles)):
             gap = (candles[i].time - candles[i - 1].time).total_seconds()
             if gap > expected * 1.5:
+                # Check if this is a normal weekend gap
+                prev_day = candles[i - 1].time.weekday()  # 0=Mon, 4=Fri
+                if prev_day == 4 and gap < 260000:  # Friday → Monday, max ~72h
+                    continue  # Normal weekend gap — skip
                 logger.warning(
                     "candle_gap_detected",
                     gap_seconds=gap,

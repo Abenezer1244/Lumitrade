@@ -15,13 +15,15 @@ import structlog
 # ── Scrub patterns — order matters (most specific first) ────────
 SCRUB_PATTERNS: list[tuple[str, str]] = [
     # OANDA Bearer tokens
-    (r"Bearer\s+[A-Za-z0-9\-._]{10,}", "Bearer [REDACTED]"),
+    (r"Bearer\s+[A-Za-z0-9\-._~+/]+=*", "Bearer [REDACTED]"),
     # Anthropic API keys (sk-ant- prefix)
     (r"sk-ant-[A-Za-z0-9\-._]{10,}", "[REDACTED_ANTHROPIC_KEY]"),
     # SendGrid keys (SG. prefix)
     (r"SG\.[A-Za-z0-9\-._]{10,}", "[REDACTED_SENDGRID_KEY]"),
     # Telnyx keys (KEY0 prefix)
     (r"KEY0[A-Za-z0-9\-._]{10,}", "[REDACTED_TELNYX_KEY]"),
+    # OANDA API keys (v1.sk- prefix per SS spec)
+    (r"v1\.sk-[A-Za-z0-9\-._]{10,}", "[REDACTED_OANDA_KEY]"),
     # API key patterns in key=value form
     (
         r"(?i)(api[_-]?key|apikey|api_secret)[\s:='\"]+[A-Za-z0-9\-._]{10,}",
@@ -29,13 +31,15 @@ SCRUB_PATTERNS: list[tuple[str, str]] = [
     ),
     # Password patterns
     (r"(?i)(password|passwd|pwd)[\s:='\"]+\S+", "password=[REDACTED]"),
+    # Credit card patterns (Visa 13/16 digit)
+    (r"\b4[0-9]{12}(?:[0-9]{3})?\b", "[REDACTED_CARD]"),
     # Generic long base64-like tokens (40+ chars)
     (
         r"(?<![A-Za-z0-9])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9])",
         "[REDACTED_TOKEN]",
     ),
-    # Phone numbers (E.164 format)
-    (r"\+1\d{10}", "+1[REDACTED]"),
+    # Phone numbers (E.164 international format)
+    (r"\+?1?\d{10,15}", "[REDACTED_PHONE]"),
     # Email addresses
     (
         r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",

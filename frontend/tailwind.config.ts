@@ -6,8 +6,8 @@ const config: Config = {
     extend: {
       colors: {
         brand: "var(--color-bg-primary)",
-        surface: "var(--color-bg-surface)",
-        elevated: "var(--color-bg-elevated)",
+        surface: "var(--color-bg-surface-solid)",
+        elevated: "var(--color-bg-elevated-solid)",
         input: "var(--color-bg-input)",
         border: {
           DEFAULT: "var(--color-border)",
@@ -20,12 +20,19 @@ const config: Config = {
         profit: "var(--color-profit)",
         loss: "var(--color-loss)",
         warning: "var(--color-warning)",
-        gold: "var(--color-gold)",
+        gold: "var(--color-brand)",
+        emerald: "var(--color-brand)",
       },
       fontFamily: {
-        sans: ["DM Sans", "sans-serif"],
+        sans: ["Satoshi", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
         display: ["Space Grotesk", "sans-serif"],
+      },
+      borderRadius: {
+        card: "var(--card-radius)",
+      },
+      backdropBlur: {
+        glass: "16px",
       },
     },
   },

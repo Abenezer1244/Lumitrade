@@ -40,15 +40,15 @@ export default function SignalDetailPanel({ signal }: Props) {
     <div className="space-y-4 pt-3 border-t border-border">
       {/* Entry / SL / TP Price Boxes */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="bg-elevated rounded-lg p-3 text-center">
+        <div className="glass-elevated p-3 text-center">
           <p className="text-label text-tertiary mb-1">Entry</p>
           <p className="text-sm font-mono text-primary">{formatPrice(signal.entry_price, pair)}</p>
         </div>
-        <div className="bg-elevated rounded-lg p-3 text-center">
+        <div className="glass-elevated p-3 text-center">
           <p className="text-label text-tertiary mb-1">Stop Loss</p>
           <p className="text-sm font-mono text-loss">{formatPrice(signal.stop_loss, pair)}</p>
         </div>
-        <div className="bg-elevated rounded-lg p-3 text-center">
+        <div className="glass-elevated p-3 text-center">
           <p className="text-label text-tertiary mb-1">Take Profit</p>
           <p className="text-sm font-mono text-profit">{formatPrice(signal.take_profit, pair)}</p>
         </div>
@@ -75,7 +75,7 @@ export default function SignalDetailPanel({ signal }: Props) {
       {/* Indicator Table */}
       <div>
         <p className="text-label text-tertiary mb-2">Indicators</p>
-        <div className="bg-elevated rounded-lg overflow-hidden">
+        <div className="glass-elevated overflow-hidden">
           <table className="w-full text-xs">
             <tbody>
               {indicatorRows.map(({ label, value }) => (
@@ -92,7 +92,7 @@ export default function SignalDetailPanel({ signal }: Props) {
       {/* Confidence Adjustment Breakdown */}
       <div>
         <p className="text-label text-tertiary mb-2">Confidence Adjustment</p>
-        <div className="bg-elevated rounded-lg p-3 space-y-1">
+        <div className="glass-elevated p-3 space-y-1">
           <div className="flex justify-between text-xs">
             <span className="text-secondary">Raw Score</span>
             <span className="font-mono text-primary">{rawPct}%</span>
@@ -124,7 +124,7 @@ export default function SignalDetailPanel({ signal }: Props) {
                 event.impact === "HIGH" ? "text-loss" :
                 event.impact === "MEDIUM" ? "text-warning" : "text-secondary";
               return (
-                <div key={i} className="bg-elevated rounded-lg px-3 py-2 flex items-start justify-between gap-2">
+                <div key={i} className="glass-elevated px-3 py-2 flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-primary truncate">{event.title}</p>
                     <p className="text-[10px] text-tertiary">{event.currencies_affected.join(", ")}</p>
@@ -146,7 +146,7 @@ export default function SignalDetailPanel({ signal }: Props) {
       {signal.analyst_briefing && (
         <div>
           <p className="text-label text-tertiary mb-2">Analyst Briefing</p>
-          <div className="bg-elevated rounded-lg p-3">
+          <div className="glass-elevated p-3">
             <p className="text-xs text-primary leading-relaxed">{signal.analyst_briefing}</p>
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function SignalDetailPanel({ signal }: Props) {
       {/* Full AI Reasoning */}
       <div>
         <p className="text-label text-tertiary mb-2">AI Reasoning</p>
-        <div className="bg-elevated rounded-lg p-3">
+        <div className="glass-elevated p-3">
           <p className="text-xs font-mono text-secondary leading-relaxed whitespace-pre-wrap">{signal.reasoning}</p>
         </div>
       </div>
