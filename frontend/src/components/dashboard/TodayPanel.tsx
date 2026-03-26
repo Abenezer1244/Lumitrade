@@ -35,7 +35,7 @@ export default function TodayPanel() {
           <p className="text-label text-tertiary">Win Rate</p>
           <p className="text-sm font-mono text-primary">
             {account.daily_win_rate
-              ? `${(parseFloat(account.daily_win_rate) * 100).toFixed(0)}%`
+              ? `${parseFloat(account.daily_win_rate).toFixed(0)}%`
               : "---"}
           </p>
         </div>
