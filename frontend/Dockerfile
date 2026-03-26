@@ -4,8 +4,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# Force fresh copy of source files
+ARG CACHE_DATE=20260326b
 COPY . .
-# Cache bust: 20260326-mission-control
 
 ARG NEXT_PUBLIC_SUPABASE_URL
 ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
