@@ -23,7 +23,7 @@ interface EventsResponse {
 
 export function useAgentEvents(limit = 50) {
   const { data, isLoading, mutate } = useSWR<EventsResponse>(
-    "/api/agent-events",
+    "/api/events",
     fetcher,
     {
       refreshInterval: 5_000,
