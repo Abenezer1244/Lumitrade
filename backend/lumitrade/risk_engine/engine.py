@@ -445,8 +445,8 @@ class RiskEngine:
             passed,
             "OK"
             if passed
-            else f"Action is {proposal.action.value}, expected BUY or SELL",
-            proposal.action.value,
+            else f"Action is {(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action))}, expected BUY or SELL",
+            (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
             "BUY or SELL",
         )
 

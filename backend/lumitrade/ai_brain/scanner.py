@@ -156,7 +156,7 @@ class SignalScanner:
 
         # 5. Publish signal result
         if proposal and self._events:
-            if proposal.action.value == "HOLD":
+            if (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) == "HOLD":
                 self._events.publish(
                     "SCANNER", "SIGNAL",
                     f"No trade on {pair} — HOLD signal",
@@ -165,7 +165,7 @@ class SignalScanner:
             else:
                 self._events.publish(
                     "CLAUDE", "SIGNAL",
-                    f"{proposal.action.value} {pair} @ {proposal.entry_price}"
+                    f"{(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action))} {pair} @ {proposal.entry_price}"
                     f" | Confidence: {proposal.confidence_adjusted}",
                     detail=proposal.summary[:500], pair=pair,
                     severity="SUCCESS",
@@ -277,7 +277,7 @@ class SignalScanner:
                 "id": str(proposal.signal_id),
                 "account_id": self.config.account_uuid,
                 "pair": proposal.pair,
-                "action": proposal.action.value,
+                "action": (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
                 "confidence_raw": str(proposal.confidence_raw),
                 "confidence_adjusted": str(proposal.confidence_adjusted),
                 "confidence_adjustment_log": proposal.confidence_adjustment_log,
