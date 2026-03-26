@@ -160,13 +160,14 @@ class ExecutionEngine:
         for trade in db_open:
             broker_id = trade.get("broker_trade_id", "")
 
-            # Paper trades: check if SL/TP would have been hit using current price
-            if broker_id.startswith("PAPER-"):
+            # Paper trades or trades with missing broker ID:
+            # check SL/TP against current price
+            if broker_id.startswith("PAPER-") or not broker_id:
                 await self._check_paper_trade_exit(trade)
                 continue
 
             # Live trades: if broker_trade_id not in OANDA open trades, it's closed
-            if broker_id and broker_id not in oanda_open_ids:
+            if broker_id not in oanda_open_ids:
                 await self._mark_trade_closed(trade)
 
     async def _check_paper_trade_exit(self, trade: dict) -> None:
@@ -176,13 +177,20 @@ class ExecutionEngine:
             return
 
         try:
-            pricing = await self._oanda_read.get_pricing(pair)
+            pricing = await self._oanda_read.get_pricing([pair])
             if not pricing:
                 return
-            current_bid = Decimal(str(pricing.get("bid", "0")))
-            current_ask = Decimal(str(pricing.get("ask", "0")))
+            prices = pricing.get("prices", [])
+            if not prices:
+                return
+            p = prices[0]
+            bids = p.get("bids", [{}])
+            asks = p.get("asks", [{}])
+            current_bid = Decimal(str(bids[0].get("price", "0"))) if bids else Decimal("0")
+            current_ask = Decimal(str(asks[0].get("price", "0"))) if asks else Decimal("0")
             current_price = (current_bid + current_ask) / 2
-        except Exception:
+        except Exception as e:
+            logger.warning("paper_trade_pricing_error", pair=pair, error=str(e))
             return
 
         entry = Decimal(str(trade.get("entry_price", "0")))

@@ -77,6 +77,12 @@ class RiskEngine:
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
 
+        # ── Check 2b: Per-Pair Position Count ──────────────────
+        result = await self._check_position_count_per_pair(proposal.pair)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
         # ── Check 3: Cooldown ────────────────────────────────────
         result = await self._check_cooldown(proposal.pair)
         checks.append(result)
@@ -122,6 +128,21 @@ class RiskEngine:
             stop_loss=proposal.stop_loss,
             pair=proposal.pair,
         )
+
+        # Maximum position size cap
+        max_units = self._config.max_position_units
+        if units > max_units:
+            logger.info(
+                "position_size_capped",
+                original_units=units,
+                capped_units=max_units,
+                pair=proposal.pair,
+            )
+            from ..utils.pip_math import pip_value_per_unit, pips_between
+            sl_pips = pips_between(proposal.entry_price, proposal.stop_loss, proposal.pair)
+            pv = pip_value_per_unit(proposal.pair, proposal.entry_price)
+            units = max_units
+            risk_amount_usd = Decimal(str(units)) * sl_pips * pv
 
         # Minimum position size gate
         if units < 1000:
@@ -192,23 +213,47 @@ class RiskEngine:
         max_positions = self._config.max_open_trades
         try:
             current_count = await self._db.count(
-                "open_positions", {"status": "OPEN"},
+                "trades", {"status": "OPEN"},
             )
         except Exception:
-            # If DB unavailable, assume 0 — fail-open on read
+            # Fail-CLOSED: if DB unavailable, block trading
             logger.warning(
                 "position_count_db_error",
-                msg="Could not query open positions",
+                msg="Could not query open trades — blocking",
             )
-            current_count = 0
+            current_count = max_positions
 
         passed = current_count < max_positions
         return (
             "POSITION_COUNT",
             passed,
-            "OK" if passed else f"Max {max_positions} positions reached",
+            "OK" if passed else f"Max {max_positions} positions reached ({current_count} open)",
             str(current_count),
             str(max_positions),
+        )
+
+    async def _check_position_count_per_pair(self, pair: str) -> CheckResult:
+        """Check 2b: Max positions per pair not exceeded."""
+        max_per_pair = self._config.max_positions_per_pair
+        try:
+            pair_count = await self._db.count(
+                "trades", {"status": "OPEN", "pair": pair},
+            )
+        except Exception:
+            logger.warning(
+                "pair_position_count_db_error",
+                pair=pair,
+                msg="Could not query pair trades — blocking",
+            )
+            pair_count = max_per_pair
+
+        passed = pair_count < max_per_pair
+        return (
+            "PAIR_POSITION_COUNT",
+            passed,
+            "OK" if passed else f"Max {max_per_pair} positions for {pair} reached ({pair_count} open)",
+            str(pair_count),
+            str(max_per_pair),
         )
 
     async def _check_cooldown(self, pair: str) -> CheckResult:

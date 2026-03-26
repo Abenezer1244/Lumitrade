@@ -65,6 +65,7 @@ class HealthServer:
         """Start the health check HTTP server on HEALTH_PORT."""
         self._app = web.Application()
         self._app.router.add_get("/health", self._handle_health)
+        self._app.router.add_get("/prices", self._handle_prices)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -244,6 +245,42 @@ class HealthServer:
             logger.warning("health_check_trading_info_failed")
 
         return {"mode": "PAPER", "risk_state": "NORMAL", "open_trades": 0}
+
+
+    async def _handle_prices(self, request: web.Request) -> web.Response:
+        """
+        Return current OANDA bid/ask for requested pairs.
+        GET /prices?pairs=EUR_USD,GBP_USD,USD_JPY
+        """
+        pairs_param = request.query.get("pairs", "EUR_USD,GBP_USD,USD_JPY")
+        pairs = [p.strip() for p in pairs_param.split(",") if p.strip()]
+
+        if not pairs:
+            return web.json_response({"prices": {}}, status=400)
+
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            client = OandaClient(config)
+            try:
+                raw = await client.get_pricing(pairs)
+                result = {}
+                for p in raw.get("prices", []):
+                    instrument = p.get("instrument", "")
+                    bids = p.get("bids", [])
+                    asks = p.get("asks", [])
+                    bid = float(bids[0]["price"]) if bids else 0.0
+                    ask = float(asks[0]["price"]) if asks else 0.0
+                    mid = (bid + ask) / 2
+                    result[instrument] = {"bid": bid, "ask": ask, "mid": mid}
+                return web.json_response({"prices": result})
+            finally:
+                await client.close()
+        except Exception as e:
+            logger.error("prices_endpoint_error", error=str(e))
+            return web.json_response({"prices": {}, "error": str(e)}, status=500)
 
 
 async def _run_standalone() -> None:

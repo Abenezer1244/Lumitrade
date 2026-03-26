@@ -7,7 +7,9 @@ Per BDS Section 3.1 + DOS v2.0 Section 11.3 + Master Prompt Pattern 6.
 Telnyx replaces Twilio for SMS alerts.
 """
 
+import uuid
 from decimal import Decimal
+from functools import cached_property
 from typing import Optional
 
 from pydantic import Field
@@ -55,6 +57,8 @@ class LumitradeConfig(BaseSettings):
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.65")
     max_open_trades: int = 3
+    max_positions_per_pair: int = 1
+    max_position_units: int = 500_000
     daily_loss_limit_pct: Decimal = Decimal("0.05")
     weekly_loss_limit_pct: Decimal = Decimal("0.10")
     max_spread_pips: Decimal = Decimal("3.0")
@@ -62,6 +66,11 @@ class LumitradeConfig(BaseSettings):
     news_blackout_after_min: int = 15
     trade_cooldown_minutes: int = 60
     min_rr_ratio: Decimal = Decimal("1.5")
+
+    @cached_property
+    def account_uuid(self) -> str:
+        """Deterministic UUID derived from OANDA account ID for DB storage."""
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"lumitrade.{self.oanda_account_id}"))
 
     # ── Future features (optional — absence = feature inactive) ─
     openai_api_key: Optional[str] = Field(

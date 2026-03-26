@@ -44,8 +44,26 @@ class OandaExecutor:
         order_fill = response.get("orderFillTransaction", {})
         trade_id = ""
         if order_fill:
-            trades_opened = order_fill.get("tradeOpened", {})
-            trade_id = trades_opened.get("tradeID", order_fill.get("id", ""))
+            # Primary: new trade opened
+            trade_opened = order_fill.get("tradeOpened", {})
+            if trade_opened:
+                trade_id = trade_opened.get("tradeID", "")
+            # Fallback: trade reduced (adding to existing position)
+            if not trade_id:
+                trades_reduced = order_fill.get("tradeReduced", {})
+                if trades_reduced:
+                    trade_id = trades_reduced.get("tradeID", "")
+            # Last resort: use the fill transaction ID itself
+            if not trade_id:
+                trade_id = str(order_fill.get("id", ""))
+        logger.info(
+            "oanda_response_parsed",
+            order_ref=str(order.order_ref),
+            broker_trade_id=trade_id,
+            has_fill=bool(order_fill),
+            response_keys=list(response.keys()),
+            fill_keys=list(order_fill.keys()) if order_fill else [],
+        )
         order_create = response.get("orderCreateTransaction", {})
         order_id = order_create.get("id", order_fill.get("id", ""))
         fill_price = Decimal(str(order_fill.get("price", order.entry_price)))
