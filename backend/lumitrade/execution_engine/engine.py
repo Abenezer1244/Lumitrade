@@ -217,9 +217,9 @@ class ExecutionEngine:
                 pnl_pips = -abs(pnl_pips)
 
             units = int(trade.get("position_size", 0))
-            # Rough P&L: pips * units * pip_value (simplified)
-            pip_size = Decimal("0.01") if "JPY" in pair else Decimal("0.0001")
-            pnl_usd = pnl_pips * Decimal(str(units)) * pip_size
+            from ..utils.pip_math import pip_value_per_unit
+            pv = pip_value_per_unit(pair, exit_price)
+            pnl_usd = pnl_pips * Decimal(str(units)) * pv
 
             outcome = "WIN" if pnl_usd > 0 else "LOSS"
             exit_reason = "TP_HIT" if hit_tp else "SL_HIT"
