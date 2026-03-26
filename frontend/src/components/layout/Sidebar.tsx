@@ -8,31 +8,17 @@ import {
   History,
   BarChart2,
   Settings,
-  BookOpen,
-  MessageCircle,
-  TrendingUp,
-  Store,
-  Users,
-  FlaskConical,
-  Key,
   Menu,
   X,
 } from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, phase: 0 },
-  { href: "/signals", label: "Signals", icon: Zap, phase: 0 },
-  { href: "/trades", label: "Trades", icon: History, phase: 0 },
-  { href: "/analytics", label: "Analytics", icon: BarChart2, phase: 0 },
-  { href: "/settings", label: "Settings", icon: Settings, phase: 0 },
-  { href: "/journal", label: "Journal", icon: BookOpen, phase: 2 },
-  { href: "/coach", label: "AI Coach", icon: MessageCircle, phase: 2 },
-  { href: "/intelligence", label: "Intel Report", icon: TrendingUp, phase: 2 },
-  { href: "/marketplace", label: "Marketplace", icon: Store, phase: 3 },
-  { href: "/copy", label: "Copy Trading", icon: Users, phase: 3 },
-  { href: "/backtest", label: "Backtest", icon: FlaskConical, phase: 3 },
-  { href: "/api-keys", label: "API Access", icon: Key, phase: 3 },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/signals", label: "Signals", icon: Zap },
+  { href: "/trades", label: "Trades", icon: History },
+  { href: "/analytics", label: "Analytics", icon: BarChart2 },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {
@@ -97,7 +83,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto scrollbar-hide px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, icon: Icon, phase }) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname?.startsWith(href);
 
           return (
@@ -132,14 +118,6 @@ export default function Sidebar() {
             >
               <Icon size={16} />
               <span className="flex-1 font-medium">{label}</span>
-              {phase > 0 && (
-                <span
-                  className="text-[10px]"
-                  style={{ color: "var(--color-text-tertiary)" }}
-                >
-                  P{phase}
-                </span>
-              )}
             </Link>
           );
         })}
