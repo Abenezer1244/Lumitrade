@@ -273,9 +273,9 @@ class HealthServer:
             row = await self._db.select_one(
                 "system_state", {"id": self.SETTINGS_ROW_ID}
             )
-            if row and row.get("settings_json"):
-                import json
-                user_settings = json.loads(row["settings_json"]) if isinstance(row["settings_json"], str) else row["settings_json"]
+            if row and row.get("open_trades"):
+                stored = row["open_trades"]
+                user_settings = stored if isinstance(stored, dict) else dict(self.SETTINGS_DEFAULTS)
             else:
                 user_settings = dict(self.SETTINGS_DEFAULTS)
         except Exception:
@@ -315,7 +315,7 @@ class HealthServer:
         try:
             await self._db.upsert("system_state", {
                 "id": self.SETTINGS_ROW_ID,
-                "settings_json": json.dumps(clamped),
+                "open_trades": clamped,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             })
             logger.info("settings_saved", settings=clamped)

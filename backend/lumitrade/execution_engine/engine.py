@@ -222,7 +222,7 @@ class ExecutionEngine:
             pnl_usd = pnl_pips * Decimal(str(units)) * pip_size
 
             outcome = "WIN" if pnl_usd > 0 else "LOSS"
-            exit_reason = "TAKE_PROFIT" if hit_tp else "STOP_LOSS"
+            exit_reason = "TP_HIT" if hit_tp else "SL_HIT"
 
             await self._update_closed_trade(
                 trade, exit_price, pnl_pips, pnl_usd, outcome, exit_reason

@@ -445,9 +445,8 @@ class RiskEngine:
         """Load user-adjustable settings from Supabase, fall back to config."""
         try:
             row = await self._db.select_one("system_state", {"id": "settings"})
-            if row and row.get("settings_json"):
-                import json
-                s = json.loads(row["settings_json"]) if isinstance(row["settings_json"], str) else row["settings_json"]
+            if row and row.get("open_trades") and isinstance(row["open_trades"], dict):
+                s = row["open_trades"]
                 self._config.max_risk_pct = Decimal(str(s.get("riskPct", float(self._config.max_risk_pct) * 100))) / Decimal("100")
                 self._config.max_open_trades = int(s.get("maxPositions", self._config.max_open_trades))
                 self._config.max_positions_per_pair = int(s.get("maxPerPair", self._config.max_positions_per_pair))
