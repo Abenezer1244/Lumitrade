@@ -26,6 +26,11 @@ from .state.manager import StateManager
 logger = get_logger("orchestrator")
 
 
+def _action_str(action) -> str:
+    """Safely get string value from an Action enum or plain string."""
+    return action.value if hasattr(action, "value") else str(action)
+
+
 # ── Sentry Integration (DOS Section 6.2) ─────────────────────────
 
 
@@ -239,7 +244,7 @@ class OrchestratorService:
                         proposal = await self.scanner.execute_scan(pair)
                         if not proposal:
                             continue
-                        if proposal.action.value == "HOLD":
+                        if _action_str(proposal.action) == "HOLD":
                             logger.info("signal_hold_skipped", pair=pair)
                             continue
                         if proposal.confidence_adjusted < self.config.min_confidence:
@@ -259,7 +264,7 @@ class OrchestratorService:
                         logger.info(
                             "signal_evaluating_risk",
                             pair=pair,
-                            action=proposal.action.value,
+                            action=_action_str(proposal.action),
                             confidence=str(proposal.confidence_adjusted),
                             balance=str(balance),
                         )
@@ -278,7 +283,7 @@ class OrchestratorService:
                         logger.info(
                             "signal_executing_trade",
                             pair=pair,
-                            action=proposal.action.value,
+                            action=_action_str(proposal.action),
                             confidence=str(proposal.confidence_adjusted),
                             price=str(current_price),
                         )
@@ -286,7 +291,7 @@ class OrchestratorService:
                         logger.info(
                             "trade_executed_successfully",
                             pair=pair,
-                            action=proposal.action.value,
+                            action=_action_str(proposal.action),
                         )
                     except Exception as e:
                         logger.error(
