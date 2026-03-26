@@ -3,18 +3,25 @@
 import { useState, useEffect, useCallback } from "react";
 import TradingSettings from "@/components/settings/TradingSettings";
 import ModeToggle from "@/components/settings/ModeToggle";
-import type { TradingSettingsData } from "@/components/settings/TradingSettings";
+import type { TradingSettingsData, GuardrailsData } from "@/components/settings/TradingSettings";
 import { useToast } from "@/components/ui/Toast";
 
 const DEFAULT_SETTINGS: TradingSettingsData = {
   riskPct: 1.0,
-  dailyLimit: 5.0,
   maxPositions: 3,
+  maxPerPair: 1,
   confidence: 65,
+};
+
+const DEFAULT_GUARDRAILS: GuardrailsData = {
+  maxPositionUnits: 500_000,
+  dailyLossLimitPct: 5.0,
+  weeklyLossLimitPct: 10.0,
 };
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<TradingSettingsData>(DEFAULT_SETTINGS);
+  const [guardrails, setGuardrails] = useState<GuardrailsData>(DEFAULT_GUARDRAILS);
   const [mode, setMode] = useState<"PAPER" | "LIVE">("PAPER");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -30,11 +37,18 @@ export default function SettingsPage() {
         if (cancelled) return;
         setSettings({
           riskPct: data.riskPct ?? DEFAULT_SETTINGS.riskPct,
-          dailyLimit: data.dailyLimit ?? DEFAULT_SETTINGS.dailyLimit,
           maxPositions: data.maxPositions ?? DEFAULT_SETTINGS.maxPositions,
+          maxPerPair: data.maxPerPair ?? DEFAULT_SETTINGS.maxPerPair,
           confidence: data.confidence ?? DEFAULT_SETTINGS.confidence,
         });
         setMode(data.mode ?? "PAPER");
+        if (data.guardrails) {
+          setGuardrails({
+            maxPositionUnits: data.guardrails.maxPositionUnits ?? DEFAULT_GUARDRAILS.maxPositionUnits,
+            dailyLossLimitPct: data.guardrails.dailyLossLimitPct ?? DEFAULT_GUARDRAILS.dailyLossLimitPct,
+            weeklyLossLimitPct: data.guardrails.weeklyLossLimitPct ?? DEFAULT_GUARDRAILS.weeklyLossLimitPct,
+          });
+        }
       } catch {
         // Use defaults on failure
       } finally {
@@ -62,7 +76,7 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
-  }, [settings, mode]);
+  }, [settings, mode, toast]);
 
   if (!loaded) {
     return <div className="animate-pulse h-96 glass" />;
@@ -74,6 +88,7 @@ export default function SettingsPage() {
         <ModeToggle mode={mode} onToggle={setMode} />
         <TradingSettings
           settings={settings}
+          guardrails={guardrails}
           onChange={setSettings}
           onSave={handleSave}
           saving={saving}

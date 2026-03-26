@@ -66,6 +66,8 @@ class HealthServer:
         self._app = web.Application()
         self._app.router.add_get("/health", self._handle_health)
         self._app.router.add_get("/prices", self._handle_prices)
+        self._app.router.add_get("/settings", self._handle_get_settings)
+        self._app.router.add_post("/settings", self._handle_post_settings)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -246,6 +248,82 @@ class HealthServer:
 
         return {"mode": "PAPER", "risk_state": "NORMAL", "open_trades": 0}
 
+
+    # ── Settings Endpoints ──────────────────────────────────────
+
+    # User-adjustable settings (stored in Supabase system_state id='settings')
+    SETTINGS_ROW_ID = "settings"
+    SETTINGS_DEFAULTS = {
+        "riskPct": 1.0,         # max_risk_pct as percentage (1.0 = 1%)
+        "maxPositions": 3,       # max_open_trades
+        "maxPerPair": 1,         # max_positions_per_pair
+        "confidence": 65,        # min_confidence as integer (65 = 0.65)
+        "mode": "PAPER",
+    }
+    # Guardrails — read-only, set via env vars only
+    GUARDRAILS = {
+        "maxPositionUnits": 500_000,
+        "dailyLossLimitPct": 5.0,
+        "weeklyLossLimitPct": 10.0,
+    }
+
+    async def _handle_get_settings(self, request: web.Request) -> web.Response:
+        """GET /settings — return user settings + guardrails."""
+        try:
+            row = await self._db.select_one(
+                "system_state", {"id": self.SETTINGS_ROW_ID}
+            )
+            if row and row.get("settings_json"):
+                import json
+                user_settings = json.loads(row["settings_json"]) if isinstance(row["settings_json"], str) else row["settings_json"]
+            else:
+                user_settings = dict(self.SETTINGS_DEFAULTS)
+        except Exception:
+            user_settings = dict(self.SETTINGS_DEFAULTS)
+
+        # Merge guardrails from config
+        from ..config import LumitradeConfig
+        try:
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            guardrails = {
+                "maxPositionUnits": config.max_position_units,
+                "dailyLossLimitPct": float(config.daily_loss_limit_pct) * 100,
+                "weeklyLossLimitPct": float(config.weekly_loss_limit_pct) * 100,
+            }
+        except Exception:
+            guardrails = dict(self.GUARDRAILS)
+
+        return web.json_response({**user_settings, "guardrails": guardrails})
+
+    async def _handle_post_settings(self, request: web.Request) -> web.Response:
+        """POST /settings — save user-adjustable settings."""
+        import json
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        # Validate and clamp values
+        clamped = {
+            "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 1.0)))),
+            "maxPositions": max(1, min(5, int(body.get("maxPositions", 3)))),
+            "maxPerPair": max(1, min(2, int(body.get("maxPerPair", 1)))),
+            "confidence": max(50, min(90, int(body.get("confidence", 65)))),
+            "mode": body.get("mode", "PAPER") if body.get("mode") in ("PAPER", "LIVE") else "PAPER",
+        }
+
+        try:
+            await self._db.upsert("system_state", {
+                "id": self.SETTINGS_ROW_ID,
+                "settings_json": json.dumps(clamped),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info("settings_saved", settings=clamped)
+        except Exception as e:
+            logger.error("settings_save_failed", error=str(e))
+            return web.json_response({"error": "Failed to save"}, status=500)
+
+        return web.json_response(clamped)
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
         """

@@ -61,6 +61,7 @@ class RiskEngine:
             ApprovedOrder if all checks pass, RiskRejection on first failure.
         """
         now = datetime.now(timezone.utc)
+        await self._load_user_settings()
         risk_state = await self._get_current_risk_state()
 
         checks: list[CheckResult] = []
@@ -437,6 +438,29 @@ class RiskEngine:
             risk_pct=str(risk_pct),
         )
         return risk_pct
+
+    # ── User Settings from DB ────────────────────────────────────
+
+    async def _load_user_settings(self) -> None:
+        """Load user-adjustable settings from Supabase, fall back to config."""
+        try:
+            row = await self._db.select_one("system_state", {"id": "settings"})
+            if row and row.get("settings_json"):
+                import json
+                s = json.loads(row["settings_json"]) if isinstance(row["settings_json"], str) else row["settings_json"]
+                self._config.max_risk_pct = Decimal(str(s.get("riskPct", float(self._config.max_risk_pct) * 100))) / Decimal("100")
+                self._config.max_open_trades = int(s.get("maxPositions", self._config.max_open_trades))
+                self._config.max_positions_per_pair = int(s.get("maxPerPair", self._config.max_positions_per_pair))
+                self._config.min_confidence = Decimal(str(s.get("confidence", int(self._config.min_confidence * 100)))) / Decimal("100")
+                logger.info(
+                    "user_settings_loaded",
+                    max_risk_pct=str(self._config.max_risk_pct),
+                    max_open_trades=self._config.max_open_trades,
+                    max_per_pair=self._config.max_positions_per_pair,
+                    min_confidence=str(self._config.min_confidence),
+                )
+        except Exception as e:
+            logger.warning("user_settings_load_failed", error=str(e))
 
     # ── Helpers ───────────────────────────────────────────────────
 
