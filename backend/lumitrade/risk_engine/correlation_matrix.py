@@ -1,11 +1,13 @@
 """
-Lumitrade Correlation Matrix (STUB)
-=====================================
-Stub per BDS Section 13.4.
-Returns safe defaults (zero correlation, no position adjustment).
-Will be implemented when multi-pair correlation tracking is activated.
+Lumitrade Correlation Matrix
+==============================
+Known historical forex correlations for the 3 traded pairs:
+EUR_USD, GBP_USD, USD_JPY.
 
-All stubs are silent no-ops returning safe defaults (Rule 6).
+Uses static 90-day rolling approximate correlations. Phase 2 will
+compute rolling correlations from live candle data.
+
+Per BDS Section 13.4.
 """
 
 from decimal import Decimal
@@ -14,15 +16,38 @@ from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
 
+# ── Static correlation table (approximate 90-day rolling) ─────────
+# Keys are normalized: alphabetically sorted tuple of pairs.
+_CORRELATION_TABLE: dict[tuple[str, str], Decimal] = {
+    ("EUR_USD", "GBP_USD"): Decimal("0.85"),
+    ("EUR_USD", "USD_JPY"): Decimal("-0.60"),
+    ("GBP_USD", "USD_JPY"): Decimal("-0.55"),
+}
+
+
+def _normalize_key(pair_a: str, pair_b: str) -> tuple[str, str]:
+    """Return a consistently ordered tuple for lookup."""
+    if pair_a <= pair_b:
+        return (pair_a, pair_b)
+    return (pair_b, pair_a)
+
 
 class CorrelationMatrix:
-    """Stub: returns neutral correlation values until correlation tracking is active."""
+    """
+    Provides forex pair correlations and position size multipliers
+    based on known historical correlations.
+
+    Phase 0/1: Uses static correlation values for the 3 traded pairs.
+
+    TODO Phase 2: Compute rolling correlations from stored candle data,
+    update correlations on a configurable schedule (e.g., daily),
+    persist computed correlations to the database, and support
+    dynamic pair expansion beyond the initial 3.
+    """
 
     def get_correlation(self, pair_a: str, pair_b: str) -> Decimal:
         """
         Return the correlation coefficient between two currency pairs.
-
-        Stub returns Decimal("0.0") — no correlation assumed.
 
         Args:
             pair_a: First currency pair (e.g. "EUR_USD").
@@ -30,8 +55,14 @@ class CorrelationMatrix:
 
         Returns:
             Decimal correlation coefficient in range [-1.0, 1.0].
+            Same pair returns 1.0, unknown pair returns 0.0.
         """
-        return Decimal("0.0")
+        if pair_a == pair_b:
+            return Decimal("1.0")
+
+        key = _normalize_key(pair_a, pair_b)
+        correlation = _CORRELATION_TABLE.get(key, Decimal("0.0"))
+        return correlation
 
     def get_position_size_multiplier(
         self,
@@ -41,13 +72,40 @@ class CorrelationMatrix:
         """
         Return the position size multiplier based on correlation with open positions.
 
-        Stub returns Decimal("1.0") — no adjustment.
+        Formula: multiplier = 1.0 - (max_abs_correlation × 0.5)
+        - 0.0 correlation  -> 1.0x (full size)
+        - 0.85 correlation -> 0.575x (reduced due to EUR_USD/GBP_USD overlap)
+        - 1.0 correlation  -> 0.5x (half size, same pair already open)
 
         Args:
             open_pairs: List of currency pairs with open positions.
             new_pair: The pair being evaluated for a new position.
 
         Returns:
-            Decimal multiplier (1.0 = no adjustment, <1.0 = reduce size).
+            Decimal multiplier in range [0.5, 1.0]. Always >= 0.5.
         """
-        return Decimal("1.0")
+        if not open_pairs:
+            return Decimal("1.0")
+
+        max_abs_corr = Decimal("0.0")
+        most_correlated_pair = ""
+
+        for open_pair in open_pairs:
+            corr = self.get_correlation(open_pair, new_pair)
+            abs_corr = abs(corr)
+            if abs_corr > max_abs_corr:
+                max_abs_corr = abs_corr
+                most_correlated_pair = open_pair
+
+        multiplier = Decimal("1.0") - (max_abs_corr * Decimal("0.5"))
+
+        if max_abs_corr > Decimal("0.0"):
+            logger.info(
+                "correlation_size_adjustment",
+                new_pair=new_pair,
+                most_correlated_with=most_correlated_pair,
+                correlation=str(max_abs_corr),
+                multiplier=str(multiplier),
+            )
+
+        return multiplier

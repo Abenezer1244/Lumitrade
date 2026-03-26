@@ -47,7 +47,7 @@ class DataEngine:
         self._validator = DataValidator()
         self._fetcher = CandleFetcher(oanda)
         self._stream = PriceStreamManager(oanda)
-        self._calendar = CalendarFetcher()
+        self._calendar = CalendarFetcher(config)
         self._regime = RegimeClassifier()
 
     async def stream_task(self, pairs: list[str]) -> None:

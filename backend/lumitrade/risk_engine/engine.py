@@ -18,6 +18,7 @@ from ..core.models import ApprovedOrder, RiskRejection, SignalProposal
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
 from .calendar_guard import CalendarGuard
+from .correlation_matrix import CorrelationMatrix
 from .position_sizer import PositionSizer
 
 logger = get_logger(__name__)
@@ -44,6 +45,7 @@ class RiskEngine:
         self._db = db
         self._position_sizer = PositionSizer()
         self._calendar_guard = CalendarGuard()
+        self._correlation_matrix = CorrelationMatrix()
 
     async def evaluate(
         self,
@@ -129,6 +131,28 @@ class RiskEngine:
             stop_loss=proposal.stop_loss,
             pair=proposal.pair,
         )
+
+        # ── Correlation adjustment ─────────────────────────────────
+        # Reduce position size when correlated pairs are already open.
+        open_pairs = await self._get_open_pairs()
+        corr_multiplier = self._correlation_matrix.get_position_size_multiplier(
+            open_pairs=open_pairs,
+            new_pair=proposal.pair,
+        )
+        if corr_multiplier < Decimal("1.0"):
+            original_units = units
+            units = int(Decimal(str(units)) * corr_multiplier)
+            # Floor to micro lot (1000 units)
+            units = (units // 1000) * 1000
+            risk_amount_usd = risk_amount_usd * corr_multiplier
+            logger.info(
+                "correlation_units_reduced",
+                pair=proposal.pair,
+                original_units=original_units,
+                adjusted_units=units,
+                multiplier=str(corr_multiplier),
+                open_correlated_pairs=open_pairs,
+            )
 
         # Maximum position size cap
         max_units = self._config.max_position_units
@@ -462,6 +486,16 @@ class RiskEngine:
             logger.warning("user_settings_load_failed", error=str(e))
 
     # ── Helpers ───────────────────────────────────────────────────
+
+    async def _get_open_pairs(self) -> list[str]:
+        """Return list of currency pairs with currently open positions."""
+        try:
+            rows = await self._db.select("trades", {"status": "OPEN"})
+            pairs = list({row["pair"] for row in rows if "pair" in row})
+            return pairs
+        except Exception:
+            logger.warning("open_pairs_query_failed", msg="Returning empty list")
+            return []
 
     async def _get_current_risk_state(self) -> RiskState:
         """Read current risk state from state manager."""
