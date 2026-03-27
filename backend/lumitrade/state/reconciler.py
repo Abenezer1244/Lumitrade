@@ -160,6 +160,10 @@ class PositionReconciler:
         # NOTE: Only use columns that exist on the trades table.
         # reconciliation_note does NOT exist — don't include it.
         try:
+            # Use opened_at as closed_at for ghost trades so they don't
+            # trigger the cooldown timer on their pair. These were never
+            # real trades — they shouldn't block future trading.
+            opened_at = db_trade.get("opened_at", now.isoformat())
             await self._db.update(
                 "trades",
                 {"id": trade_id},
@@ -169,7 +173,7 @@ class PositionReconciler:
                     "outcome": "BREAKEVEN",
                     "pnl_usd": 0,
                     "pnl_pips": 0,
-                    "closed_at": now.isoformat(),
+                    "closed_at": opened_at,
                 },
             )
             logger.info(
