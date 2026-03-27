@@ -56,7 +56,7 @@ class LumitradeConfig(BaseSettings):
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.65")
-    max_open_trades: int = 3
+    max_open_trades: int = 100
     max_positions_per_pair: int = 1
     max_position_units: int = 500_000
     daily_loss_limit_pct: Decimal = Decimal("0.05")

@@ -258,7 +258,7 @@ class HealthServer:
     SETTINGS_ROW_ID = "settings"
     SETTINGS_DEFAULTS = {
         "riskPct": 1.0,         # max_risk_pct as percentage (1.0 = 1%)
-        "maxPositions": 3,       # max_open_trades
+        "maxPositions": 100,     # max_open_trades
         "maxPerPair": 1,         # max_positions_per_pair
         "confidence": 65,        # min_confidence as integer (65 = 0.65)
         "scanInterval": 15,      # signal_interval_minutes
@@ -310,7 +310,7 @@ class HealthServer:
         # Validate and clamp values
         clamped = {
             "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 1.0)))),
-            "maxPositions": max(1, min(5, int(body.get("maxPositions", 3)))),
+            "maxPositions": max(1, min(100, int(body.get("maxPositions", 100)))),
             "maxPerPair": max(1, min(2, int(body.get("maxPerPair", 1)))),
             "confidence": max(50, min(90, int(body.get("confidence", 65)))),
             "scanInterval": max(5, min(60, int(body.get("scanInterval", 15)))),

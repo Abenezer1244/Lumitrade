@@ -157,6 +157,8 @@ class PositionReconciler:
         )
 
         # Mark as closed in DB
+        # NOTE: Only use columns that exist on the trades table.
+        # reconciliation_note does NOT exist — don't include it.
         try:
             await self._db.update(
                 "trades",
@@ -164,12 +166,17 @@ class PositionReconciler:
                 {
                     "status": "CLOSED",
                     "exit_reason": ExitReason.UNKNOWN.value,
+                    "outcome": "BREAKEVEN",
+                    "pnl_usd": 0,
+                    "pnl_pips": 0,
                     "closed_at": now.isoformat(),
-                    "reconciliation_note": (
-                        f"Ghost detected: trade {broker_trade_id} not found on OANDA. "
-                        f"Marked CLOSED with UNKNOWN exit reason at {now.isoformat()}"
-                    ),
                 },
+            )
+            logger.info(
+                "ghost_trade_closed",
+                trade_id=trade_id,
+                broker_trade_id=broker_trade_id,
+                pair=pair,
             )
         except Exception:
             logger.exception(
@@ -211,24 +218,28 @@ class PositionReconciler:
         )
 
         # Create emergency DB record
+        # NOTE: Only use columns that exist on the trades table schema.
         try:
             direction = "BUY" if int(str(units).replace(",", "")) > 0 else "SELL"
+            abs_units = abs(int(str(units).replace(",", "")))
+            # Get the account_id from an existing trade, or use config
+            from ..config import LumitradeConfig
+            config = LumitradeConfig()  # type: ignore[call-arg]
+
             await self._db.insert(
                 "trades",
                 {
+                    "account_id": config.account_uuid,
                     "broker_trade_id": trade_id,
                     "pair": instrument,
                     "direction": direction,
-                    "units": str(units),
+                    "position_size": abs_units,
                     "entry_price": str(price),
+                    "stop_loss": str(price),
+                    "take_profit": str(price),
+                    "mode": "PAPER",
                     "status": "OPEN",
                     "opened_at": open_time,
-                    "is_phantom": True,
-                    "reconciliation_note": (
-                        f"Phantom detected: trade {trade_id} "
-                        "found on OANDA but not in DB. "
-                        f"Emergency record at {now.isoformat()}"
-                    ),
                 },
             )
         except Exception:
