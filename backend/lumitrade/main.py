@@ -141,6 +141,7 @@ class OrchestratorService:
 
         # 7. Initialize trading components (import here to avoid circular deps)
         from .ai_brain.claude_client import ClaudeClient
+        from .ai_brain.consensus_engine import ConsensusEngine
         from .ai_brain.scanner import SignalScanner
         from .data_engine.engine import DataEngine
         from .execution_engine.engine import ExecutionEngine
@@ -153,6 +154,7 @@ class OrchestratorService:
         self.subagents = SubagentOrchestrator(self.config, self.db, self.alerts, events=self.events)
         self.data_eng = DataEngine(self.config, self.oanda, self.db)
         self.claude = ClaudeClient(self.config)
+        self.consensus = ConsensusEngine(self.config)
         self.scanner = SignalScanner(
             self.config, self.data_eng, self.db, self.claude, self.subagents,
             events=self.events,
@@ -247,6 +249,20 @@ class OrchestratorService:
                         if _action_str(proposal.action) == "HOLD":
                             logger.info("signal_hold_skipped", pair=pair)
                             continue
+
+                        # 1b. Consensus validation — second Claude opinion
+                        try:
+                            proposal = await self.consensus.validate(
+                                proposal, market_context=pair,
+                            )
+                            logger.info(
+                                "consensus_complete",
+                                pair=pair,
+                                confidence_after=str(proposal.confidence_adjusted),
+                            )
+                        except Exception as e:
+                            logger.warning("consensus_failed", pair=pair, error=str(e))
+
                         if proposal.confidence_adjusted < self.config.min_confidence:
                             logger.info(
                                 "signal_below_threshold",
