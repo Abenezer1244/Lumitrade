@@ -307,7 +307,16 @@ class OrchestratorService:
                             continue
                         approved = result
 
-                        # 4. Execute trade
+                        # 4. Determine position multiplier based on confidence
+                        #    Higher confidence = more positions (scaling in)
+                        confidence_pct = float(proposal.confidence_adjusted) * 100
+                        if confidence_pct >= 85:
+                            num_orders = 5
+                        elif confidence_pct >= 75:
+                            num_orders = 3
+                        else:
+                            num_orders = 1
+
                         current_price = proposal.entry_price
                         logger.info(
                             "signal_executing_trade",
@@ -315,13 +324,54 @@ class OrchestratorService:
                             action=_action_str(proposal.action),
                             confidence=str(proposal.confidence_adjusted),
                             price=str(current_price),
+                            num_orders=num_orders,
                         )
-                        await self.exec_eng.execute_order(approved, current_price)
-                        logger.info(
-                            "trade_executed_successfully",
-                            pair=pair,
-                            action=_action_str(proposal.action),
-                        )
+
+                        # Execute multiple orders for high-confidence signals
+                        from uuid import uuid4 as _uuid4
+                        for order_num in range(num_orders):
+                            try:
+                                if order_num == 0:
+                                    # First order uses the original approved order
+                                    await self.exec_eng.execute_order(approved, current_price)
+                                else:
+                                    # Subsequent orders get a fresh order_ref
+                                    scaled_order = ApprovedOrder(
+                                        order_ref=_uuid4(),
+                                        signal_id=approved.signal_id,
+                                        pair=approved.pair,
+                                        direction=approved.direction,
+                                        units=approved.units,
+                                        entry_price=approved.entry_price,
+                                        stop_loss=approved.stop_loss,
+                                        take_profit=approved.take_profit,
+                                        risk_amount_usd=approved.risk_amount_usd,
+                                        risk_pct=approved.risk_pct,
+                                        confidence=approved.confidence,
+                                        account_balance_at_approval=approved.account_balance_at_approval,
+                                        approved_at=datetime.now(timezone.utc),
+                                        expiry=datetime.now(timezone.utc) + timedelta(seconds=30),
+                                        mode=approved.mode,
+                                    )
+                                    await self.exec_eng.execute_order(scaled_order, current_price)
+                                logger.info(
+                                    "trade_executed_successfully",
+                                    pair=pair,
+                                    action=_action_str(proposal.action),
+                                    order_num=order_num + 1,
+                                    total_orders=num_orders,
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    "scaled_order_failed",
+                                    pair=pair,
+                                    order_num=order_num + 1,
+                                    error=str(e),
+                                )
+                                break  # Stop scaling if one fails
+                            # Small delay between scaled orders
+                            if order_num < num_orders - 1:
+                                await asyncio.sleep(1)
                     except Exception as e:
                         import traceback
                         logger.error(
