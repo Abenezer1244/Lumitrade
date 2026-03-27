@@ -154,11 +154,13 @@ class RiskEngine:
             open_pairs=open_pairs,
             new_pair=proposal.pair,
         )
+        is_metal = proposal.pair.startswith("XAU") or proposal.pair.startswith("XAG")
         if corr_multiplier < Decimal("1.0"):
             original_units = units
             units = int(Decimal(str(units)) * corr_multiplier)
-            # Floor to micro lot (1000 units)
-            units = (units // 1000) * 1000
+            # Floor to micro lot (1000 units) for forex, 1 unit for metals
+            if not is_metal:
+                units = (units // 1000) * 1000
             risk_amount_usd = risk_amount_usd * corr_multiplier
             logger.info(
                 "correlation_units_reduced",
@@ -200,13 +202,15 @@ class RiskEngine:
             )
 
         # Minimum position size gate
-        if units < 1000:
+        # Metals (gold/silver): minimum 1 unit. Forex: minimum 1000 units.
+        min_units = 1 if is_metal else 1000
+        if units < min_units:
             min_result: CheckResult = (
                 "MINIMUM_POSITION_SIZE",
                 False,
-                "Calculated position size below minimum 1000 units",
+                f"Calculated position size {units} below minimum {min_units} units",
                 str(units),
-                "1000",
+                str(min_units),
             )
             return await self._reject(proposal, min_result, risk_state, now)
 

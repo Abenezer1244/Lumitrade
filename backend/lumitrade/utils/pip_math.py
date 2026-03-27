@@ -68,7 +68,13 @@ def calculate_position_size(
         return 0, Decimal("0")
 
     raw_units = risk_usd / (sl_pips * pv_per_unit)
-    units = int(raw_units / 1000) * 1000  # Floor to micro lot
-    actual_risk = units * sl_pips * pv_per_unit
 
+    # Gold/metals: round to nearest unit (no micro lot requirement)
+    # Forex: floor to nearest 1000 (micro lot)
+    if pair.startswith("XAU") or pair.startswith("XAG") or pair.startswith("XPT") or pair.startswith("XPD"):
+        units = int(raw_units)  # Round to nearest unit
+    else:
+        units = int(raw_units / 1000) * 1000  # Floor to micro lot
+
+    actual_risk = units * sl_pips * pv_per_unit
     return units, actual_risk
