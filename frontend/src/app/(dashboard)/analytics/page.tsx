@@ -7,6 +7,8 @@ import EquityCurve from "@/components/analytics/EquityCurve";
 import PairBreakdown from "@/components/analytics/PairBreakdown";
 import PnlCalendar from "@/components/analytics/PnlCalendar";
 import PriceChart from "@/components/analytics/PriceChart";
+import TradeDistribution from "@/components/analytics/TradeDistribution";
+import SessionAnalysis from "@/components/analytics/SessionAnalysis";
 import RiskOfRuinPanel from "@/components/analytics/RiskOfRuinPanel";
 
 export default function AnalyticsPage() {
@@ -56,6 +58,11 @@ export default function AnalyticsPage() {
             <EquityCurve data={performance?.equity_curve ?? []} />
 
             <PairBreakdown data={performance?.pair_breakdown ?? []} />
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <TradeDistribution equityCurve={performance?.equity_curve ?? []} />
+              <SessionAnalysis equityCurve={performance?.equity_curve ?? []} />
+            </div>
 
             <PnlCalendar equityCurve={performance?.equity_curve ?? []} />
 
