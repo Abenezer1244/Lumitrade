@@ -49,7 +49,7 @@ class ConfidenceAdjuster:
         adjusted += session_adj
 
         # Factor 4: Spread penalty
-        spread_adj = self._spread_penalty(snapshot.spread_pips)
+        spread_adj = self._spread_penalty(snapshot.spread_pips, snapshot.pair)
         adjustments["spread_penalty"] = float(spread_adj)
         adjusted += spread_adj
 
@@ -134,11 +134,23 @@ class ConfidenceAdjuster:
             return Decimal("-0.10")
         return Decimal("0")
 
-    def _spread_penalty(self, spread_pips: Decimal) -> Decimal:
-        """Penalize wide spreads."""
-        if spread_pips > Decimal("3.0"):
-            return Decimal("-999")  # Signal should be rejected entirely
-        elif spread_pips > Decimal("2.0"):
+    # Per-instrument spread thresholds for confidence penalty
+    _SPREAD_REJECT: dict[str, Decimal] = {
+        "XAU_USD": Decimal("150"),   # Gold has wide spreads naturally
+    }
+    _SPREAD_WARN: dict[str, Decimal] = {
+        "XAU_USD": Decimal("100"),
+    }
+    _DEFAULT_SPREAD_REJECT = Decimal("3.0")
+    _DEFAULT_SPREAD_WARN = Decimal("2.0")
+
+    def _spread_penalty(self, spread_pips: Decimal, pair: str = "") -> Decimal:
+        """Penalize wide spreads, with per-instrument thresholds."""
+        reject = self._SPREAD_REJECT.get(pair, self._DEFAULT_SPREAD_REJECT)
+        warn = self._SPREAD_WARN.get(pair, self._DEFAULT_SPREAD_WARN)
+        if spread_pips > reject:
+            return Decimal("-999")
+        elif spread_pips > warn:
             return Decimal("-0.05")
         return Decimal("0")
 
