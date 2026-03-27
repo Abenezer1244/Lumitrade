@@ -294,10 +294,12 @@ class OrchestratorService:
                             action=_action_str(proposal.action),
                         )
                     except Exception as e:
+                        import traceback
                         logger.error(
                             "signal_to_trade_error",
                             pair=pair,
                             error=str(e),
+                            traceback=traceback.format_exc(),
                         )
 
                     # Stagger between pairs
