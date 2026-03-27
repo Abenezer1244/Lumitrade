@@ -123,7 +123,18 @@ class PromptBuilder:
             f"Analyze {snapshot.pair} and return your trading decision as JSON.",
             "Apply multi-timeframe confluence: H4 trend + H1 structure + M15 entry.",
             "Only recommend BUY or SELL if all three timeframes confirm the bias.",
-            "Minimum risk/reward ratio: 1.5:1. If not achievable — return HOLD.",
+            "Minimum risk/reward ratio: 2:1. If not achievable — return HOLD.",
+            "",
+            "=== POSITION SIZING GUIDANCE ===",
+            "Set stop_loss at a logical technical level (support/resistance, swing low/high).",
+            "Set take_profit at the NEXT significant technical level — not just a fixed pip target.",
+            "Use ATR to gauge realistic move potential:",
+            f"  Current ATR(14): {ind.atr_14} — this is the average range per candle.",
+            "  TP should target at least 1.5x ATR from entry for INTRADAY trades.",
+            "  TP should target at least 3x ATR from entry for SWING trades.",
+            "  For SCALP, tighter targets are acceptable (0.5-1x ATR).",
+            "Do NOT set conservative 10-20 pip TPs unless the trade is a scalp.",
+            "Let winners run — use key levels and Bollinger Bands to find realistic targets.",
         ]
         return "\n".join(sections)
 
