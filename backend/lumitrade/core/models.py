@@ -60,8 +60,8 @@ class PriceTick:
 
     @property
     def spread_pips(self) -> Decimal:
-        pip_size = Decimal("0.01") if "JPY" in self.pair else Decimal("0.0001")
-        return (self.ask - self.bid) / pip_size
+        from ..utils.pip_math import pip_size as get_pip_size
+        return (self.ask - self.bid) / get_pip_size(self.pair)
 
 
 @dataclass(frozen=True)

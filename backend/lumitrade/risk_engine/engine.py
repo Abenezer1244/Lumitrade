@@ -381,9 +381,16 @@ class RiskEngine:
             str(threshold),
         )
 
+    # Per-instrument max spread for risk check (in pips)
+    _MAX_SPREAD_BY_PAIR: dict[str, Decimal] = {
+        "XAU_USD": Decimal("150"),
+    }
+
     def _check_spread(self, proposal: SignalProposal) -> CheckResult:
         """Check 5: Spread must be within acceptable limit."""
-        max_spread = self._config.max_spread_pips
+        max_spread = self._MAX_SPREAD_BY_PAIR.get(
+            proposal.pair, self._config.max_spread_pips
+        )
         passed = proposal.spread_pips <= max_spread
         return (
             "SPREAD",

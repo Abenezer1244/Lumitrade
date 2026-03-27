@@ -18,7 +18,19 @@ logger = get_logger(__name__)
 STALE_THRESHOLD_SECONDS = 5
 SPIKE_STD_MULTIPLIER = Decimal("5.0")  # 5 stddev — avoid false positives on normal tick noise
 ROLLING_WINDOW = 100  # ~25 seconds of ticks at 250ms — larger window = more stable baseline
-MAX_SPREAD_PIPS = Decimal("5.0")  # Hard ceiling — config threshold is lower
+
+# Per-instrument max spread (in pips). Gold/metals have wider spreads.
+MAX_SPREAD_PIPS: dict[str, Decimal] = {
+    "EUR_USD": Decimal("3.0"),
+    "GBP_USD": Decimal("4.0"),
+    "USD_JPY": Decimal("3.0"),
+    "USD_CHF": Decimal("3.0"),
+    "AUD_USD": Decimal("3.0"),
+    "USD_CAD": Decimal("4.0"),
+    "NZD_USD": Decimal("4.0"),
+    "XAU_USD": Decimal("150"),   # Gold spread is typically 30-100+ pips
+}
+DEFAULT_MAX_SPREAD = Decimal("5.0")
 
 
 class DataValidator:
@@ -98,8 +110,9 @@ class DataValidator:
         return z_score > SPIKE_STD_MULTIPLIER
 
     def _check_spread(self, tick: PriceTick) -> bool:
-        """Spread must be within hard ceiling."""
-        return tick.spread_pips <= MAX_SPREAD_PIPS
+        """Spread must be within per-instrument ceiling."""
+        max_spread = MAX_SPREAD_PIPS.get(tick.pair, DEFAULT_MAX_SPREAD)
+        return tick.spread_pips <= max_spread
 
     def _check_ohlc(self, c: Candle) -> bool:
         """Validate Low <= Open/Close <= High."""
