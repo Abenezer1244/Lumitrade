@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import StatusDot from "@/components/ui/StatusDot";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import NotificationCenter from "@/components/ui/NotificationCenter";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -96,6 +97,9 @@ export default function TopBar() {
             PAPER
           </span>
         )}
+
+        {/* Notifications */}
+        <NotificationCenter />
 
         {/* Theme toggle */}
         <ThemeToggle />

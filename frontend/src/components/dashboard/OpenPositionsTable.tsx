@@ -314,11 +314,35 @@ export default function OpenPositionsTable() {
                         {pips > 0 ? "+" : ""}
                         {pips.toFixed(1)}
                       </td>
-                      <td
-                        className="py-2 px-2 font-mono"
-                        style={{ color: "var(--color-loss)" }}
-                      >
-                        {formatPrice(p.stop_loss, p.pair)}
+                      <td className="py-2 px-2 font-mono">
+                        <div className="flex items-center gap-1">
+                          <span style={{ color: "var(--color-loss)" }}>
+                            {formatPrice(p.stop_loss, p.pair)}
+                          </span>
+                          {/* Trailing stop indicator: show if SL is in profit zone */}
+                          {p.direction === "BUY" && Number(p.stop_loss) > Number(p.entry_price) && (
+                            <motion.span
+                              className="text-[8px] px-1 rounded font-bold"
+                              style={{ backgroundColor: "var(--color-profit-dim)", color: "var(--color-profit)" }}
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              title="Trailing stop — profit locked"
+                            >
+                              TSL
+                            </motion.span>
+                          )}
+                          {p.direction === "SELL" && Number(p.stop_loss) < Number(p.entry_price) && (
+                            <motion.span
+                              className="text-[8px] px-1 rounded font-bold"
+                              style={{ backgroundColor: "var(--color-profit-dim)", color: "var(--color-profit)" }}
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              title="Trailing stop — profit locked"
+                            >
+                              TSL
+                            </motion.span>
+                          )}
+                        </div>
                       </td>
                       <td
                         className="py-2 px-2 font-mono"
