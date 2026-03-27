@@ -416,29 +416,78 @@ class ExecutionEngine:
             )
 
     async def _mark_trade_closed(self, trade: dict) -> None:
-        """Mark a live trade as closed — fetch final details from context."""
+        """Mark a live trade as closed — fetch real exit details from OANDA."""
         entry = Decimal(str(trade.get("entry_price", "0")))
         pair = trade.get("pair", "")
+        direction = trade.get("direction", "BUY")
+        broker_id = trade.get("broker_trade_id", "")
 
-        # Publish position monitor detection event to Mission Control
+        # Fetch real close details from OANDA trade history
+        exit_price = entry
+        realized_pnl = Decimal("0")
+        exit_reason = "UNKNOWN"
+        try:
+            if self._oanda_read and broker_id:
+                oanda_trade = await self._oanda_read.get_trade(broker_id)
+                # OANDA returns averageClosePrice and realizedPL for closed trades
+                close_price = oanda_trade.get("averageClosePrice")
+                if close_price:
+                    exit_price = Decimal(str(close_price))
+                real_pl = oanda_trade.get("realizedPL")
+                if real_pl:
+                    realized_pnl = Decimal(str(real_pl))
+
+                # Determine exit reason from OANDA close reason
+                close_reason = oanda_trade.get("closingTransactionIDs", [])
+                # Check SL/TP by comparing exit price to expected levels
+                sl = Decimal(str(trade.get("stop_loss", "0")))
+                tp = Decimal(str(trade.get("take_profit", "0")))
+                sl_dist = abs(exit_price - sl)
+                tp_dist = abs(exit_price - tp)
+                from ..utils.pip_math import pip_size as get_pip_size
+                ps = get_pip_size(pair)
+                if sl_dist < ps * 5:  # Within 5 pips of SL
+                    exit_reason = "SL_HIT"
+                elif tp_dist < ps * 5:  # Within 5 pips of TP
+                    exit_reason = "TP_HIT"
+        except Exception as e:
+            logger.warning("oanda_trade_fetch_failed", broker_id=broker_id, error=str(e))
+
+        # Calculate P&L in pips
+        pnl_pips = pips_between(entry, exit_price, pair)
+        if direction == "BUY":
+            pnl_pips = pnl_pips if exit_price > entry else -pnl_pips
+        else:
+            pnl_pips = pnl_pips if exit_price < entry else -pnl_pips
+
+        # Use OANDA's realized P&L if available, otherwise calculate
+        if realized_pnl == 0 and exit_price != entry:
+            units = int(trade.get("position_size", 0))
+            from ..utils.pip_math import pip_value_per_unit
+            pv = pip_value_per_unit(pair, exit_price)
+            realized_pnl = pnl_pips * Decimal(str(units)) * pv
+
+        outcome = "WIN" if realized_pnl > 0 else ("LOSS" if realized_pnl < 0 else "BREAKEVEN")
+
+        # Publish event
         if self._events:
             self._events.publish(
                 "EXECUTION",
                 "POSITION_CLOSED_DETECTED",
-                f"Position monitor detected close: {pair} {trade.get('direction', '')}",
-                detail="Trade no longer open on OANDA — marking closed with unknown P&L",
-                severity="WARNING",
+                f"Closed: {pair} {direction} | {outcome} | P&L: ${realized_pnl:.2f} | Exit: {exit_price}",
+                severity="SUCCESS" if outcome == "WIN" else "WARNING",
                 pair=pair,
                 metadata={
                     "trade_id": trade.get("id", ""),
-                    "broker_trade_id": trade.get("broker_trade_id", ""),
-                    "direction": trade.get("direction", ""),
+                    "broker_trade_id": broker_id,
+                    "exit_price": str(exit_price),
+                    "realized_pnl": str(realized_pnl),
+                    "exit_reason": exit_reason,
                 },
             )
 
-        # Without OANDA trade history API, we mark as closed with unknown P&L
         await self._update_closed_trade(
-            trade, entry, Decimal("0"), Decimal("0"), "BREAKEVEN", "UNKNOWN"
+            trade, exit_price, pnl_pips, realized_pnl, outcome, exit_reason
         )
 
     async def _update_closed_trade(

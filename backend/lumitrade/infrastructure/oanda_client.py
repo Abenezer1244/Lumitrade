@@ -101,6 +101,13 @@ class OandaClient(BrokerInterface):
         resp.raise_for_status()
         return resp.json()["trades"]
 
+    async def get_trade(self, trade_id: str) -> dict:
+        """Fetch a specific trade by ID (open or closed)."""
+        url = f"{self._base_url}/v3/accounts/{self._account_id}/trades/{trade_id}"
+        resp = await self._client.get(url)
+        resp.raise_for_status()
+        return resp.json()["trade"]
+
     async def place_market_order(
         self,
         pair: str,
