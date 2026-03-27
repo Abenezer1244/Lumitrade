@@ -153,8 +153,11 @@ const rowVariants = {
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
+const COLLAPSED_MAX_ROWS = 5;
+
 export default function OpenPositionsTable() {
   const { positions, loading } = useOpenPositions();
+  const [expanded, setExpanded] = useState(false);
 
   // Track previous position IDs to detect removals for exit animation
   const prevIdsRef = useRef<Set<string>>(new Set());
@@ -167,6 +170,9 @@ export default function OpenPositionsTable() {
     () => `Open Positions (${positions.length})`,
     [positions.length]
   );
+
+  const hasMore = positions.length > COLLAPSED_MAX_ROWS;
+  const displayPositions = expanded ? positions : positions.slice(0, COLLAPSED_MAX_ROWS);
 
   if (loading) {
     return (
@@ -189,21 +195,35 @@ export default function OpenPositionsTable() {
       }}
     >
       {/* Header */}
-      <div className="flex items-center mb-3">
-        <h3
-          className="text-sm font-semibold font-display"
-          style={{ color: "var(--color-text-primary)" }}
-        >
-          {countLabel()}
-        </h3>
-        {positions.length > 0 && <PulseDot />}
-        {positions.length > 0 && (
-          <span
-            className="ml-2 text-xs"
-            style={{ color: "var(--color-text-tertiary)" }}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center">
+          <h3
+            className="text-sm font-semibold font-display"
+            style={{ color: "var(--color-text-primary)" }}
           >
-            Live
-          </span>
+            {countLabel()}
+          </h3>
+          {positions.length > 0 && <PulseDot />}
+          {positions.length > 0 && (
+            <span
+              className="ml-2 text-xs"
+              style={{ color: "var(--color-text-tertiary)" }}
+            >
+              Live
+            </span>
+          )}
+        </div>
+        {hasMore && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs font-medium px-2 py-1 rounded transition-colors"
+            style={{
+              color: "var(--color-accent)",
+              backgroundColor: "var(--color-bg-elevated)",
+            }}
+          >
+            {expanded ? "Show Less" : `Show All ${positions.length}`}
+          </button>
         )}
       </div>
 
@@ -211,9 +231,9 @@ export default function OpenPositionsTable() {
       {!positions.length ? (
         <AnimatedEmptyState />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" style={{ maxHeight: expanded ? "600px" : "auto", overflowY: expanded ? "auto" : "visible" }}>
           <table className="w-full text-sm">
-            <thead>
+            <thead className="sticky top-0" style={{ backgroundColor: "var(--color-bg-surface-solid)", zIndex: 1 }}>
               <tr
                 className="text-left text-xs uppercase tracking-wider"
                 style={{ color: "var(--color-text-tertiary)" }}
@@ -230,7 +250,7 @@ export default function OpenPositionsTable() {
             </thead>
             <AnimatePresence mode="popLayout">
               <tbody>
-                {positions.map((p) => {
+                {displayPositions.map((p) => {
                   const pnlValue = Number(p.pnl_usd || p.live_pnl_usd || 0);
                   const pips = Number(p.live_pnl_pips || 0);
                   const pipsColor =
