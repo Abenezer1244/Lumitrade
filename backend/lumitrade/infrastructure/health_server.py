@@ -71,6 +71,7 @@ class HealthServer:
         self._app.router.add_post("/onboarding", self._handle_onboarding)
         self._app.router.add_post("/reconcile", self._handle_reconcile)
         self._app.router.add_get("/account", self._handle_account)
+        self._app.router.add_post("/fix-breakeven", self._handle_fix_breakeven)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -419,6 +420,90 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("reconcile_endpoint_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_fix_breakeven(self, request: web.Request) -> web.Response:
+        """POST /fix-breakeven — retroactively fix BREAKEVEN trades with real OANDA P&L."""
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+            from ..utils.pip_math import pips_between, pip_size as get_pip_size
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+
+            # Find all CLOSED trades with BREAKEVEN outcome
+            breakeven_trades = await self._db.select(
+                "trades", {"status": "CLOSED", "outcome": "BREAKEVEN"}
+            )
+
+            fixed = []
+            errors = []
+            try:
+                for trade in breakeven_trades:
+                    broker_id = trade.get("broker_trade_id", "")
+                    if not broker_id:
+                        continue
+                    try:
+                        oanda_trade = await oanda.get_trade(broker_id)
+                        close_price = oanda_trade.get("averageClosePrice")
+                        real_pl = oanda_trade.get("realizedPL")
+                        if not close_price or not real_pl:
+                            continue
+
+                        from decimal import Decimal
+                        exit_price = Decimal(str(close_price))
+                        realized_pnl = Decimal(str(real_pl))
+                        entry = Decimal(str(trade.get("entry_price", "0")))
+                        pair = trade.get("pair", "")
+                        direction = trade.get("direction", "BUY")
+
+                        pnl_pips = pips_between(entry, exit_price, pair)
+                        if direction == "BUY":
+                            pnl_pips = pnl_pips if exit_price > entry else -pnl_pips
+                        else:
+                            pnl_pips = pnl_pips if exit_price < entry else -pnl_pips
+
+                        outcome = "WIN" if realized_pnl > 0 else ("LOSS" if realized_pnl < 0 else "BREAKEVEN")
+
+                        sl = Decimal(str(trade.get("stop_loss", "0")))
+                        tp = Decimal(str(trade.get("take_profit", "0")))
+                        ps = get_pip_size(pair)
+                        sl_dist = abs(exit_price - sl)
+                        tp_dist = abs(exit_price - tp)
+                        exit_reason = "SL_HIT" if sl_dist < tp_dist else "TP_HIT"
+
+                        await self._db.update(
+                            "trades",
+                            {"id": trade["id"]},
+                            {
+                                "exit_price": str(exit_price),
+                                "pnl_pips": str(pnl_pips),
+                                "pnl_usd": str(realized_pnl),
+                                "outcome": outcome,
+                                "exit_reason": exit_reason,
+                            },
+                        )
+                        fixed.append({
+                            "trade_id": trade["id"],
+                            "pair": pair,
+                            "outcome": outcome,
+                            "pnl_usd": str(realized_pnl),
+                        })
+                    except Exception as e:
+                        errors.append({"broker_id": broker_id, "error": str(e)})
+            finally:
+                await oanda.close()
+
+            return web.json_response({
+                "total_breakeven": len(breakeven_trades),
+                "fixed": len(fixed),
+                "errors": len(errors),
+                "details": fixed,
+                "error_details": errors,
+            })
+        except Exception as e:
+            logger.error("fix_breakeven_error", error=str(e))
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
