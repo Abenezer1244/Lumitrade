@@ -274,39 +274,70 @@ class ExecutionEngine:
 
     # ── Trailing Stop Loss ──────────────────────────────────────
     # Trail distance = original SL distance (entry to SL).
-    # Activation: trade must be at least 20 pips in profit.
+    # Activation threshold varies by instrument volatility.
     # Trail: once activated, move SL to lock in (current_price - trail_distance).
     # Never move SL backwards — only forward in the direction of profit.
-    TRAIL_ACTIVATION_PIPS = Decimal("20")
+    TRAIL_ACTIVATION_PIPS: dict[str, Decimal] = {
+        # Forex majors — standard 20 pip activation
+        "EUR_USD": Decimal("20"),
+        "GBP_USD": Decimal("25"),     # GBP is more volatile
+        "AUD_USD": Decimal("20"),
+        "NZD_USD": Decimal("20"),
+        "USD_CAD": Decimal("20"),
+        "USD_CHF": Decimal("20"),
+        # JPY pairs — same pip count but pips are 0.01 not 0.0001
+        "USD_JPY": Decimal("20"),
+        # Gold — much larger price, needs bigger activation
+        "XAU_USD": Decimal("500"),    # $5.00 move (~0.1% of price)
+    }
+    DEFAULT_TRAIL_ACTIVATION = Decimal("20")
 
     async def _trail_stop_losses(self) -> None:
-        """Check open trades and trail their stop losses on OANDA."""
+        """Check open trades and trail their stop losses on OANDA.
+        Batches pricing calls by collecting all unique pairs first."""
         db_open = await self._db.select(
             "trades", {"status": "OPEN", "account_id": self.config.account_uuid}
         )
-        if not db_open:
+        if not db_open or not self._oanda_read:
             return
 
-        for trade in db_open:
-            broker_id = trade.get("broker_trade_id", "")
-            if not broker_id:
-                continue
+        # Filter to trades with valid broker IDs
+        trailable = [t for t in db_open if t.get("broker_trade_id", "").strip()]
+        if not trailable:
+            return
 
-            pair = trade.get("pair", "")
-            if not pair or not self._oanda_read:
-                continue
+        # Batch: fetch prices for all pairs at once (1 API call instead of N)
+        all_pairs = list({t["pair"] for t in trailable if t.get("pair")})
+        try:
+            pricing = await self._oanda_read.get_pricing(all_pairs)
+        except Exception as e:
+            logger.warning("trailing_stop_pricing_error", error=str(e))
+            return
 
+        # Build price map
+        price_map: dict[str, Decimal] = {}
+        for p in pricing.get("prices", []):
+            inst = p.get("instrument", "")
+            bids = p.get("bids", [])
+            asks = p.get("asks", [])
+            if bids and asks:
+                bid = Decimal(str(bids[0]["price"]))
+                ask = Decimal(str(asks[0]["price"]))
+                price_map[inst] = (bid + ask) / 2
+
+        # Check each trade against current prices
+        for trade in trailable:
             try:
-                await self._check_and_trail(trade)
+                await self._check_and_trail(trade, price_map)
             except Exception as e:
                 logger.warning(
                     "trailing_stop_error",
-                    pair=pair,
-                    broker_id=broker_id,
+                    pair=trade.get("pair", ""),
+                    broker_id=trade.get("broker_trade_id", ""),
                     error=str(e),
                 )
 
-    async def _check_and_trail(self, trade: dict) -> None:
+    async def _check_and_trail(self, trade: dict, price_map: dict[str, Decimal]) -> None:
         """Check if a trade qualifies for trailing stop and update on OANDA."""
         pair = trade.get("pair", "")
         direction = trade.get("direction", "BUY")
@@ -315,35 +346,22 @@ class ExecutionEngine:
         tp = Decimal(str(trade.get("take_profit", "0")))
         broker_id = trade.get("broker_trade_id", "")
 
-        # Get current price
-        pricing = await self._oanda_read.get_pricing([pair])
-        prices = pricing.get("prices", [])
-        if not prices:
-            return
-        p = prices[0]
-        bids = p.get("bids", [{}])
-        asks = p.get("asks", [{}])
-        current_bid = Decimal(str(bids[0].get("price", "0"))) if bids else Decimal("0")
-        current_ask = Decimal(str(asks[0].get("price", "0"))) if asks else Decimal("0")
-        current_price = (current_bid + current_ask) / 2
-
-        if current_price == 0 or entry == 0:
+        current_price = price_map.get(pair)
+        if not current_price or current_price == 0 or entry == 0:
             return
 
-        # Calculate profit in pips
-        profit_pips = pips_between(entry, current_price, pair)
-        if direction == "SELL":
-            # For SELL, profit when price drops
-            profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
-        else:
-            # For BUY, profit when price rises
+        # Calculate profit in pips (signed)
+        if direction == "BUY":
             profit_pips = pips_between(entry, current_price, pair) if current_price > entry else -pips_between(current_price, entry, pair)
+        else:
+            profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
-        # Must be at least TRAIL_ACTIVATION_PIPS in profit
-        if profit_pips < self.TRAIL_ACTIVATION_PIPS:
+        # Per-instrument activation threshold
+        activation = self.TRAIL_ACTIVATION_PIPS.get(pair, self.DEFAULT_TRAIL_ACTIVATION)
+        if profit_pips < activation:
             return
 
-        # Calculate trail distance = original SL distance from entry
+        # Trail distance = original SL distance from entry
         from ..utils.pip_math import pip_size as get_pip_size
         ps = get_pip_size(pair)
         original_sl_distance = abs(entry - current_sl)
@@ -351,17 +369,15 @@ class ExecutionEngine:
         # Calculate new trailing SL
         if direction == "BUY":
             new_sl = current_price - original_sl_distance
-            # Never move SL backwards
             if new_sl <= current_sl:
                 return
         else:  # SELL
             new_sl = current_price + original_sl_distance
-            # Never move SL backwards (for SELL, lower SL is better)
             if new_sl >= current_sl:
                 return
 
         # Round to appropriate decimal places
-        if ps == Decimal("0.01"):
+        if ps >= Decimal("0.01"):
             new_sl = new_sl.quantize(Decimal("0.001"))
         else:
             new_sl = new_sl.quantize(Decimal("0.00001"))
@@ -384,12 +400,13 @@ class ExecutionEngine:
             old_sl=str(current_sl),
             new_sl=str(new_sl),
             profit_pips=str(profit_pips),
+            activation_threshold=str(activation),
         )
 
         if self._events:
             self._events.publish(
                 "EXECUTION", "TRAILING_STOP",
-                f"SL trailed: {pair} {direction} — SL moved from {current_sl} to {new_sl} (+{profit_pips:.1f} pips profit)",
+                f"SL trailed: {pair} {direction} — {current_sl} → {new_sl} (+{profit_pips:.1f} pips)",
                 pair=pair, severity="INFO",
                 metadata={
                     "old_sl": str(current_sl),
