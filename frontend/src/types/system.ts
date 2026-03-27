@@ -28,6 +28,7 @@ export interface AccountSummary {
   equity: string;
   margin_used: string;
   margin_available: string;
+  unrealized_pnl: string;
   open_trade_count: number;
   daily_pnl_usd: string;
   daily_pnl_pct: string;

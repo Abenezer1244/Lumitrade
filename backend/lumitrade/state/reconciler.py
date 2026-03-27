@@ -89,10 +89,15 @@ class PositionReconciler:
             # Detect ghosts: in DB as OPEN but not on OANDA
             for dt in db_trades:
                 broker_id = str(dt.get("broker_trade_id", ""))
-                if broker_id and broker_id not in oanda_by_id:
+                if not broker_id:
+                    # No broker_trade_id means we can't match to OANDA —
+                    # treat as ghost (leftover from old parsing bug)
                     ghost = await self._handle_ghost(dt, now)
                     ghosts.append(ghost)
-                elif broker_id and broker_id in oanda_by_id:
+                elif broker_id not in oanda_by_id:
+                    ghost = await self._handle_ghost(dt, now)
+                    ghosts.append(ghost)
+                else:
                     matched.append({
                         "trade_id": dt.get("id"),
                         "broker_trade_id": broker_id,

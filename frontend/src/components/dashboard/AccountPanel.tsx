@@ -21,7 +21,7 @@ export default function AccountPanel() {
 
   const balance = parseFloat(account.balance || "0");
   const equity = parseFloat(account.equity || "0");
-  const unrealizedPnl = equity - balance;
+  const unrealizedPnl = parseFloat(account.unrealized_pnl || "0");
   const dailyPnl = parseFloat(account.daily_pnl_usd || "0");
   const isProfit = unrealizedPnl >= 0;
   const isDailyProfit = dailyPnl >= 0;

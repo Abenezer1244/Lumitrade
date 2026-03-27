@@ -196,6 +196,9 @@ class OrchestratorService:
             asyncio.create_task(
                 self._weekly_intelligence_loop(), name="intelligence"
             ),
+            asyncio.create_task(
+                self._periodic_reconciliation(), name="reconciliation"
+            ),
         ]
 
         logger.info("lumitrade_running", mode=self.config.trading_mode)
@@ -244,6 +247,16 @@ class OrchestratorService:
                     try:
                         # 1. Scan for signal
                         proposal = await self.scanner.execute_scan(pair)
+
+                        # Record scan time for AI Brain status reporting
+                        # (even for HOLD/None — shows scanner is alive)
+                        if self.state:
+                            signal_times = self.state._state.get("last_signal_at") or {}
+                            if not isinstance(signal_times, dict):
+                                signal_times = {}
+                            signal_times[pair] = datetime.now(timezone.utc).isoformat()
+                            self.state._state["last_signal_at"] = signal_times
+
                         if not proposal:
                             continue
                         if _action_str(proposal.action) == "HOLD":
@@ -381,6 +394,37 @@ class OrchestratorService:
                 break
             except Exception as e:
                 logger.warning("risk_monitor_loop_error", error=str(e))
+
+    async def _periodic_reconciliation(self) -> None:
+        """Run position reconciliation every 5 minutes to detect ghost/phantom trades."""
+        RECONCILE_INTERVAL = 300  # 5 minutes
+        while True:
+            try:
+                await asyncio.sleep(RECONCILE_INTERVAL)
+                from .infrastructure.alert_service import AlertService
+                from .state.reconciler import PositionReconciler
+
+                reconciler = PositionReconciler(self.db, self.oanda, self.alerts)
+                result = await reconciler.reconcile()
+
+                ghosts = len(result.get("ghosts", []))
+                phantoms = len(result.get("phantoms", []))
+                if ghosts > 0 or phantoms > 0:
+                    logger.warning(
+                        "periodic_reconciliation_found_issues",
+                        ghosts=ghosts,
+                        phantoms=phantoms,
+                        matched=len(result.get("matched", [])),
+                    )
+                else:
+                    logger.debug(
+                        "periodic_reconciliation_clean",
+                        matched=len(result.get("matched", [])),
+                    )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning("periodic_reconciliation_error", error=str(e))
 
     async def _weekly_intelligence_loop(self) -> None:
         """SA-04: Fire intelligence report every Sunday at 19:00 EST."""

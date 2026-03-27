@@ -69,6 +69,8 @@ class HealthServer:
         self._app.router.add_get("/settings", self._handle_get_settings)
         self._app.router.add_post("/settings", self._handle_post_settings)
         self._app.router.add_post("/onboarding", self._handle_onboarding)
+        self._app.router.add_post("/reconcile", self._handle_reconcile)
+        self._app.router.add_get("/account", self._handle_account)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -358,6 +360,66 @@ class HealthServer:
                 {"response": "Onboarding service encountered an error.", "completed": False},
                 status=500,
             )
+
+    async def _handle_account(self, request: web.Request) -> web.Response:
+        """
+        GET /account — return real OANDA account summary.
+        Returns balance, equity, margin, unrealized P&L directly from OANDA.
+        """
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+            try:
+                acct = await oanda.get_account_summary()
+                balance = float(acct.get("balance", 0))
+                equity = float(acct.get("NAV", acct.get("equity", balance)))
+                margin_used = float(acct.get("marginUsed", 0))
+                unrealized_pnl = float(acct.get("unrealizedPL", 0))
+                open_trade_count = int(acct.get("openTradeCount", 0))
+
+                return web.json_response({
+                    "balance": round(balance, 2),
+                    "equity": round(equity, 2),
+                    "margin_used": round(margin_used, 2),
+                    "margin_available": round(balance - margin_used, 2),
+                    "unrealized_pnl": round(unrealized_pnl, 2),
+                    "open_trade_count": open_trade_count,
+                })
+            finally:
+                await oanda.close()
+        except Exception as e:
+            logger.error("account_endpoint_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_reconcile(self, request: web.Request) -> web.Response:
+        """POST /reconcile — trigger position reconciliation on demand."""
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.alert_service import AlertService
+            from ..infrastructure.oanda_client import OandaClient
+            from ..state.reconciler import PositionReconciler
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+            try:
+                alerts = AlertService(config, self._db)
+                reconciler = PositionReconciler(self._db, oanda, alerts)
+                result = await reconciler.reconcile()
+                logger.info(
+                    "manual_reconciliation_complete",
+                    ghosts=len(result.get("ghosts", [])),
+                    phantoms=len(result.get("phantoms", [])),
+                    matched=len(result.get("matched", [])),
+                )
+                return web.json_response(result)
+            finally:
+                await oanda.close()
+        except Exception as e:
+            logger.error("reconcile_endpoint_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
         """

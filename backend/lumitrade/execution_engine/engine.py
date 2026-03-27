@@ -127,6 +127,22 @@ class ExecutionEngine:
             return None
 
     async def _save_trade(self, order: ApprovedOrder, result: OrderResult) -> None:
+        # CRITICAL: Never save a trade without a valid broker_trade_id.
+        # Empty broker_trade_id creates ghost trades that can't be matched
+        # to OANDA and will never be cleaned up by position monitor.
+        if not result.broker_trade_id or not result.broker_trade_id.strip():
+            logger.critical(
+                "trade_save_blocked_no_broker_id",
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+                raw_response_keys=list(result.raw_response.keys()) if result.raw_response else [],
+            )
+            await self._alerts.send_critical(
+                f"BLOCKED: Trade {order.pair} saved without broker_trade_id. "
+                f"Order filled but not tracked — manual OANDA review required."
+            )
+            return
+
         try:
             await self._db.insert(
                 "trades",
