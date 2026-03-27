@@ -50,4 +50,18 @@ export interface PerformanceSummary {
   sharpe_ratio: number;
   expectancy_per_trade_usd: number;
   equity_curve: { date: string; equity: number }[];
+  pair_breakdown?: PairPerformance[];
+}
+
+export interface PairPerformance {
+  pair: string;
+  total_trades: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  avg_pnl: number;
+  best_trade: number;
+  worst_trade: number;
+  avg_hold_minutes: number;
 }

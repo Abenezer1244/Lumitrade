@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { PerformanceSummary } from "@/types/system";
 import MetricsGrid from "@/components/analytics/MetricsGrid";
 import EquityCurve from "@/components/analytics/EquityCurve";
+import PairBreakdown from "@/components/analytics/PairBreakdown";
+import PnlCalendar from "@/components/analytics/PnlCalendar";
 import RiskOfRuinPanel from "@/components/analytics/RiskOfRuinPanel";
 
 export default function AnalyticsPage() {
@@ -49,6 +51,10 @@ export default function AnalyticsPage() {
         ) : (
           <>
             <EquityCurve data={performance?.equity_curve ?? []} />
+
+            <PairBreakdown data={performance?.pair_breakdown ?? []} />
+
+            <PnlCalendar equityCurve={performance?.equity_curve ?? []} />
 
             {performance && performance.total_trades > 0 && (
               <RiskOfRuinPanel

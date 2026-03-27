@@ -17,10 +17,12 @@ const EMPTY_ANALYTICS = {
 };
 
 interface Trade {
+  pair: string;
   pnl_usd: string | null;
   pnl_pips: string | null;
   outcome: string | null;
   closed_at: string | null;
+  opened_at: string | null;
 }
 
 export async function GET() {
@@ -36,7 +38,7 @@ export async function GET() {
 
   try {
     const res = await fetch(
-      `${url}/rest/v1/trades?select=pnl_usd,pnl_pips,outcome,closed_at&status=eq.CLOSED&order=closed_at.asc`,
+      `${url}/rest/v1/trades?select=pair,pnl_usd,pnl_pips,outcome,closed_at,opened_at&status=eq.CLOSED&order=closed_at.asc`,
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         cache: "no-store",
@@ -102,6 +104,43 @@ export async function GET() {
     const stdDev = Math.sqrt(variance);
     const sharpe = stdDev > 0 ? (meanReturn / stdDev) * Math.sqrt(252) : 0;
 
+    // Per-pair breakdown
+    const pairMap = new Map<string, Trade[]>();
+    for (const t of trades) {
+      const p = t.pair || "UNKNOWN";
+      if (!pairMap.has(p)) pairMap.set(p, []);
+      pairMap.get(p)!.push(t);
+    }
+
+    const pairBreakdown = Array.from(pairMap.entries()).map(([pair, pts]) => {
+      const pWins = pts.filter((t) => t.outcome === "WIN");
+      const pLosses = pts.filter((t) => t.outcome === "LOSS");
+      const pTotalPnl = pts.reduce((s, t) => s + parsePnl(t), 0);
+      const pAvgPnl = pts.length > 0 ? pTotalPnl / pts.length : 0;
+
+      // Average hold time in minutes
+      let avgHoldMin = 0;
+      const holdTimes = pts
+        .filter((t) => t.opened_at && t.closed_at)
+        .map((t) => (new Date(t.closed_at!).getTime() - new Date(t.opened_at!).getTime()) / 60000);
+      if (holdTimes.length > 0) {
+        avgHoldMin = holdTimes.reduce((a, b) => a + b, 0) / holdTimes.length;
+      }
+
+      return {
+        pair,
+        total_trades: pts.length,
+        wins: pWins.length,
+        losses: pLosses.length,
+        win_rate: pts.length > 0 ? (pWins.length / pts.length) * 100 : 0,
+        total_pnl: Math.round(pTotalPnl * 100) / 100,
+        avg_pnl: Math.round(pAvgPnl * 100) / 100,
+        best_trade: pts.length > 0 ? Math.max(...pts.map(parsePnl)) : 0,
+        worst_trade: pts.length > 0 ? Math.min(...pts.map(parsePnl)) : 0,
+        avg_hold_minutes: Math.round(avgHoldMin),
+      };
+    }).sort((a, b) => b.total_pnl - a.total_pnl);
+
     return NextResponse.json({
       total_trades: trades.length,
       win_rate: (wins.length / trades.length) * 100,
@@ -124,6 +163,7 @@ export async function GET() {
       sharpe_ratio: Math.round(sharpe * 100) / 100,
       expectancy_per_trade_usd: Math.round((totalPnl / trades.length) * 100) / 100,
       equity_curve: equityCurve,
+      pair_breakdown: pairBreakdown,
     });
   } catch {
     return NextResponse.json(EMPTY_ANALYTICS);
