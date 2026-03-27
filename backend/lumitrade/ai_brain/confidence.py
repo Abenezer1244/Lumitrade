@@ -156,7 +156,7 @@ class ConfidenceAdjuster:
         if len(trades) < 5:
             return Decimal("0")
 
-        wins = sum(1 for t in trades if t.outcome and t.outcome.value == "WIN")
+        wins = sum(1 for t in trades if t.outcome and (t.outcome.value if hasattr(t.outcome, "value") else str(t.outcome)) == "WIN")
         win_rate = wins / len(trades)
         if win_rate < 0.4:
             return Decimal("-0.10")

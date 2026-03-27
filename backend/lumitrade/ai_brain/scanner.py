@@ -289,10 +289,10 @@ class SignalScanner:
                 "indicators_snapshot": proposal.indicators_snapshot,
                 "timeframe_scores": proposal.timeframe_scores,
                 "key_levels": [str(k) for k in proposal.key_levels],
-                "session": proposal.session.value,
+                "session": (proposal.session.value if hasattr(proposal.session, "value") else str(proposal.session)),
                 "spread_pips": str(proposal.spread_pips),
                 "executed": False,
-                "generation_method": proposal.generation_method.value,
+                "generation_method": (proposal.generation_method.value if hasattr(proposal.generation_method, "value") else str(proposal.generation_method)),
                 "ai_prompt_hash": proposal.ai_prompt_hash,
                 "created_at": proposal.created_at.isoformat(),
             })

@@ -75,7 +75,7 @@ class PromptBuilder:
         sections = [
             "=== MARKET CONTEXT ===",
             f"Pair: {snapshot.pair}",
-            f"Session: {snapshot.session.value}",
+            f"Session: {snapshot.session.value if hasattr(snapshot.session, 'value') else str(snapshot.session)}",
             f"Timestamp: {snapshot.timestamp.isoformat()}",
             f"Current Bid: {snapshot.bid}  Ask: {snapshot.ask}",
             f"Spread: {snapshot.spread_pips} pips",
@@ -227,7 +227,7 @@ def _format_news(events: list[NewsEvent]) -> str:
         safe_title = _sanitize_news_title(e.title)
         currencies = ",".join(c for c in e.currencies_affected if c.isalpha())
         lines.append(
-            f"  [{e.impact.value}] {safe_title} ({currencies}) in {e.minutes_until}m"
+            f"  [{e.impact.value if hasattr(e.impact, 'value') else str(e.impact)}] {safe_title} ({currencies}) in {e.minutes_until}m"
         )
     return "\n".join(lines)
 
@@ -238,6 +238,7 @@ def _format_recent_trades(trades: list[TradeSummary]) -> str:
         return "  No recent trades on this pair."
     lines = []
     for t in trades:
-        outcome = t.outcome.value if t.outcome else "OPEN"
-        lines.append(f"  {t.direction.value} | {outcome} | {t.pnl_pips} pips")
+        outcome_str = t.outcome.value if hasattr(t.outcome, "value") else str(t.outcome or "OPEN")
+        direction_str = t.direction.value if hasattr(t.direction, "value") else str(t.direction)
+        lines.append(f"  {direction_str} | {outcome_str} | {t.pnl_pips} pips")
     return "\n".join(lines)

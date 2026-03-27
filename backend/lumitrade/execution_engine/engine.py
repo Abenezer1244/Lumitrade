@@ -93,7 +93,7 @@ class ExecutionEngine:
             verified = await self._fill_verifier.verify(order, result)
             await self._save_trade(order, verified)
             await self._alerts.send_info(
-                f"Trade opened: {order.pair} {order.direction.value} "
+                f"Trade opened: {order.pair} {(order.direction.value if hasattr(order.direction, "value") else str(order.direction))} "
                 f"{abs(order.units)} units at {verified.fill_price}"
             )
 
@@ -102,17 +102,17 @@ class ExecutionEngine:
                 self._events.publish(
                     "EXECUTION",
                     "ORDER",
-                    f"ORDER PLACED: {order.direction.value} {abs(order.units)} {order.pair} @ {verified.fill_price}",
+                    f"ORDER PLACED: {(order.direction.value if hasattr(order.direction, "value") else str(order.direction))} {abs(order.units)} {order.pair} @ {verified.fill_price}",
                     severity="SUCCESS",
                     pair=order.pair,
                     metadata={
-                        "direction": order.direction.value,
+                        "direction": (order.direction.value if hasattr(order.direction, "value") else str(order.direction)),
                         "units": abs(order.units),
                         "fill_price": str(verified.fill_price),
                         "stop_loss": str(order.stop_loss),
                         "take_profit": str(order.take_profit),
                         "slippage_pips": str(verified.slippage_pips),
-                        "mode": order.mode.value,
+                        "mode": (order.mode.value if hasattr(order.mode, "value") else str(order.mode)),
                         "signal_id": str(order.signal_id),
                     },
                 )
@@ -135,8 +135,8 @@ class ExecutionEngine:
                     "signal_id": str(order.signal_id),
                     "broker_trade_id": result.broker_trade_id,
                     "pair": order.pair,
-                    "direction": order.direction.value,
-                    "mode": order.mode.value,
+                    "direction": (order.direction.value if hasattr(order.direction, "value") else str(order.direction)),
+                    "mode": (order.mode.value if hasattr(order.mode, "value") else str(order.mode)),
                     "entry_price": str(result.fill_price),
                     "stop_loss": str(order.stop_loss),
                     "take_profit": str(order.take_profit),
