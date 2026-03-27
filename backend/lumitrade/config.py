@@ -64,7 +64,7 @@ class LumitradeConfig(BaseSettings):
     max_spread_pips: Decimal = Decimal("3.0")
     news_blackout_before_min: int = 30
     news_blackout_after_min: int = 15
-    trade_cooldown_minutes: int = 60
+    trade_cooldown_minutes: int = 5
     min_rr_ratio: Decimal = Decimal("1.5")
 
     @cached_property
