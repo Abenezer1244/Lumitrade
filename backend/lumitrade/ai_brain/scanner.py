@@ -28,11 +28,17 @@ from .validator import AIOutputValidator
 
 logger = get_logger(__name__)
 
-# Stagger offsets in minutes within the 15-minute interval
+# Stagger offsets in seconds to avoid hitting Claude API simultaneously.
+# Spreads 8 pairs across the scan cycle with 30s gaps.
 PAIR_OFFSETS = {
     "EUR_USD": 0,
-    "GBP_USD": 5,
-    "USD_JPY": 10,
+    "GBP_USD": 30,
+    "USD_JPY": 60,
+    "USD_CHF": 90,
+    "AUD_USD": 120,
+    "USD_CAD": 150,
+    "NZD_USD": 180,
+    "XAU_USD": 210,
 }
 
 
@@ -76,10 +82,10 @@ class SignalScanner:
 
     async def _scan_pair(self, pair: str) -> None:
         """Scan a single pair with per-pair locking."""
-        # Apply stagger offset
+        # Apply stagger offset (in seconds)
         offset = PAIR_OFFSETS.get(pair, 0)
         if offset > 0:
-            await asyncio.sleep(offset * 60)
+            await asyncio.sleep(offset)
 
         # Acquire per-pair lock
         if pair not in self._pair_locks:

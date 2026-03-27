@@ -5,7 +5,7 @@ import { Zap } from "lucide-react";
 import SignalCard from "@/components/signals/SignalCard";
 import EmptyState from "@/components/ui/EmptyState";
 
-const PAIRS = ["All Pairs", "EUR_USD", "GBP_USD", "USD_JPY"];
+const PAIRS = ["All Pairs", "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "XAU_USD"];
 const ACTIONS = ["All Actions", "BUY", "SELL", "HOLD"];
 
 export default function SignalsPage() {

@@ -1,8 +1,7 @@
 """
 Lumitrade Correlation Matrix
 ==============================
-Known historical forex correlations for the 3 traded pairs:
-EUR_USD, GBP_USD, USD_JPY.
+Known historical forex correlations for the 8 traded instruments.
 
 Uses static 90-day rolling approximate correlations. Phase 2 will
 compute rolling correlations from live candle data.
@@ -19,9 +18,29 @@ logger = get_logger(__name__)
 # ── Static correlation table (approximate 90-day rolling) ─────────
 # Keys are normalized: alphabetically sorted tuple of pairs.
 _CORRELATION_TABLE: dict[tuple[str, str], Decimal] = {
+    # Original 3 pairs
     ("EUR_USD", "GBP_USD"): Decimal("0.85"),
     ("EUR_USD", "USD_JPY"): Decimal("-0.60"),
     ("GBP_USD", "USD_JPY"): Decimal("-0.55"),
+    # New major pairs
+    ("AUD_USD", "EUR_USD"): Decimal("0.70"),
+    ("AUD_USD", "GBP_USD"): Decimal("0.65"),
+    ("AUD_USD", "NZD_USD"): Decimal("0.90"),
+    ("AUD_USD", "USD_JPY"): Decimal("-0.50"),
+    ("EUR_USD", "NZD_USD"): Decimal("0.65"),
+    ("EUR_USD", "USD_CAD"): Decimal("-0.55"),
+    ("EUR_USD", "USD_CHF"): Decimal("-0.90"),
+    ("GBP_USD", "NZD_USD"): Decimal("0.60"),
+    ("GBP_USD", "USD_CAD"): Decimal("-0.50"),
+    ("GBP_USD", "USD_CHF"): Decimal("-0.75"),
+    ("NZD_USD", "USD_JPY"): Decimal("-0.45"),
+    ("USD_CAD", "USD_CHF"): Decimal("0.50"),
+    ("USD_CAD", "USD_JPY"): Decimal("0.55"),
+    ("USD_CHF", "USD_JPY"): Decimal("0.60"),
+    # Gold
+    ("EUR_USD", "XAU_USD"): Decimal("0.40"),
+    ("USD_CHF", "XAU_USD"): Decimal("-0.35"),
+    ("USD_JPY", "XAU_USD"): Decimal("-0.30"),
 }
 
 
