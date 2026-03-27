@@ -124,11 +124,19 @@ class SignalScanner:
             return None
 
         if not snapshot.data_quality.is_tradeable:
-            logger.warning("scan_data_not_tradeable", pair=pair)
+            dq = snapshot.data_quality
+            reason = []
+            if not dq.is_fresh: reason.append("stale price")
+            if dq.spike_detected: reason.append("spike detected")
+            if not dq.spread_acceptable: reason.append(f"spread too wide")
+            if not dq.candles_complete: reason.append("candle gaps")
+            if not dq.ohlc_valid: reason.append("OHLC invalid")
+            reason_str = ", ".join(reason) if reason else "unknown"
+            logger.warning("scan_data_not_tradeable", pair=pair, reasons=reason_str)
             if self._events:
                 self._events.publish(
                     "SCANNER", "SIGNAL",
-                    f"No trade on {pair} — data quality not tradeable",
+                    f"No trade on {pair} — {reason_str}",
                     pair=pair, severity="WARNING",
                 )
             return None

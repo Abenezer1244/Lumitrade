@@ -116,17 +116,20 @@ class DataEngine:
         candles_h1 = candle_data.get("H1", [])
         candles_h4 = candle_data.get("H4", [])
 
-        # 4. Validate candles
+        # 4. Validate candles (log failures but only block on OHLC, not gaps)
         for tf_candles in [candles_m15, candles_h1, candles_h4]:
             ohlc_ok, gaps_ok = self._validator.validate_candles(tf_candles)
-            if not ohlc_ok or not gaps_ok:
+            if not ohlc_ok:
                 quality = DataQuality(
                     is_fresh=quality.is_fresh,
                     spike_detected=quality.spike_detected,
                     spread_acceptable=quality.spread_acceptable,
-                    candles_complete=gaps_ok,
-                    ohlc_valid=ohlc_ok,
+                    candles_complete=quality.candles_complete,
+                    ohlc_valid=False,
                 )
+            if not gaps_ok:
+                logger.debug("candle_gaps_detected", pair=pair)
+                # Gaps are common for gold/commodities — warn but don't block
 
         # 5. Compute indicators from H1 candles (primary)
         indicators = compute_indicators(candles_h1)
