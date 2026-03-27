@@ -83,45 +83,83 @@ class CalendarFetcher:
 
     async def _fetch_events(self) -> list[NewsEvent]:
         """
-        Fetch economic calendar events from OANDA Labs API.
+        Fetch economic calendar from ForexFactory free JSON feed.
 
-        Endpoint: GET /labs/v1/calendar?instrument={pair}&period={seconds}
-        Uses the data API key (read-only) — not the trading key.
-
+        Source: https://nfs.faireconomy.media/ff_calendar_thisweek.json
+        Returns HIGH and MEDIUM impact events for the next 4 hours.
         Returns empty list on any failure (graceful degradation).
         """
-        all_events: dict[str, NewsEvent] = {}
-
-        # Fetch calendar for each configured pair to get comprehensive coverage
-        pairs_to_fetch = self._config.pairs
+        url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-                for pair in pairs_to_fetch:
-                    try:
-                        events = await self._fetch_pair_calendar(client, pair)
-                        for event in events:
-                            # Deduplicate by event_id
-                            all_events[event.event_id] = event
-                    except Exception as e:
-                        logger.warning(
-                            "calendar_pair_fetch_failed",
-                            pair=pair,
-                            error=str(e),
-                        )
-                        continue
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    logger.warning("calendar_fetch_failed", status=resp.status_code)
+                    return []
+
+                raw_events = resp.json()
 
         except Exception as e:
             logger.error("calendar_fetch_failed", error=str(e))
             return []
 
-        result = list(all_events.values())
-        logger.info(
-            "calendar_fetched",
-            event_count=len(result),
-            pairs_queried=len(pairs_to_fetch),
-        )
-        return result
+        # Map ForexFactory country codes to forex currencies
+        country_to_currency = {
+            "USD": "USD", "EUR": "EUR", "GBP": "GBP", "JPY": "JPY",
+            "AUD": "AUD", "CAD": "CAD", "CHF": "CHF", "NZD": "NZD",
+        }
+
+        now = datetime.now(timezone.utc)
+        lookahead = now + timedelta(hours=4)
+        events: list[NewsEvent] = []
+
+        for raw in raw_events:
+            try:
+                # Parse impact
+                impact_str = (raw.get("impact") or "").strip()
+                if impact_str == "High":
+                    impact = NewsImpact.HIGH
+                elif impact_str == "Medium":
+                    impact = NewsImpact.MEDIUM
+                else:
+                    continue  # Skip low/holiday
+
+                # Parse time
+                date_str = raw.get("date", "")
+                event_time = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                if event_time.tzinfo is None:
+                    event_time = event_time.replace(tzinfo=timezone.utc)
+
+                # Only include events in the next 4 hours
+                if event_time < now - timedelta(minutes=15) or event_time > lookahead:
+                    continue
+
+                currency = country_to_currency.get(raw.get("country", ""), "")
+                if not currency:
+                    continue
+
+                title = raw.get("title", "Unknown Event")
+                minutes_until = int((event_time - now).total_seconds() / 60)
+
+                event_id = hashlib.sha256(
+                    f"{title}{date_str}".encode()
+                ).hexdigest()[:16]
+
+                events.append(NewsEvent(
+                    event_id=event_id,
+                    title=title,
+                    impact=impact,
+                    currencies_affected=[currency],
+                    event_time=event_time,
+                    minutes_until=max(minutes_until, 0),
+                ))
+
+            except Exception:
+                continue
+
+        logger.info("calendar_fetched", event_count=len(events), source="forexfactory")
+        return events
 
     async def _fetch_pair_calendar(
         self, client: httpx.AsyncClient, pair: str
