@@ -50,6 +50,7 @@ class ExecutionEngine:
         self._alerts = alert_service
         self._subagents = subagents
         self._oanda_read = oanda_read_client
+        self._oanda_trade = trading_client
         self._events = events
         self._circuit_breaker = CircuitBreaker()
         self._fill_verifier = FillVerifier(alert_service)
@@ -168,13 +169,14 @@ class ExecutionEngine:
             logger.error("trade_save_failed", error=str(e))
 
     async def position_monitor(self) -> None:
-        """Monitor open positions — detect closes (SL/TP hit) and update DB."""
+        """Monitor open positions — detect closes, trail stops."""
         logger.info("position_monitor_started")
         try:
             while True:
                 await asyncio.sleep(POSITION_MONITOR_INTERVAL)
                 try:
                     await self._check_closed_positions()
+                    await self._trail_stop_losses()
                 except Exception as e:
                     logger.error("position_monitor_error", error=str(e))
         except asyncio.CancelledError:
@@ -268,6 +270,132 @@ class ExecutionEngine:
 
             await self._update_closed_trade(
                 trade, exit_price, pnl_pips, pnl_usd, outcome, exit_reason
+            )
+
+    # ── Trailing Stop Loss ──────────────────────────────────────
+    # Trail distance = original SL distance (entry to SL).
+    # Activation: trade must be at least 20 pips in profit.
+    # Trail: once activated, move SL to lock in (current_price - trail_distance).
+    # Never move SL backwards — only forward in the direction of profit.
+    TRAIL_ACTIVATION_PIPS = Decimal("20")
+
+    async def _trail_stop_losses(self) -> None:
+        """Check open trades and trail their stop losses on OANDA."""
+        db_open = await self._db.select(
+            "trades", {"status": "OPEN", "account_id": self.config.account_uuid}
+        )
+        if not db_open:
+            return
+
+        for trade in db_open:
+            broker_id = trade.get("broker_trade_id", "")
+            if not broker_id:
+                continue
+
+            pair = trade.get("pair", "")
+            if not pair or not self._oanda_read:
+                continue
+
+            try:
+                await self._check_and_trail(trade)
+            except Exception as e:
+                logger.warning(
+                    "trailing_stop_error",
+                    pair=pair,
+                    broker_id=broker_id,
+                    error=str(e),
+                )
+
+    async def _check_and_trail(self, trade: dict) -> None:
+        """Check if a trade qualifies for trailing stop and update on OANDA."""
+        pair = trade.get("pair", "")
+        direction = trade.get("direction", "BUY")
+        entry = Decimal(str(trade.get("entry_price", "0")))
+        current_sl = Decimal(str(trade.get("stop_loss", "0")))
+        tp = Decimal(str(trade.get("take_profit", "0")))
+        broker_id = trade.get("broker_trade_id", "")
+
+        # Get current price
+        pricing = await self._oanda_read.get_pricing([pair])
+        prices = pricing.get("prices", [])
+        if not prices:
+            return
+        p = prices[0]
+        bids = p.get("bids", [{}])
+        asks = p.get("asks", [{}])
+        current_bid = Decimal(str(bids[0].get("price", "0"))) if bids else Decimal("0")
+        current_ask = Decimal(str(asks[0].get("price", "0"))) if asks else Decimal("0")
+        current_price = (current_bid + current_ask) / 2
+
+        if current_price == 0 or entry == 0:
+            return
+
+        # Calculate profit in pips
+        profit_pips = pips_between(entry, current_price, pair)
+        if direction == "SELL":
+            # For SELL, profit when price drops
+            profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
+        else:
+            # For BUY, profit when price rises
+            profit_pips = pips_between(entry, current_price, pair) if current_price > entry else -pips_between(current_price, entry, pair)
+
+        # Must be at least TRAIL_ACTIVATION_PIPS in profit
+        if profit_pips < self.TRAIL_ACTIVATION_PIPS:
+            return
+
+        # Calculate trail distance = original SL distance from entry
+        from ..utils.pip_math import pip_size as get_pip_size
+        ps = get_pip_size(pair)
+        original_sl_distance = abs(entry - current_sl)
+
+        # Calculate new trailing SL
+        if direction == "BUY":
+            new_sl = current_price - original_sl_distance
+            # Never move SL backwards
+            if new_sl <= current_sl:
+                return
+        else:  # SELL
+            new_sl = current_price + original_sl_distance
+            # Never move SL backwards (for SELL, lower SL is better)
+            if new_sl >= current_sl:
+                return
+
+        # Round to appropriate decimal places
+        if ps == Decimal("0.01"):
+            new_sl = new_sl.quantize(Decimal("0.001"))
+        else:
+            new_sl = new_sl.quantize(Decimal("0.00001"))
+
+        # Update SL on OANDA
+        await self._oanda_trade.modify_trade(broker_id, new_sl, tp)
+
+        # Update SL in DB
+        await self._db.update(
+            "trades",
+            {"id": trade.get("id")},
+            {"stop_loss": str(new_sl)},
+        )
+
+        logger.info(
+            "trailing_stop_moved",
+            pair=pair,
+            broker_id=broker_id,
+            direction=direction,
+            old_sl=str(current_sl),
+            new_sl=str(new_sl),
+            profit_pips=str(profit_pips),
+        )
+
+        if self._events:
+            self._events.publish(
+                "EXECUTION", "TRAILING_STOP",
+                f"SL trailed: {pair} {direction} — SL moved from {current_sl} to {new_sl} (+{profit_pips:.1f} pips profit)",
+                pair=pair, severity="INFO",
+                metadata={
+                    "old_sl": str(current_sl),
+                    "new_sl": str(new_sl),
+                    "profit_pips": str(profit_pips),
+                },
             )
 
     async def _mark_trade_closed(self, trade: dict) -> None:
