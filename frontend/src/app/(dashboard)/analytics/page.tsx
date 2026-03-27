@@ -9,6 +9,7 @@ import PnlCalendar from "@/components/analytics/PnlCalendar";
 import PriceChart from "@/components/analytics/PriceChart";
 import TradeDistribution from "@/components/analytics/TradeDistribution";
 import SessionAnalysis from "@/components/analytics/SessionAnalysis";
+import ConfidenceOutcome from "@/components/analytics/ConfidenceOutcome";
 import RiskOfRuinPanel from "@/components/analytics/RiskOfRuinPanel";
 
 export default function AnalyticsPage() {
@@ -65,6 +66,8 @@ export default function AnalyticsPage() {
             </div>
 
             <PnlCalendar equityCurve={performance?.equity_curve ?? []} />
+
+            <ConfidenceOutcome />
 
             {performance && performance.total_trades > 0 && (
               <RiskOfRuinPanel
