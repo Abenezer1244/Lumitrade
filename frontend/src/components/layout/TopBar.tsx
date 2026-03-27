@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import StatusDot from "@/components/ui/StatusDot";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -95,6 +96,9 @@ export default function TopBar() {
             PAPER
           </span>
         )}
+
+        {/* Theme toggle */}
+        <ThemeToggle />
 
         {/* Connection status */}
         <StatusDot status={systemStatus} size="sm" />

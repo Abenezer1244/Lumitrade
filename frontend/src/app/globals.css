@@ -5,8 +5,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Dark Terminal Theme (FDS v2.0 — dark only) ──────────── */
-:root {
+/* ── Dark Terminal Theme (default) ───────────────────────── */
+:root,
+[data-theme="dark"] {
   --color-bg-primary: #0D1B2A;
   --color-bg-surface: rgba(17, 29, 46, 0.7);
   --color-bg-surface-solid: #111D2E;
@@ -36,6 +37,40 @@
   --glass-blur: blur(16px);
   --glass-border: 1px solid rgba(30, 58, 95, 0.5);
   --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --card-radius: 8px;
+}
+
+/* ── Light Mode ─────────────────────────────────────────── */
+[data-theme="light"] {
+  --color-bg-primary: #F8FAFB;
+  --color-bg-surface: rgba(255, 255, 255, 0.85);
+  --color-bg-surface-solid: #FFFFFF;
+  --color-bg-elevated: rgba(241, 245, 249, 0.85);
+  --color-bg-elevated-solid: #F1F5F9;
+  --color-bg-input: rgba(226, 232, 240, 0.4);
+
+  --color-border: rgba(203, 213, 225, 0.7);
+  --color-border-accent: rgba(61, 142, 255, 0.15);
+
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94A3B8;
+
+  --color-brand: #059669;
+  --color-brand-dim: rgba(5, 150, 105, 0.08);
+  --color-accent: #2563EB;
+  --color-accent-glow: rgba(37, 99, 235, 0.1);
+
+  --color-profit: #059669;
+  --color-profit-dim: rgba(5, 150, 105, 0.08);
+  --color-loss: #DC2626;
+  --color-loss-dim: rgba(220, 38, 38, 0.08);
+  --color-warning: #D97706;
+  --color-warning-dim: rgba(217, 119, 6, 0.08);
+
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid rgba(203, 213, 225, 0.5);
+  --glass-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
   --card-radius: 8px;
 }
 
