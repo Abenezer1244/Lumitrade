@@ -12,15 +12,36 @@ import {
   X,
   ChevronsLeft,
   ChevronsRight,
+  BookOpen,
+  MessageCircle,
+  TrendingUp,
+  Store,
+  Users,
+  FlaskConical,
+  Key,
 } from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 
-const NAV_ITEMS = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  phase?: number;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/signals", label: "Signals", icon: Zap },
   { href: "/trades", label: "Trades", icon: History },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/journal", label: "Journal", icon: BookOpen, phase: 2 },
+  { href: "/coach", label: "AI Coach", icon: MessageCircle, phase: 2 },
+  { href: "/intelligence", label: "Intel Report", icon: TrendingUp, phase: 2 },
+  { href: "/marketplace", label: "Marketplace", icon: Store, phase: 3 },
+  { href: "/copy", label: "Copy Trading", icon: Users, phase: 3 },
+  { href: "/backtest", label: "Backtest", icon: FlaskConical, phase: 3 },
+  { href: "/api-keys", label: "API Access", icon: Key, phase: 3 },
 ];
 
 const COLLAPSED_KEY = "lumitrade-sidebar-collapsed";
@@ -113,14 +134,15 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto scrollbar-hide px-2 py-4 space-y-0.5">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon, phase }) => {
           const active = pathname?.startsWith(href);
+          const isFuture = !!phase;
 
           return (
             <Link
               key={href}
               href={href}
-              title={isCollapsed ? label : undefined}
+              title={isCollapsed ? `${label}${phase ? ` (Phase ${phase})` : ""}` : undefined}
               className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} ${isCollapsed ? "px-0 py-2.5" : "px-3 py-2.5"} rounded-lg text-sm transition-all duration-150`}
               style={
                 active
@@ -131,24 +153,36 @@ export default function Sidebar() {
                       color: "var(--color-text-primary)",
                     }
                   : {
-                      color: "var(--color-text-secondary)",
+                      color: isFuture ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
+                      opacity: isFuture ? 0.6 : 1,
                     }
               }
               onMouseEnter={(e) => {
                 if (!active) {
                   e.currentTarget.style.color = "var(--color-text-primary)";
                   e.currentTarget.style.background = "var(--color-bg-elevated)";
+                  e.currentTarget.style.opacity = "1";
                 }
               }}
               onMouseLeave={(e) => {
                 if (!active) {
-                  e.currentTarget.style.color = "var(--color-text-secondary)";
+                  e.currentTarget.style.color = isFuture ? "var(--color-text-tertiary)" : "var(--color-text-secondary)";
                   e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.opacity = isFuture ? "0.6" : "1";
                 }
               }}
             >
               <Icon size={isCollapsed ? 20 : 16} />
-              {!isCollapsed && <span className="flex-1 font-medium">{label}</span>}
+              {!isCollapsed && (
+                <>
+                  <span className="flex-1 font-medium">{label}</span>
+                  {phase && (
+                    <span className="text-[9px] font-mono px-1 py-0.5 rounded" style={{ background: "var(--color-bg-elevated)", color: "var(--color-text-tertiary)" }}>
+                      P{phase}
+                    </span>
+                  )}
+                </>
+              )}
             </Link>
           );
         })}
