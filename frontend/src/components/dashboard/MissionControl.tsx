@@ -1,78 +1,128 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { Radio, Activity, Zap, Shield, Brain, Target, Eye, MessageSquare } from "lucide-react";
 import { useAgentEvents, type AgentEvent } from "@/hooks/useAgentEvents";
 
-// ── Agent registry ──────────────────────────────────────────
-const AGENTS: Record<string, { tag: string; color: string }> = {
-  SCANNER:      { tag: "SCAN", color: "#3D8EFF" },
-  CLAUDE:       { tag: "CLDE", color: "#D4A574" },
-  "SA-01":      { tag: "SA01", color: "#6C9CE8" },
-  "SA-02":      { tag: "SA02", color: "#9B7ED8" },
-  "SA-03":      { tag: "SA03", color: "#FFB347" },
-  RISK_ENGINE:  { tag: "RISK", color: "#FFB347" },
-  EXECUTION:    { tag: "EXEC", color: "#00C896" },
-  CONSENSUS:    { tag: "CONS", color: "#E8A06C" },
-  SENTIMENT:    { tag: "SENT", color: "#9B7ED8" },
+// ── Agent registry with icons ──────────────────────────────
+const AGENTS: Record<string, { tag: string; color: string; icon: typeof Radio }> = {
+  SCANNER:      { tag: "SCAN", color: "#3D8EFF", icon: Radio },
+  CLAUDE:       { tag: "CLDE", color: "#D4A574", icon: Brain },
+  "SA-01":      { tag: "SA01", color: "#6C9CE8", icon: Eye },
+  "SA-02":      { tag: "SA02", color: "#9B7ED8", icon: Activity },
+  "SA-03":      { tag: "SA03", color: "#FFB347", icon: Shield },
+  RISK_ENGINE:  { tag: "RISK", color: "#FFB347", icon: Shield },
+  EXECUTION:    { tag: "EXEC", color: "#00C896", icon: Target },
+  CONSENSUS:    { tag: "CONS", color: "#E8A06C", icon: MessageSquare },
+  SENTIMENT:    { tag: "SENT", color: "#9B7ED8", icon: Zap },
 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  SUCCESS: "#00C896",
-  WARNING: "#FFB347",
-  ERROR:   "#FF4D6A",
-  INFO:    "#3D8EFF",
+const SEVERITY_STYLES: Record<string, { border: string; bg: string; glow: string }> = {
+  SUCCESS: { border: "#00C896", bg: "rgba(0, 200, 150, 0.06)", glow: "rgba(0, 200, 150, 0.15)" },
+  WARNING: { border: "#FFB347", bg: "rgba(255, 179, 71, 0.06)", glow: "rgba(255, 179, 71, 0.15)" },
+  ERROR:   { border: "#FF4D6A", bg: "rgba(255, 77, 106, 0.06)", glow: "rgba(255, 77, 106, 0.15)" },
+  INFO:    { border: "#3D8EFF", bg: "rgba(61, 142, 255, 0.04)", glow: "rgba(61, 142, 255, 0.1)" },
 };
 
-// ── Timestamp formatter (UTC, consistent with all other displays) ───
 function formatTimeUTC(ts: string): string {
   try {
     const d = new Date(ts);
-    const hh = d.getUTCHours().toString().padStart(2, "0");
-    const mm = d.getUTCMinutes().toString().padStart(2, "0");
-    const ss = d.getUTCSeconds().toString().padStart(2, "0");
-    return `${hh}:${mm}:${ss}`;
+    return `${d.getUTCHours().toString().padStart(2, "0")}:${d.getUTCMinutes().toString().padStart(2, "0")}:${d.getUTCSeconds().toString().padStart(2, "0")}`;
   } catch {
     return "??:??:??";
   }
 }
 
-// ── Single event row ────────────────────────────────────────
+// ── Animated event row ─────────────────────────────────────
 function EventRow({ event, isNew }: { event: AgentEvent; isNew: boolean }) {
-  const agent = AGENTS[event.agent] || { tag: "????", color: "#8A9BC0" };
-  const sevColor = SEVERITY_COLOR[event.severity] || SEVERITY_COLOR.INFO;
+  const agent = AGENTS[event.agent] || { tag: "????", color: "var(--color-text-tertiary)", icon: Activity };
+  const severity = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.INFO;
+  const Icon = agent.icon;
 
   return (
-    <div
-      className={`flex items-start gap-0 font-mono text-[11px] leading-[18px] border-l-2 transition-all duration-500 ${isNew ? "bg-[#0A1628]" : ""}`}
-      style={{ borderLeftColor: sevColor }}
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: -20, height: 0 }}
+      animate={{ opacity: 1, x: 0, height: "auto" }}
+      exit={{ opacity: 0, x: 20, height: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+      className="overflow-hidden"
     >
-      {/* Timestamp */}
-      <span className="shrink-0 w-[68px] px-2 py-[3px] text-[#4A5E80] select-none">
-        {formatTimeUTC(event.created_at)}
-      </span>
-
-      {/* Agent tag */}
-      <span
-        className="shrink-0 w-[42px] py-[3px] font-bold text-center select-none"
-        style={{ color: agent.color }}
+      <div
+        className="flex items-center gap-3 px-3 py-2 border-l-2 transition-all duration-700"
+        style={{
+          borderLeftColor: severity.border,
+          backgroundColor: isNew ? severity.glow : "transparent",
+        }}
       >
-        {agent.tag}
-      </span>
+        {/* Timestamp */}
+        <span className="shrink-0 font-mono text-[10px] tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
+          {formatTimeUTC(event.created_at)}
+        </span>
 
-      {/* Pair */}
-      <span className="shrink-0 w-[62px] py-[3px] text-[#6B7280] text-center">
-        {event.pair ? event.pair.replace("_", "/") : "──────"}
-      </span>
+        {/* Agent icon + tag */}
+        <div className="shrink-0 flex items-center gap-1.5">
+          <div
+            className="w-5 h-5 rounded flex items-center justify-center"
+            style={{ backgroundColor: `${agent.color}15` }}
+          >
+            <Icon size={11} style={{ color: agent.color }} />
+          </div>
+          <span
+            className="font-mono text-[10px] font-bold tracking-wide"
+            style={{ color: agent.color }}
+          >
+            {agent.tag}
+          </span>
+        </div>
 
-      {/* Message */}
-      <span className="flex-1 py-[3px] pr-2 text-[#C9D1D9] truncate">
-        {event.title}
-      </span>
-    </div>
+        {/* Pair badge */}
+        {event.pair ? (
+          <span
+            className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-mono font-medium"
+            style={{
+              backgroundColor: "var(--color-bg-elevated)",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            {event.pair.replace("_", "/")}
+          </span>
+        ) : (
+          <span className="shrink-0 w-[52px]" />
+        )}
+
+        {/* Message */}
+        <span
+          className="flex-1 text-[11px] truncate"
+          style={{ color: "var(--color-text-primary)" }}
+        >
+          {event.title}
+        </span>
+      </div>
+    </motion.div>
   );
 }
 
-// ── Main component ──────────────────────────────────────────
+// ── Pulse dot ──────────────────────────────────────────────
+function PulseDot({ color }: { color: string }) {
+  return (
+    <span className="relative flex h-2 w-2">
+      <motion.span
+        className="absolute inline-flex h-full w-full rounded-full"
+        style={{ backgroundColor: color, opacity: 0.5 }}
+        animate={{ scale: [1, 1.8, 1], opacity: [0.5, 0, 0.5] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <span
+        className="relative inline-flex h-2 w-2 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+    </span>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────
 export default function MissionControl() {
   const { events, loading } = useAgentEvents();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -84,7 +134,7 @@ export default function MissionControl() {
     if (events.length > prevCountRef.current) {
       const fresh = new Set(events.slice(0, events.length - prevCountRef.current).map(e => e.id));
       setNewIds(fresh);
-      const t = setTimeout(() => setNewIds(new Set()), 1500);
+      const t = setTimeout(() => setNewIds(new Set()), 2000);
       prevCountRef.current = events.length;
       return () => clearTimeout(t);
     }
@@ -93,13 +143,19 @@ export default function MissionControl() {
 
   if (loading) {
     return (
-      <div className="h-[420px]" style={{ background: "#060D18", border: "1px solid #1E3050" }}>
-        <div className="px-3 py-2 border-b" style={{ borderColor: "#1E3050" }}>
-          <div className="h-3 w-32 bg-[#1E3050] animate-pulse" />
+      <div className="glass overflow-hidden">
+        <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+          <div className="h-4 w-36 rounded" style={{ backgroundColor: "var(--color-bg-elevated)" }} />
         </div>
-        <div className="p-3 space-y-1">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-[18px] bg-[#0A1628] animate-pulse" style={{ width: `${70 + Math.random() * 30}%` }} />
+        <div className="p-3 space-y-2">
+          {[...Array(6)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="h-8 rounded"
+              style={{ backgroundColor: "var(--color-bg-elevated)", width: `${60 + Math.random() * 40}%` }}
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.15 }}
+            />
           ))}
         </div>
       </div>
@@ -107,38 +163,37 @@ export default function MissionControl() {
   }
 
   return (
-    <div style={{ background: "#060D18", border: "1px solid #1E3050" }}>
-      {/* Header bar */}
+    <motion.div
+      className="glass overflow-hidden"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      {/* Header */}
       <div
-        className="flex items-center justify-between px-3 py-1.5"
-        style={{ borderBottom: "1px solid #1E3050", background: "#0A1220" }}
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderBottom: `1px solid var(--color-border)` }}
       >
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] font-bold tracking-widest" style={{ color: "#3D8EFF" }}>
-            MISSION CONTROL
+        <div className="flex items-center gap-2.5">
+          <motion.div
+            className="flex items-center justify-center w-6 h-6 rounded-md"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+            animate={{ rotate: [0, 5, -5, 0] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Radio size={13} style={{ color: "var(--color-accent)" }} />
+          </motion.div>
+          <span className="text-xs font-semibold tracking-wide" style={{ color: "var(--color-text-primary)" }}>
+            Mission Control
           </span>
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-50" style={{ background: "#00C896" }} />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: "#00C896" }} />
-          </span>
-          <span className="font-mono text-[9px] font-bold" style={{ color: "#00C896" }}>
+          <PulseDot color="var(--color-profit)" />
+          <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-profit)" }}>
             LIVE
           </span>
         </div>
-        <span className="font-mono text-[9px]" style={{ color: "#4A5E80" }}>
-          {events.length} EVT
+        <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
+          {events.length} events
         </span>
-      </div>
-
-      {/* Column headers */}
-      <div
-        className="flex items-center gap-0 font-mono text-[9px] tracking-wider px-0 py-1"
-        style={{ borderBottom: "1px solid #121D2E", color: "#4A5E80", background: "#080F1C" }}
-      >
-        <span className="w-[70px] px-2">TIME</span>
-        <span className="w-[42px] text-center">AGENT</span>
-        <span className="w-[62px] text-center">PAIR</span>
-        <span className="flex-1 pr-2">EVENT</span>
       </div>
 
       {/* Event feed */}
@@ -148,36 +203,61 @@ export default function MissionControl() {
         style={{ maxHeight: "380px" }}
       >
         {events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 font-mono">
-            <span className="text-[11px] mb-1" style={{ color: "#4A5E80" }}>
-              ▓▓▓ AWAITING SIGNAL ▓▓▓
+          <motion.div
+            className="flex flex-col items-center justify-center py-16 gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+            >
+              <Radio size={24} style={{ color: "var(--color-text-tertiary)", opacity: 0.4 }} />
+            </motion.div>
+            <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+              Awaiting agent activity...
             </span>
-            <span className="text-[10px]" style={{ color: "#2A3A50" }}>
-              Agent activity will stream here in real-time
-            </span>
-          </div>
+          </motion.div>
         ) : (
-          <div className="divide-y" style={{ borderColor: "#0D1825" }}>
+          <AnimatePresence initial={false}>
             {events.map((event) => (
               <EventRow key={event.id} event={event} isNew={newIds.has(event.id)} />
             ))}
-          </div>
+          </AnimatePresence>
         )}
       </div>
 
       {/* Footer — agent legend */}
       <div
-        className="flex items-center gap-3 px-3 py-1"
-        style={{ borderTop: "1px solid #1E3050", background: "#080F1C" }}
+        className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-hide"
+        style={{ borderTop: `1px solid var(--color-border)` }}
       >
         {Object.entries(AGENTS)
-          .filter(([k]) => ["SCANNER", "CLAUDE", "RISK_ENGINE", "EXECUTION", "SA-01", "SA-03"].includes(k))
-          .map(([, agent]) => (
-            <span key={agent.tag} className="font-mono text-[8px] font-bold" style={{ color: agent.color }}>
-              {agent.tag}
-            </span>
-          ))}
+          .filter(([k]) => ["SCANNER", "CLAUDE", "RISK_ENGINE", "EXECUTION", "SA-01", "SA-03", "SENTIMENT"].includes(k))
+          .map(([, agent]) => {
+            const Icon = agent.icon;
+            return (
+              <div
+                key={agent.tag}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: `${agent.color}10` }}
+              >
+                <Icon size={9} style={{ color: agent.color }} />
+                <span className="font-mono text-[8px] font-bold" style={{ color: agent.color }}>
+                  {agent.tag}
+                </span>
+              </div>
+            );
+          })}
       </div>
-    </div>
+
+      {/* Bottom gradient fade */}
+      <div
+        className="absolute bottom-8 left-0 right-0 h-8 pointer-events-none"
+        style={{
+          background: `linear-gradient(transparent, var(--color-bg-surface-solid))`,
+        }}
+      />
+    </motion.div>
   );
 }
