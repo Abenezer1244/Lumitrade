@@ -311,7 +311,7 @@ class HealthServer:
         clamped = {
             "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 1.0)))),
             "maxPositions": max(1, min(100, int(body.get("maxPositions", 100)))),
-            "maxPerPair": max(1, min(2, int(body.get("maxPerPair", 1)))),
+            "maxPerPair": max(1, min(10, int(body.get("maxPerPair", 1)))),
             "confidence": max(50, min(90, int(body.get("confidence", 65)))),
             "scanInterval": max(5, min(60, int(body.get("scanInterval", 15)))),
             "mode": body.get("mode", "PAPER") if body.get("mode") in ("PAPER", "LIVE") else "PAPER",
