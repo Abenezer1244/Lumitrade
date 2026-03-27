@@ -23,6 +23,7 @@ from .claude_client import ClaudeClient
 from .confidence import ConfidenceAdjuster
 from .fallback import RuleBasedFallback
 from .prompt_builder import PromptBuilder
+from .sentiment_analyzer import SentimentAnalyzer
 from .validator import AIOutputValidator
 
 logger = get_logger(__name__)
@@ -56,6 +57,7 @@ class SignalScanner:
         self._validator = AIOutputValidator()
         self._adjuster = ConfidenceAdjuster()
         self._fallback = RuleBasedFallback()
+        self._sentiment = SentimentAnalyzer(config)
         self._prompt_builder = PromptBuilder(db, config.oanda_account_id)
         self._pair_locks: dict[str, asyncio.Lock] = {}
 
@@ -144,8 +146,29 @@ class SignalScanner:
                     "analyst_briefing_failed", error=str(e),
                 )
 
-        # 3. Build prompt (includes analyst briefing if available)
-        prompt = await self._prompt_builder.build_prompt(snapshot, analyst_briefing=analyst_briefing)
+        # 2b. Run sentiment analysis on pair currencies
+        sentiment_context = ""
+        try:
+            sentiment = await self._sentiment.analyze(
+                pairs=[pair],
+                calendar_events=snapshot.news_events,
+            )
+            if sentiment:
+                lines = [f"{c}: {s.value if hasattr(s, 'value') else str(s)}" for c, s in sentiment.items()]
+                sentiment_context = "Currency sentiment: " + " | ".join(lines)
+                if self._events:
+                    self._events.publish(
+                        "SENTIMENT", "ANALYSIS",
+                        f"Sentiment for {pair}: {sentiment_context}",
+                        pair=pair,
+                    )
+        except Exception as e:
+            logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
+
+        # 3. Build prompt (includes analyst briefing + sentiment if available)
+        prompt = await self._prompt_builder.build_prompt(
+            snapshot, analyst_briefing=analyst_briefing, sentiment_context=sentiment_context,
+        )
         system = self._prompt_builder.get_system_prompt()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 

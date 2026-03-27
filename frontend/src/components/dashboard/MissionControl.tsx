@@ -13,6 +13,7 @@ const AGENTS: Record<string, { tag: string; color: string }> = {
   RISK_ENGINE:  { tag: "RISK", color: "#FFB347" },
   EXECUTION:    { tag: "EXEC", color: "#00C896" },
   CONSENSUS:    { tag: "CONS", color: "#E8A06C" },
+  SENTIMENT:    { tag: "SENT", color: "#9B7ED8" },
 };
 
 const SEVERITY_COLOR: Record<string, string> = {
