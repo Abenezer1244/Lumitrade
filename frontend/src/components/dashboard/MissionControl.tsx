@@ -39,6 +39,8 @@ function EventRow({ event, isNew }: { event: AgentEvent; isNew: boolean }) {
   const agent = AGENTS[event.agent] || { tag: "????", color: "var(--color-text-tertiary)", icon: Activity };
   const severity = SEVERITY_STYLES[event.severity] || SEVERITY_STYLES.INFO;
   const Icon = agent.icon;
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = event.detail && event.detail.trim().length > 0;
 
   return (
     <motion.div
@@ -50,11 +52,12 @@ function EventRow({ event, isNew }: { event: AgentEvent; isNew: boolean }) {
       className="overflow-hidden"
     >
       <div
-        className="flex items-center gap-3 px-3 py-2 border-l-2 transition-all duration-700"
+        className={`flex items-center gap-3 px-3 py-2 border-l-2 transition-all duration-700 ${hasDetail ? "cursor-pointer" : ""}`}
         style={{
           borderLeftColor: severity.border,
-          backgroundColor: isNew ? severity.glow : "transparent",
+          backgroundColor: isNew ? severity.glow : expanded ? severity.bg : "transparent",
         }}
+        onClick={() => hasDetail && setExpanded(!expanded)}
       >
         {/* Timestamp */}
         <span className="shrink-0 font-mono text-[10px] tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
@@ -99,7 +102,43 @@ function EventRow({ event, isNew }: { event: AgentEvent; isNew: boolean }) {
         >
           {event.title}
         </span>
+
+        {/* Expand indicator */}
+        {hasDetail && (
+          <motion.span
+            className="shrink-0 text-[9px]"
+            style={{ color: "var(--color-text-tertiary)" }}
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            ▼
+          </motion.span>
+        )}
       </div>
+
+      {/* Expandable detail */}
+      <AnimatePresence>
+        {expanded && hasDetail && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="px-4 py-2 ml-[68px] text-[11px] leading-relaxed whitespace-pre-wrap"
+              style={{
+                color: "var(--color-text-secondary)",
+                backgroundColor: severity.bg,
+                borderLeft: `2px solid ${severity.border}`,
+              }}
+            >
+              {event.detail}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
