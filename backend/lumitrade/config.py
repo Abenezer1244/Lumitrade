@@ -52,7 +52,7 @@ class LumitradeConfig(BaseSettings):
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
     # ── Trading parameters (DB overrides env) ──────────────────
-    pairs: list[str] = ["EUR_USD", "GBP_USD", "USD_JPY"]
+    pairs: list[str] = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD"]
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.65")
