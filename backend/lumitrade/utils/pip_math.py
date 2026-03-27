@@ -16,6 +16,7 @@ PIP_SIZE: dict[str, Decimal] = {
     "AUD_USD": Decimal("0.0001"),
     "USD_CAD": Decimal("0.0001"),
     "NZD_USD": Decimal("0.0001"),
+    "XAU_USD": Decimal("0.01"),
     "EUR_JPY": Decimal("0.01"),
     "GBP_JPY": Decimal("0.01"),
 }

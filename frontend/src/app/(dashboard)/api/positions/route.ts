@@ -10,6 +10,7 @@ const PIP_SIZE: Record<string, number> = {
   AUD_USD: 0.0001,
   USD_CAD: 0.0001,
   NZD_USD: 0.0001,
+  XAU_USD: 0.01,
   EUR_JPY: 0.01,
   GBP_JPY: 0.01,
 };
