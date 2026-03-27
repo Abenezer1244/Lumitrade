@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: TradingSettingsData = {
   maxPositions: 3,
   maxPerPair: 1,
   confidence: 65,
+  scanInterval: 15,
 };
 
 const DEFAULT_GUARDRAILS: GuardrailsData = {
@@ -40,6 +41,7 @@ export default function SettingsPage() {
           maxPositions: data.maxPositions ?? DEFAULT_SETTINGS.maxPositions,
           maxPerPair: data.maxPerPair ?? DEFAULT_SETTINGS.maxPerPair,
           confidence: data.confidence ?? DEFAULT_SETTINGS.confidence,
+          scanInterval: data.scanInterval ?? DEFAULT_SETTINGS.scanInterval,
         });
         setMode(data.mode ?? "PAPER");
         if (data.guardrails) {

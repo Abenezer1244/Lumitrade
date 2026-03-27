@@ -259,6 +259,7 @@ class HealthServer:
         "maxPositions": 3,       # max_open_trades
         "maxPerPair": 1,         # max_positions_per_pair
         "confidence": 65,        # min_confidence as integer (65 = 0.65)
+        "scanInterval": 15,      # signal_interval_minutes
         "mode": "PAPER",
     }
     # Guardrails — read-only, set via env vars only
@@ -310,6 +311,7 @@ class HealthServer:
             "maxPositions": max(1, min(5, int(body.get("maxPositions", 3)))),
             "maxPerPair": max(1, min(2, int(body.get("maxPerPair", 1)))),
             "confidence": max(50, min(90, int(body.get("confidence", 65)))),
+            "scanInterval": max(5, min(60, int(body.get("scanInterval", 15)))),
             "mode": body.get("mode", "PAPER") if body.get("mode") in ("PAPER", "LIVE") else "PAPER",
         }
 

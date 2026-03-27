@@ -8,6 +8,7 @@ export interface TradingSettingsData {
   maxPositions: number;
   maxPerPair: number;
   confidence: number;
+  scanInterval: number;
 }
 
 export interface GuardrailsData {
@@ -63,6 +64,15 @@ const SLIDERS: SliderConfig[] = [
     format: (v) => `${v}`,
   },
   {
+    key: "scanInterval",
+    label: "Scan Interval",
+    description: "How often the AI scans each pair for signals (minutes)",
+    min: 5,
+    max: 60,
+    step: 5,
+    format: (v) => `${v} min`,
+  },
+  {
     key: "confidence",
     label: "Min Confidence Threshold",
     description: "AI must be at least this confident to place a trade",
@@ -107,7 +117,7 @@ export default function TradingSettings({
   saving,
 }: TradingSettingsProps) {
   function handleSliderChange(key: keyof TradingSettingsData, raw: string) {
-    const value = key === "maxPositions" || key === "maxPerPair"
+    const value = key === "maxPositions" || key === "maxPerPair" || key === "scanInterval"
       ? parseInt(raw, 10)
       : parseFloat(raw);
     onChange({ ...settings, [key]: value });

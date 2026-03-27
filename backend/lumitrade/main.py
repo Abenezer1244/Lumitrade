@@ -321,8 +321,15 @@ class OrchestratorService:
                     # Stagger between pairs
                     await asyncio.sleep(5)
 
-                # Wait for next scan cycle
-                await asyncio.sleep(self.config.signal_interval_minutes * 60)
+                # Wait for next scan cycle (read interval from user settings)
+                scan_minutes = self.config.signal_interval_minutes
+                try:
+                    settings_row = await self.db.select_one("system_state", {"id": "settings"})
+                    if settings_row and settings_row.get("open_trades") and isinstance(settings_row["open_trades"], dict):
+                        scan_minutes = int(settings_row["open_trades"].get("scanInterval", scan_minutes))
+                except Exception:
+                    pass
+                await asyncio.sleep(scan_minutes * 60)
         except asyncio.CancelledError:
             logger.info("signal_to_trade_loop_cancelled")
 
