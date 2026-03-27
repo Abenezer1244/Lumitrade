@@ -6,6 +6,7 @@ import MetricsGrid from "@/components/analytics/MetricsGrid";
 import EquityCurve from "@/components/analytics/EquityCurve";
 import PairBreakdown from "@/components/analytics/PairBreakdown";
 import PnlCalendar from "@/components/analytics/PnlCalendar";
+import PriceChart from "@/components/analytics/PriceChart";
 import RiskOfRuinPanel from "@/components/analytics/RiskOfRuinPanel";
 
 export default function AnalyticsPage() {
@@ -50,6 +51,8 @@ export default function AnalyticsPage() {
           </div>
         ) : (
           <>
+            <PriceChart />
+
             <EquityCurve data={performance?.equity_curve ?? []} />
 
             <PairBreakdown data={performance?.pair_breakdown ?? []} />
