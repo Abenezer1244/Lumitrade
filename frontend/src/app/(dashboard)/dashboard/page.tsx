@@ -6,6 +6,8 @@ import TodayPanel from "@/components/dashboard/TodayPanel";
 import SystemStatusPanel from "@/components/dashboard/SystemStatusPanel";
 import OpenPositionsTable from "@/components/dashboard/OpenPositionsTable";
 import MissionControl from "@/components/dashboard/MissionControl";
+import MarketWatchlist from "@/components/dashboard/MarketWatchlist";
+import RiskUtilization from "@/components/analytics/RiskUtilization";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
 
@@ -45,6 +47,11 @@ export default function DashboardPage() {
         </motion.div>
       </motion.div>
 
+      {/* Market Watchlist */}
+      <motion.div variants={item}>
+        <MarketWatchlist />
+      </motion.div>
+
       <motion.div
         className="grid grid-cols-1 lg:grid-cols-5 gap-4"
         variants={item}
@@ -64,10 +71,8 @@ export default function DashboardPage() {
         <motion.div className="lg:col-span-3" variants={item}>
           <SignalFeed limit={8} compact />
         </motion.div>
-        <motion.div
-          className="lg:col-span-2 flex items-end justify-end"
-          variants={item}
-        >
+        <motion.div className="lg:col-span-2 space-y-4" variants={item}>
+          <RiskUtilization />
           <KillSwitchButton />
         </motion.div>
       </motion.div>
