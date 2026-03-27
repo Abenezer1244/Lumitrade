@@ -123,7 +123,7 @@ class PromptBuilder:
             f"Analyze {snapshot.pair} and return your trading decision as JSON.",
             "Apply multi-timeframe confluence: H4 trend + H1 structure + M15 entry.",
             "Only recommend BUY or SELL if all three timeframes confirm the bias.",
-            "Minimum risk/reward ratio: 2:1. If not achievable — return HOLD.",
+            "Minimum risk/reward ratio: 1.5:1. If not achievable — return HOLD.",
             "",
             "=== POSITION SIZING GUIDANCE ===",
             "Set stop_loss at a logical technical level (support/resistance, swing low/high).",
