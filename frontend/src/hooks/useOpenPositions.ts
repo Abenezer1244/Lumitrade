@@ -15,9 +15,9 @@ export function useOpenPositions() {
     "/api/positions",
     fetcher,
     {
-      refreshInterval: 3_000,
+      refreshInterval: 1_000,
       revalidateOnFocus: false,
-      dedupingInterval: 2_000,
+      dedupingInterval: 500,
     }
   );
 
