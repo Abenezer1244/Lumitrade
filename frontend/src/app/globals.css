@@ -36,7 +36,7 @@
 
   --glass-blur: blur(16px);
   --glass-border: 1px solid #e7e5e4;
-  --glass-bg: #f5f5f5;
+  --glass-bg: #f1f5f9;
   --glass-shadow: rgba(50, 50, 93, 0.25) 0px 50px 100px -20px,
                   rgba(0, 0, 0, 0.3) 0px 30px 60px -30px,
                   rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
@@ -73,7 +73,7 @@
 
   --glass-blur: blur(12px);
   --glass-border: 1px solid #e7e5e4;
-  --glass-bg: #f5f5f5;
+  --glass-bg: #f1f5f9;
   --glass-shadow: rgba(50, 50, 93, 0.15) 0px 50px 100px -20px,
                   rgba(0, 0, 0, 0.15) 0px 30px 60px -30px,
                   rgba(10, 37, 64, 0.2) 0px -2px 6px 0px inset;
@@ -132,7 +132,7 @@ body {
 }
 
 .glass-elevated {
-  background: #e5e5e5;
+  background: #e2e8f0;
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: var(--glass-border);
