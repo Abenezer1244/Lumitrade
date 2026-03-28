@@ -14,14 +14,19 @@ const container = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
-    transition: { staggerChildren: 0.1 },
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
   },
 };
 
+const heroItem = {
+  hidden: { opacity: 0, y: 24, scale: 0.98 },
+  show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const } },
+} as const;
+
 const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.4 } },
-};
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const } },
+} as const;
 
 export default function DashboardPage() {
   return (
@@ -36,7 +41,7 @@ export default function DashboardPage() {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5 items-stretch"
         variants={item}
       >
-        <motion.div className="md:col-span-2 lg:col-span-5" variants={item}>
+        <motion.div className="md:col-span-2 lg:col-span-5" variants={heroItem}>
           <AccountPanel />
         </motion.div>
         <motion.div className="lg:col-span-4" variants={item}>

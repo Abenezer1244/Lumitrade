@@ -87,14 +87,14 @@ export default function TradesPage() {
             <caption className="sr-only">Trade history with outcomes</caption>
             <thead>
               <tr className="text-left text-label text-tertiary">
-                <th className="pb-2">Time</th>
+                <th className="pb-2 hidden md:table-cell">Time</th>
                 <th className="pb-2">Pair</th>
                 <th className="pb-2">Dir</th>
-                <th className="pb-2">Entry</th>
-                <th className="pb-2">Exit</th>
+                <th className="pb-2 hidden md:table-cell">Entry</th>
+                <th className="pb-2 hidden md:table-cell">Exit</th>
                 <th className="pb-2">P&L</th>
-                <th className="pb-2">Pips</th>
-                <th className="pb-2">Duration</th>
+                <th className="pb-2 hidden lg:table-cell">Pips</th>
+                <th className="pb-2 hidden lg:table-cell">Duration</th>
                 <th className="pb-2">Outcome</th>
               </tr>
             </thead>
@@ -106,17 +106,17 @@ export default function TradesPage() {
                     key={t.id}
                     className="border-t border-border hover:bg-elevated/50 transition-colors"
                   >
-                    <td className="py-2 text-micro text-secondary">
+                    <td className="py-2 text-micro text-secondary hidden md:table-cell">
                       {formatTime(t.opened_at)}
                     </td>
                     <td className="py-2 font-mono">{formatPair(t.pair)}</td>
                     <td className="py-2">
                       <Badge action={t.direction} />
                     </td>
-                    <td className="py-2 font-mono">
+                    <td className="py-2 font-mono hidden md:table-cell">
                       {formatPrice(t.entry_price, t.pair)}
                     </td>
-                    <td className="py-2 font-mono">
+                    <td className="py-2 font-mono hidden md:table-cell">
                       {t.exit_price
                         ? formatPrice(t.exit_price, t.pair)
                         : "\u2014"}
@@ -124,12 +124,12 @@ export default function TradesPage() {
                     <td className={`py-2 font-mono ${colorClass}`}>
                       {formatted}
                     </td>
-                    <td className="py-2 font-mono text-secondary">
+                    <td className="py-2 font-mono text-secondary hidden lg:table-cell">
                       {t.pnl_pips
                         ? `${parseFloat(t.pnl_pips).toFixed(1)}p`
                         : "\u2014"}
                     </td>
-                    <td className="py-2 text-secondary">
+                    <td className="py-2 text-secondary hidden lg:table-cell">
                       {formatDuration(t.duration_minutes)}
                     </td>
                     <td className="py-2">

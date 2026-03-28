@@ -248,12 +248,12 @@ export default function OpenPositionsTable() {
               >
                 <th className="pb-2 px-2">Pair</th>
                 <th className="pb-2 px-2">Dir</th>
-                <th className="pb-2 px-2">Entry</th>
-                <th className="pb-2 px-2">Current</th>
+                <th className="pb-2 px-2 hidden md:table-cell">Entry</th>
+                <th className="pb-2 px-2 hidden md:table-cell">Current</th>
                 <th className="pb-2 px-2">P&amp;L</th>
-                <th className="pb-2 px-2">Pips</th>
-                <th className="pb-2 px-2">SL</th>
-                <th className="pb-2 px-2">TP</th>
+                <th className="pb-2 px-2 hidden lg:table-cell">Pips</th>
+                <th className="pb-2 px-2 hidden lg:table-cell">SL</th>
+                <th className="pb-2 px-2 hidden lg:table-cell">TP</th>
               </tr>
             </thead>
             <AnimatePresence mode="popLayout">
@@ -301,13 +301,13 @@ export default function OpenPositionsTable() {
                         <DirectionBadge direction={p.direction} />
                       </td>
                       <td
-                        className="py-2 px-2 font-mono"
+                        className="py-2 px-2 font-mono hidden md:table-cell"
                         style={{ color: "var(--color-text-primary)" }}
                       >
                         {formatPrice(p.entry_price, p.pair)}
                       </td>
                       <td
-                        className="py-2 px-2 font-mono"
+                        className="py-2 px-2 font-mono hidden md:table-cell"
                         style={{ color: "var(--color-text-secondary)" }}
                       >
                         {p.current_price
@@ -316,13 +316,13 @@ export default function OpenPositionsTable() {
                       </td>
                       <PnlCell value={pnlValue} pair={p.pair} />
                       <td
-                        className="py-2 px-2 font-mono"
+                        className="py-2 px-2 font-mono hidden lg:table-cell"
                         style={{ color: pipsColor }}
                       >
                         {pips > 0 ? "+" : ""}
                         {pips.toFixed(1)}
                       </td>
-                      <td className="py-2 px-2 font-mono">
+                      <td className="py-2 px-2 font-mono hidden lg:table-cell">
                         <div className="flex items-center gap-1">
                           <span style={{ color: "var(--color-loss)" }}>
                             {formatPrice(p.stop_loss, p.pair)}
@@ -353,7 +353,7 @@ export default function OpenPositionsTable() {
                         </div>
                       </td>
                       <td
-                        className="py-2 px-2 font-mono"
+                        className="py-2 px-2 font-mono hidden lg:table-cell"
                         style={{ color: "var(--color-profit)" }}
                       >
                         {formatPrice(p.take_profit, p.pair)}
