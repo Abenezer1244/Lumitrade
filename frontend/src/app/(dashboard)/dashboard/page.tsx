@@ -31,33 +31,33 @@ export default function DashboardPage() {
       initial="hidden"
       animate="show"
     >
+      {/* Row 1: Asymmetric — Account (wider) + Today + Status (compact) */}
       <motion.div
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4"
         variants={item}
       >
-        <motion.div variants={item}>
+        <motion.div className="md:col-span-2 lg:col-span-5" variants={item}>
           <AccountPanel />
         </motion.div>
-        <motion.div variants={item}>
+        <motion.div className="lg:col-span-4" variants={item}>
           <TodayPanel />
         </motion.div>
-        <motion.div variants={item}>
+        <motion.div className="lg:col-span-3" variants={item}>
           <SystemStatusPanel />
         </motion.div>
       </motion.div>
 
+      {/* Row 2: Wider positions table + right column */}
       <motion.div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start"
+        className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
         variants={item}
       >
-        {/* Left column: Positions + Signals stacked tightly */}
-        <motion.div className="lg:col-span-3 space-y-4" variants={item}>
+        <motion.div className="lg:col-span-8 space-y-4" variants={item}>
           <OpenPositionsTable />
           <SignalFeed limit={8} compact />
         </motion.div>
 
-        {/* Right column: Mission Control + Risk + Kill Switch */}
-        <motion.div className="lg:col-span-2 space-y-4" variants={item}>
+        <motion.div className="lg:col-span-4 space-y-4" variants={item}>
           <MissionControl />
           <RiskUtilization />
           <KillSwitchButton />
