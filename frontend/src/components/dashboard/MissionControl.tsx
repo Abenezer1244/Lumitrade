@@ -237,38 +237,36 @@ export default function MissionControl() {
         className="flex items-center justify-between px-4 py-2.5"
         style={{ borderBottom: `1px solid var(--color-border)` }}
       >
-        <div className="flex items-center gap-2.5">
-          <motion.div
-            className="flex items-center justify-center w-6 h-6 rounded-md"
+        <div className="flex items-center gap-2">
+          <div
+            className="flex items-center justify-center w-5 h-5 rounded"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
-            animate={{ rotate: [0, 5, -5, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
           >
-            <Radio size={13} style={{ color: "var(--color-accent)" }} />
-          </motion.div>
-          <span className="text-xs font-semibold tracking-wide" style={{ color: "var(--color-text-primary)" }}>
+            <Radio size={11} style={{ color: "var(--color-accent)" }} />
+          </div>
+          <span className="text-xs font-semibold" style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}>
             Mission Control
           </span>
           {marketOpen ? (
-            <>
-              <PulseDot color="var(--color-profit)" />
-              <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-profit)" }}>
-                LIVE
-              </span>
-            </>
+            <span
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold tracking-widest"
+              style={{ background: "var(--color-profit-dim)", color: "var(--color-profit)" }}
+            >
+              <span className="w-1 h-1 rounded-full" style={{ backgroundColor: "var(--color-profit)" }} />
+              LIVE
+            </span>
           ) : (
-            <>
-              <span className="relative flex h-2 w-2">
-                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-loss)" }} />
-              </span>
-              <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-loss)" }}>
-                CLOSED
-              </span>
-            </>
+            <span
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold tracking-widest"
+              style={{ background: "var(--color-loss-dim)", color: "var(--color-loss)" }}
+            >
+              <span className="w-1 h-1 rounded-full" style={{ backgroundColor: "var(--color-loss)" }} />
+              CLOSED
+            </span>
           )}
         </div>
         <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
-          {events.length} events
+          {events.length}
         </span>
       </div>
 
@@ -305,21 +303,21 @@ export default function MissionControl() {
 
       {/* Footer — agent legend */}
       <div
-        className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-hide"
+        className="flex items-center gap-1.5 px-3 py-2 overflow-x-auto scrollbar-hide"
         style={{ borderTop: `1px solid var(--color-border)` }}
       >
         {Object.entries(AGENTS)
-          .filter(([k]) => ["SCANNER", "CLAUDE", "RISK_ENGINE", "EXECUTION", "SA-01", "SA-03", "SENTIMENT"].includes(k))
+          .filter(([k]) => ["SCANNER", "CLAUDE", "RISK_ENGINE", "EXECUTION", "SA-01", "SA-03"].includes(k))
           .map(([, agent]) => {
             const Icon = agent.icon;
             return (
               <div
                 key={agent.tag}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded"
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full"
                 style={{ backgroundColor: `${agent.color}10` }}
               >
-                <Icon size={9} style={{ color: agent.color }} />
-                <span className="font-mono text-[8px] font-bold" style={{ color: agent.color }}>
+                <Icon size={8} style={{ color: agent.color }} />
+                <span className="font-mono text-[7px] font-bold" style={{ color: agent.color }}>
                   {agent.tag}
                 </span>
               </div>
