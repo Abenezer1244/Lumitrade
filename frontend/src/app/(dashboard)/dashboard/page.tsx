@@ -33,7 +33,7 @@ export default function DashboardPage() {
     >
       {/* Row 1: Asymmetric — Account (wider) + Today + Status (compact) */}
       <motion.div
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5 items-stretch"
         variants={item}
       >
         <motion.div className="md:col-span-2 lg:col-span-5" variants={item}>

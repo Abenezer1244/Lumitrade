@@ -84,6 +84,7 @@ export default function TradesPage() {
           />
         ) : (
           <table className="w-full text-sm">
+            <caption className="sr-only">Trade history with outcomes</caption>
             <thead>
               <tr className="text-left text-label text-tertiary">
                 <th className="pb-2">Time</th>

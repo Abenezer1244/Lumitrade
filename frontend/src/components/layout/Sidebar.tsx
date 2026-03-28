@@ -246,6 +246,7 @@ export default function Sidebar() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ duration: 0.12 }}
+                      aria-label={`Phase ${phase} — coming soon`}
                     >
                       P{phase}
                     </motion.span>
@@ -315,7 +316,7 @@ export default function Sidebar() {
                 animate={{
                   boxShadow: [
                     "0 0 0px 0px var(--color-profit)",
-                    "0 0 6px 2px var(--color-profit)",
+                    "0 0 3px 1px var(--color-profit)",
                     "0 0 0px 0px var(--color-profit)",
                   ],
                 }}
@@ -342,7 +343,7 @@ export default function Sidebar() {
                 animate={{
                   boxShadow: [
                     "0 0 0px 0px var(--color-profit)",
-                    "0 0 6px 2px var(--color-profit)",
+                    "0 0 3px 1px var(--color-profit)",
                     "0 0 0px 0px var(--color-profit)",
                   ],
                 }}

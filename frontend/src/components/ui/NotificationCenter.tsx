@@ -78,7 +78,9 @@ export default function NotificationCenter() {
           backgroundColor: open ? "var(--color-bg-elevated)" : "transparent",
           color: "var(--color-text-secondary)",
         }}
-        aria-label="Notifications"
+        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ""}`}
+        aria-haspopup="true"
+        aria-expanded={open}
       >
         <Bell size={15} />
         {unreadCount > 0 && (

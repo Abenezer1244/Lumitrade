@@ -156,6 +156,10 @@ export default function TradingSettings({
                 onChange={(e) => handleSliderChange(slider.key, e.target.value)}
                 className="w-full cursor-pointer accent-brand"
                 aria-label={slider.label}
+                aria-valuemin={slider.min}
+                aria-valuemax={slider.max}
+                aria-valuenow={settings[slider.key]}
+                aria-valuetext={slider.format(settings[slider.key])}
               />
               <div className="flex justify-between mt-1">
                 <span className="text-xs text-tertiary">

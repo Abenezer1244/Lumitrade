@@ -177,7 +177,7 @@ export default function OpenPositionsTable() {
   if (loading) {
     return (
       <div
-        className="rounded-xl p-5 animate-pulse h-48"
+        className="rounded-[16px] p-5 animate-pulse h-48"
         style={{
           backgroundColor: "var(--color-bg-surface)",
           border: "1px solid var(--color-border)",
@@ -188,7 +188,7 @@ export default function OpenPositionsTable() {
 
   return (
     <div
-      className="rounded-xl p-5"
+      className="rounded-[16px] p-5"
       style={{
         backgroundColor: "var(--color-bg-surface)",
         border: "1px solid var(--color-border)",
@@ -240,6 +240,7 @@ export default function OpenPositionsTable() {
       ) : (
         <div className="overflow-x-auto" style={{ maxHeight: expanded ? "600px" : "auto", overflowY: expanded ? "auto" : "visible" }}>
           <table className="w-full text-sm">
+            <caption className="sr-only">Open trading positions with live P&amp;L</caption>
             <thead className="sticky top-0" style={{ backgroundColor: "var(--color-bg-surface-solid)", zIndex: 1 }}>
               <tr
                 className="text-left text-xs uppercase tracking-wider"
@@ -282,7 +283,7 @@ export default function OpenPositionsTable() {
                       }}
                       className="group cursor-default"
                       style={{
-                        borderTop: "1px solid var(--color-border)",
+                        borderTop: "1px solid rgba(30, 58, 95, 0.2)",
                       }}
                       whileHover={{
                         backgroundColor: "var(--color-bg-elevated)",

@@ -61,7 +61,7 @@ function WinRateArc({ percentage, size = "sm" }: { percentage: number; size?: "s
   const fontSize = size === "lg" ? "18px" : "10px";
 
   return (
-    <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`} className="shrink-0">
+    <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`} className="shrink-0" role="img" aria-label={`Win rate: ${normalizedPct.toFixed(0)} percent`}>
       <defs>
         <linearGradient id="winArcGradient" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#00C896" />
