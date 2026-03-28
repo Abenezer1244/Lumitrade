@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Radar } from "lucide-react";
+import { Radar, BarChart3 } from "lucide-react";
 import { useOpenPositions } from "@/hooks/useOpenPositions";
 import { formatPrice, formatPnl, formatPair } from "@/lib/formatters";
 import Badge from "@/components/ui/Badge";
@@ -197,6 +197,12 @@ export default function OpenPositionsTable() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+          >
+            <BarChart3 size={12} style={{ color: "var(--color-accent)" }} />
+          </div>
           <h3
             className="text-sm font-semibold"
             style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { AlertTriangle, ShieldOff } from "lucide-react";
 
 type KillSwitchState = "idle" | "confirming" | "loading" | "success" | "error";
 
@@ -69,11 +70,20 @@ export default function KillSwitchButton() {
   if (state === "idle") {
     return (
       <div className="glass p-4">
-        <p className="text-label text-tertiary mb-2">Emergency Control</p>
+        <div className="flex items-center gap-2 mb-3">
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-loss-dim)" }}
+          >
+            <ShieldOff size={12} style={{ color: "var(--color-loss)" }} />
+          </div>
+          <p className="text-label" style={{ color: "var(--color-text-tertiary)" }}>Emergency</p>
+        </div>
         <button
           onClick={handleActivate}
-          className="w-full py-2.5 px-4 bg-loss-dim border border-loss/30 rounded-lg text-sm font-bold text-loss hover:bg-loss/20 transition-colors"
+          className="w-full py-2.5 px-4 bg-loss-dim border border-loss/30 rounded-lg text-sm font-bold text-loss hover:bg-loss/20 transition-colors flex items-center justify-center gap-2"
         >
+          <AlertTriangle size={14} />
           Kill Switch
         </button>
       </div>

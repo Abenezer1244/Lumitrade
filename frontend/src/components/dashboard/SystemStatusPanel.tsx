@@ -3,6 +3,7 @@
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "motion/react";
+import { Activity } from "lucide-react";
 import type { ComponentStatus } from "@/types/system";
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +239,15 @@ export default function SystemStatusPanel() {
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-label text-tertiary">System Status</p>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+          >
+            <Activity size={12} style={{ color: "var(--color-accent)" }} />
+          </div>
+          <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>System Status</span>
+        </div>
         <StatusBadge status={health.status} />
       </div>
 

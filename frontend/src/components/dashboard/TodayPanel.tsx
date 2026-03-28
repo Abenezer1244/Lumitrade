@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount } from "@/hooks/useAccount";
-import { AlertTriangle, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
 import { motion, useMotionValue, useTransform, animate, AnimatePresence } from "motion/react";
 
 /* ─── Animated P&L Counter ─── */
@@ -159,10 +159,17 @@ export default function TodayPanel() {
     >
       {/* Tab bar — pill style */}
       <div className="flex items-center justify-between mb-4">
-        <div
-          className="flex items-center gap-0.5 p-0.5 rounded-full"
-          style={{ backgroundColor: "var(--color-bg-elevated)" }}
-        >
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+          >
+            <Calendar size={12} style={{ color: "var(--color-accent)" }} />
+          </div>
+          <div
+            className="flex items-center gap-0.5 p-0.5 rounded-full"
+            style={{ backgroundColor: "var(--color-bg-elevated)" }}
+          >
           {TABS.map((tab) => (
             <button
               key={tab}
@@ -177,6 +184,7 @@ export default function TodayPanel() {
               {tab}
             </button>
           ))}
+          </div>
         </div>
         <TrendIcon className={`w-4 h-4 ${trendColor}`} />
       </div>

@@ -77,9 +77,14 @@ export default function RiskUtilization() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Shield size={15} style={{ color: "var(--color-accent)" }} />
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+          >
+            <Shield size={12} style={{ color: "var(--color-accent)" }} />
+          </div>
           <h3 className="text-card-title" style={{ color: "var(--color-text-primary)" }}>
-            Risk Utilization
+            Risk
           </h3>
         </div>
         <motion.div
