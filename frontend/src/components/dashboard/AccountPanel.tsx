@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAccount } from "@/hooks/useAccount";
-import { AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -119,22 +119,22 @@ interface ModeBadgeProps {
 function ModeBadge({ mode }: ModeBadgeProps) {
   const isLive = mode === "LIVE";
   return (
-    <span className="relative inline-flex items-center">
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider"
+      style={{
+        background: isLive ? "var(--color-profit-dim)" : "var(--color-warning-dim)",
+        color: isLive ? "var(--color-profit)" : "var(--color-warning)",
+      }}
+    >
       {isLive && (
         <motion.span
-          className="absolute inset-0 rounded-sm"
+          className="w-1.5 h-1.5 rounded-full"
           style={{ backgroundColor: "var(--color-profit)" }}
-          animate={{ opacity: [0.15, 0.35, 0.15] }}
+          animate={{ opacity: [1, 0.4, 1] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
       )}
-      <span
-        className={`relative text-sm font-mono ${
-          isLive ? "text-profit" : "text-warning"
-        }`}
-      >
-        {mode}
-      </span>
+      {mode}
     </span>
   );
 }
@@ -168,72 +168,84 @@ export default function AccountPanel() {
 
   return (
     <motion.div
-      className="glass p-5"
+      className="glass p-6"
       aria-live="polite"
       aria-atomic="true"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      {/* Header + Balance */}
-      <motion.div variants={childVariants}>
-        <p className="text-label text-tertiary mb-2">Account</p>
-        <p className="text-metric text-primary">
+      {/* Header row — icon + label + mode badge */}
+      <motion.div className="flex items-center justify-between mb-4" variants={childVariants}>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: "var(--color-accent-glow)" }}
+          >
+            <Wallet size={14} style={{ color: "var(--color-accent)" }} />
+          </div>
+          <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>
+            Account Balance
+          </span>
+        </div>
+        <ModeBadge mode={account.mode} />
+      </motion.div>
+
+      {/* Hero balance — larger */}
+      <motion.div className="mb-1" variants={childVariants}>
+        <p
+          className="text-primary"
+          style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em" }}
+        >
           <AnimatedNumber value={balance} prefix="$" />
         </p>
-        <p className="text-xs text-secondary mt-1">
-          Equity:{" "}
-          <AnimatedNumber
-            value={equity}
-            prefix="$"
-            className="font-mono"
-          />
-        </p>
       </motion.div>
 
-      {/* Open trades + Mode */}
-      <motion.div className="flex gap-4 mt-3" variants={childVariants}>
-        <div>
-          <p className="text-label text-tertiary">Open</p>
-          <p className="text-sm font-mono text-primary">
-            {account.open_trade_count}
-          </p>
-        </div>
-        <div>
-          <p className="text-label text-tertiary">Mode</p>
-          <ModeBadge mode={account.mode} />
-        </div>
-      </motion.div>
+      {/* Equity + Open count subtitle */}
+      <motion.p className="text-sm mb-4" style={{ color: "var(--color-text-secondary)" }} variants={childVariants}>
+        Equity:{" "}
+        <AnimatedNumber value={equity} prefix="$" className="font-mono font-medium" />
+        <span className="mx-2" style={{ opacity: 0.3 }}>|</span>
+        Open: <span className="font-mono font-medium">{account.open_trade_count}</span>
+      </motion.p>
 
-      {/* Live Unrealized P&L */}
+      {/* P&L row — side by side */}
       <motion.div
-        className="mt-3 pt-3 border-t border-border"
+        className="pt-4 grid grid-cols-2 gap-4"
+        style={{ borderTop: "1px solid var(--color-border)" }}
         variants={childVariants}
       >
-        <div className="flex items-center justify-between">
-          <p className="text-label text-tertiary">Unrealized P&amp;L</p>
-          <div className="flex items-center gap-1">
+        <div>
+          <p className="text-label mb-1.5" style={{ color: "var(--color-text-tertiary)" }}>
+            Unrealized P&amp;L
+          </p>
+          <div className="flex items-center gap-1.5">
             <TrendArrow isProfit={isProfit} />
             <AnimatedNumber
               value={unrealizedPnl}
               prefix="$"
               showSign
-              className={`text-sm font-mono font-bold ${
+              className={`text-base font-mono font-bold ${
                 isProfit ? "text-profit" : "text-loss"
               }`}
             />
           </div>
         </div>
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-label text-tertiary">Daily P&amp;L</p>
-          <AnimatedNumber
-            value={dailyPnl}
-            prefix="$"
-            showSign
-            className={`text-sm font-mono font-bold ${
-              isDailyProfit ? "text-profit" : "text-loss"
-            }`}
-          />
+        <div>
+          <p className="text-label mb-1.5" style={{ color: "var(--color-text-tertiary)" }}>
+            Daily P&amp;L
+          </p>
+          <div className="flex items-center gap-1.5">
+            <TrendArrow isProfit={isDailyProfit} />
+            <AnimatedNumber
+              value={dailyPnl}
+              prefix="$"
+              showSign
+              className={`text-base font-mono font-bold ${
+                isDailyProfit ? "text-profit" : "text-loss"
+              }`}
+            />
+          </div>
         </div>
       </motion.div>
     </motion.div>
