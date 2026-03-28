@@ -224,11 +224,37 @@ class OrchestratorService:
         await self.oanda.close()
         logger.info("lumitrade_stopped")
 
+    @staticmethod
+    def _is_market_open() -> bool:
+        """Check if forex market is open.
+        Forex closes Friday ~22:00 UTC and reopens Sunday ~22:00 UTC.
+        Also closed daily 22:00-22:05 UTC for maintenance."""
+        now = datetime.now(timezone.utc)
+        weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+        hour = now.hour
+
+        # Saturday: always closed
+        if weekday == 5:
+            return False
+        # Sunday: closed until 22:00 UTC
+        if weekday == 6 and hour < 22:
+            return False
+        # Friday: closed after 22:00 UTC
+        if weekday == 4 and hour >= 22:
+            return False
+        return True
+
     async def _signal_to_trade_loop(self) -> None:
         """Full pipeline: scan → risk evaluate → execute if approved."""
         logger.info("signal_to_trade_loop_started", pairs=self.config.pairs)
         try:
             while True:
+                # Check market hours — skip scanning when forex is closed
+                if not self._is_market_open():
+                    logger.info("market_closed_skipping_scan")
+                    await asyncio.sleep(300)  # Check again in 5 minutes
+                    continue
+
                 # Refresh account balance from OANDA every cycle
                 try:
                     acct = await self.oanda.get_account_summary()
