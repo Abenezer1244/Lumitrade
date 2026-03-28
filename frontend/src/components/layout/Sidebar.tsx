@@ -116,8 +116,13 @@ export default function Sidebar() {
           {isCollapsed ? (
             <motion.span
               key="logo-collapsed"
-              className="font-mono text-sm font-bold"
-              style={{ color: "var(--color-brand)" }}
+              className="text-sm font-bold"
+              style={{
+                background: "linear-gradient(135deg, #3D8EFF, #7C5CFC)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                fontFamily: "'Space Grotesk', sans-serif",
+              }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -134,16 +139,21 @@ export default function Sidebar() {
               transition={{ duration: 0.15 }}
             >
               <span
-                className="font-mono text-lg font-bold"
-                style={{ color: "var(--color-brand)" }}
+                className="text-lg font-bold tracking-tight"
+                style={{
+                  background: "linear-gradient(135deg, #3D8EFF, #7C5CFC)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
               >
                 LUMITRADE
               </span>
               <p
-                className="mt-0.5 font-mono text-xs"
-                style={{ color: "var(--color-text-tertiary)" }}
+                className="mt-0.5 text-[10px]"
+                style={{ color: "var(--color-text-tertiary)", fontFamily: "'JetBrains Mono', monospace" }}
               >
-                v1.0 · Phase 0
+                AI Trading Platform
               </p>
             </motion.div>
           )}
