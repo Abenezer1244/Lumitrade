@@ -161,9 +161,33 @@ function PulseDot({ color }: { color: string }) {
   );
 }
 
+// ── Market hours check ────────────────────────────────────
+function useMarketOpen(): boolean {
+  const [isOpen, setIsOpen] = useState(() => checkMarketOpen());
+
+  useEffect(() => {
+    const interval = setInterval(() => setIsOpen(checkMarketOpen()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return isOpen;
+}
+
+function checkMarketOpen(): boolean {
+  const now = new Date();
+  const utcDay = now.getUTCDay(); // 0=Sun, 5=Fri, 6=Sat
+  const utcHour = now.getUTCHours();
+
+  if (utcDay === 6) return false; // Saturday
+  if (utcDay === 0 && utcHour < 22) return false; // Sunday before 22:00
+  if (utcDay === 5 && utcHour >= 22) return false; // Friday after 22:00
+  return true;
+}
+
 // ── Main component ─────────────────────────────────────────
 export default function MissionControl() {
   const { events, loading } = useAgentEvents();
+  const marketOpen = useMarketOpen();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
   const prevCountRef = useRef(0);
@@ -225,10 +249,23 @@ export default function MissionControl() {
           <span className="text-xs font-semibold tracking-wide" style={{ color: "var(--color-text-primary)" }}>
             Mission Control
           </span>
-          <PulseDot color="var(--color-profit)" />
-          <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-profit)" }}>
-            LIVE
-          </span>
+          {marketOpen ? (
+            <>
+              <PulseDot color="var(--color-profit)" />
+              <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-profit)" }}>
+                LIVE
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-loss)" }} />
+              </span>
+              <span className="text-[9px] font-bold font-mono" style={{ color: "var(--color-loss)" }}>
+                CLOSED
+              </span>
+            </>
+          )}
         </div>
         <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
           {events.length} events
