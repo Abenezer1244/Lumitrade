@@ -47,7 +47,7 @@ export default function DashboardPage() {
       </motion.div>
 
       <motion.div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-4"
+        className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start"
         variants={item}
       >
         <motion.div className="lg:col-span-3" variants={item}>
@@ -59,7 +59,7 @@ export default function DashboardPage() {
       </motion.div>
 
       <motion.div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-4"
+        className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start"
         variants={item}
       >
         <motion.div className="lg:col-span-3" variants={item}>
