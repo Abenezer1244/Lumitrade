@@ -35,9 +35,9 @@ function AnimatedPnlCounter({ value }: { value: number }) {
 }
 
 /* ─── Win Rate Arc ─── */
-function WinRateArc({ percentage }: { percentage: number }) {
-  const radius = 18;
-  const strokeWidth = 3.5;
+function WinRateArc({ percentage, size = "sm" }: { percentage: number; size?: "sm" | "lg" }) {
+  const radius = size === "lg" ? 42 : 18;
+  const strokeWidth = size === "lg" ? 5 : 3.5;
   const circumference = 2 * Math.PI * radius;
   const normalizedPct = Math.max(0, Math.min(100, percentage));
   const strokeDashoffset = useMotionValue(circumference);
@@ -57,11 +57,14 @@ function WinRateArc({ percentage }: { percentage: number }) {
     normalizedPct >= 40 ? "var(--color-warning)" :
     "var(--color-loss)";
 
+  const svgSize = (radius + strokeWidth) * 2;
+  const fontSize = size === "lg" ? "18px" : "10px";
+
   return (
-    <svg width={44} height={44} viewBox={`0 0 ${(radius + strokeWidth) * 2} ${(radius + strokeWidth) * 2}`} className="shrink-0">
+    <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`} className="shrink-0">
       <circle cx={radius + strokeWidth} cy={radius + strokeWidth} r={radius} fill="none" stroke="var(--color-border)" strokeWidth={strokeWidth} />
       <motion.circle cx={radius + strokeWidth} cy={radius + strokeWidth} r={radius} fill="none" stroke={arcColor} strokeWidth={strokeWidth} strokeDasharray={circumference} style={{ strokeDashoffset }} strokeLinecap="round" transform={`rotate(-90 ${radius + strokeWidth} ${radius + strokeWidth})`} />
-      <text x={radius + strokeWidth} y={radius + strokeWidth} textAnchor="middle" dominantBaseline="central" className="fill-current text-primary" style={{ fontSize: "10px", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+      <text x={radius + strokeWidth} y={radius + strokeWidth} textAnchor="middle" dominantBaseline="central" className="fill-current text-primary" style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
         {normalizedPct.toFixed(0)}%
       </text>
     </svg>
@@ -176,30 +179,33 @@ export default function TodayPanel() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.15 }}
+          className="flex items-center justify-between"
         >
-          {/* P&L */}
-          <div className="mb-3">
-            <AnimatedPnlCounter value={pnlNum} />
+          {/* Left side: P&L + stats */}
+          <div>
+            <div className="mb-3">
+              <AnimatedPnlCounter value={pnlNum} />
+            </div>
+            <div className="flex items-center gap-5">
+              <div>
+                <p className="text-label text-tertiary">Trades</p>
+                <p className="text-sm font-mono text-primary">{tradeCount}</p>
+              </div>
+              <div>
+                <p className="text-label text-tertiary">Wins</p>
+                <p className="text-sm font-mono text-profit">{winCount}</p>
+              </div>
+            </div>
           </div>
 
-          {/* Stats row */}
-          <div className="flex items-center gap-5">
-            <div>
-              <p className="text-label text-tertiary">Trades</p>
-              <p className="text-sm font-mono text-primary">{tradeCount}</p>
-            </div>
-            <div>
-              <p className="text-label text-tertiary">Wins</p>
-              <p className="text-sm font-mono text-profit">{winCount}</p>
-            </div>
-            <div>
-              <p className="text-label text-tertiary mb-1">Win Rate</p>
-              {tradeCount > 0 ? (
-                <WinRateArc percentage={winRate} />
-              ) : (
-                <p className="text-sm font-mono text-tertiary">---</p>
-              )}
-            </div>
+          {/* Right side: Big win rate arc */}
+          <div className="flex flex-col items-center">
+            <p className="text-label text-tertiary mb-1">Win Rate</p>
+            {tradeCount > 0 ? (
+              <WinRateArc percentage={winRate} size="lg" />
+            ) : (
+              <p className="text-sm font-mono text-tertiary">---</p>
+            )}
           </div>
         </motion.div>
       </AnimatePresence>
