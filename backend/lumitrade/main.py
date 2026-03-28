@@ -426,6 +426,9 @@ class OrchestratorService:
         """SA-03: Run risk monitor every 30 minutes while positions open."""
         while True:
             await asyncio.sleep(1800)  # 30 minutes
+            # Skip when market is closed
+            if not self._is_market_open():
+                continue
             try:
                 # Fetch real open trades from DB with full details
                 open_trades = await self.db.select(
@@ -477,6 +480,8 @@ class OrchestratorService:
         while True:
             try:
                 await asyncio.sleep(RECONCILE_INTERVAL)
+                if not self._is_market_open():
+                    continue
                 from .infrastructure.alert_service import AlertService
                 from .state.reconciler import PositionReconciler
 
