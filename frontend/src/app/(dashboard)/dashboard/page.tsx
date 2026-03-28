@@ -26,14 +26,14 @@ const item = {
 export default function DashboardPage() {
   return (
     <motion.div
-      className="space-y-4"
+      className="space-y-5"
       variants={container}
       initial="hidden"
       animate="show"
     >
       {/* Row 1: Asymmetric — Account (wider) + Today + Status (compact) */}
       <motion.div
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-5"
         variants={item}
       >
         <motion.div className="md:col-span-2 lg:col-span-5" variants={item}>
@@ -49,15 +49,15 @@ export default function DashboardPage() {
 
       {/* Row 2: Wider positions table + right column */}
       <motion.div
-        className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
+        className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start"
         variants={item}
       >
-        <motion.div className="lg:col-span-8 space-y-4" variants={item}>
+        <motion.div className="lg:col-span-8 space-y-5" variants={item}>
           <OpenPositionsTable />
           <SignalFeed limit={8} compact />
         </motion.div>
 
-        <motion.div className="lg:col-span-4 space-y-4" variants={item}>
+        <motion.div className="lg:col-span-4 space-y-5" variants={item}>
           <MissionControl />
           <RiskUtilization />
           <KillSwitchButton />
