@@ -50,22 +50,15 @@ export default function DashboardPage() {
         className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start"
         variants={item}
       >
-        <motion.div className="lg:col-span-3" variants={item}>
+        {/* Left column: Positions + Signals stacked tightly */}
+        <motion.div className="lg:col-span-3 space-y-4" variants={item}>
           <OpenPositionsTable />
-        </motion.div>
-        <motion.div className="lg:col-span-2" variants={item}>
-          <MissionControl />
-        </motion.div>
-      </motion.div>
-
-      <motion.div
-        className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start"
-        variants={item}
-      >
-        <motion.div className="lg:col-span-3" variants={item}>
           <SignalFeed limit={8} compact />
         </motion.div>
+
+        {/* Right column: Mission Control + Risk + Kill Switch */}
         <motion.div className="lg:col-span-2 space-y-4" variants={item}>
+          <MissionControl />
           <RiskUtilization />
           <KillSwitchButton />
         </motion.div>
