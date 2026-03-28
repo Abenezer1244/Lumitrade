@@ -117,7 +117,7 @@ export default function Sidebar() {
             <motion.span
               key="logo-collapsed"
               className="text-sm font-bold"
-              style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
+              style={{ color: "var(--color-brand)", fontFamily: "'PT Serif', serif" }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -135,7 +135,7 @@ export default function Sidebar() {
             >
               <span
                 className="text-lg font-bold tracking-tight"
-                style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
+                style={{ color: "var(--color-brand)", fontFamily: "'PT Serif', serif" }}
               >
                 LUMITRADE
               </span>

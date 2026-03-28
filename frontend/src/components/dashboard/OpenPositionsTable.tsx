@@ -205,7 +205,7 @@ export default function OpenPositionsTable() {
           </div>
           <h3
             className="text-sm font-semibold"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}
+            style={{ color: "var(--color-text-primary)", fontFamily: "'PT Serif', serif" }}
           >
             Open Positions
           </h3>

@@ -1,5 +1,5 @@
 @import url("https://api.fontshare.com/v2/css?f[]=satoshi@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&family=PT+Serif:wght@400;700&family=Nunito:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -35,8 +35,13 @@
   --color-warning-dim: rgba(255, 179, 71, 0.12);
 
   --glass-blur: blur(16px);
-  --glass-border: 1px solid rgba(30, 58, 95, 0.3);
-  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --glass-border: 1px solid rgba(153, 246, 228, 0.3);
+  --glass-shadow: 0 2.8px 2.2px rgba(0, 0, 0, 0.034),
+                  0 6.7px 5.3px rgba(0, 0, 0, 0.048),
+                  0 12.5px 10px rgba(0, 0, 0, 0.06),
+                  0 22.3px 17.9px rgba(0, 0, 0, 0.072),
+                  0 41.8px 33.4px rgba(0, 0, 0, 0.086),
+                  0 100px 80px rgba(0, 0, 0, 0.12);
   --card-radius: 16px;
 }
 
@@ -69,25 +74,30 @@
   --color-warning-dim: rgba(217, 119, 6, 0.08);
 
   --glass-blur: blur(12px);
-  --glass-border: 1px solid rgba(203, 213, 225, 0.4);
-  --glass-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --glass-border: 1px solid rgba(153, 246, 228, 0.25);
+  --glass-shadow: 0 2.8px 2.2px rgba(0, 0, 0, 0.02),
+                  0 6.7px 5.3px rgba(0, 0, 0, 0.028),
+                  0 12.5px 10px rgba(0, 0, 0, 0.035),
+                  0 22.3px 17.9px rgba(0, 0, 0, 0.042),
+                  0 41.8px 33.4px rgba(0, 0, 0, 0.05),
+                  0 100px 80px rgba(0, 0, 0, 0.07);
   --card-radius: 16px;
 }
 
 body {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
-  font-family: "Satoshi", sans-serif;
+  font-family: "Nunito", "Satoshi", sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ── Typography utilities ───────────────────────────────────── */
-.text-display   { font-family: "Space Grotesk", sans-serif; font-size: 28px; font-weight: 700; }
-.text-heading   { font-size: 18px; font-weight: 600; }
-.text-card-title { font-size: 14px; font-weight: 500; }
-.text-body      { font-size: 14px; font-weight: 400; }
-.text-label     { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+.text-display   { font-family: "PT Serif", serif; font-size: 28px; font-weight: 700; }
+.text-heading   { font-family: "PT Serif", serif; font-size: 18px; font-weight: 700; }
+.text-card-title { font-family: "PT Serif", serif; font-size: 14px; font-weight: 700; }
+.text-body      { font-family: "Nunito", sans-serif; font-size: 14px; font-weight: 400; }
+.text-label     { font-family: "Nunito", sans-serif; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .text-price     { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 500; }
 .text-metric    { font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 600; }
 .text-micro     { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 400; }
@@ -118,7 +128,11 @@ body {
   border: var(--glass-border);
   border-radius: var(--card-radius);
   box-shadow: var(--glass-shadow);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.glass:hover {
+  transform: translateY(-2px);
+  border-color: rgba(153, 246, 228, 0.45);
 }
 
 .glass-elevated {
@@ -285,6 +299,63 @@ select {
 .animate-slide-up {
   animation: slide-up 200ms ease-out forwards;
 }
+
+/* ── Animation Library ─────────────────────────────────────── */
+
+/* Fade */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+.animate-fade-in { animation: fade-in 0.4s ease-out forwards; }
+.animate-fade-out { animation: fade-out 0.3s ease-in forwards; }
+
+/* Slide */
+@keyframes slide-in-left { from { transform: translateX(-24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slide-in-right { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slide-in-down { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.animate-slide-in-left { animation: slide-in-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slide-in-right { animation: slide-in-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slide-in-down { animation: slide-in-down 0.3s ease-out forwards; }
+
+/* Scale */
+@keyframes scale-in { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes scale-out { from { transform: scale(1); opacity: 1; } to { transform: scale(0.92); opacity: 0; } }
+.animate-scale-in { animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-scale-out { animation: scale-out 0.2s ease-in forwards; }
+
+/* Rotate */
+@keyframes rotate-in { from { transform: rotate(-8deg) scale(0.95); opacity: 0; } to { transform: rotate(0) scale(1); opacity: 1; } }
+@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.animate-rotate-in { animation: rotate-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-spin-slow { animation: spin-slow 8s linear infinite; }
+
+/* 3D */
+@keyframes flip-in { from { transform: perspective(600px) rotateY(-15deg); opacity: 0; } to { transform: perspective(600px) rotateY(0); opacity: 1; } }
+@keyframes tilt-in { from { transform: perspective(800px) rotateX(8deg); opacity: 0; } to { transform: perspective(800px) rotateX(0); opacity: 1; } }
+.animate-flip-in { animation: flip-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-tilt-in { animation: tilt-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* Pulse */
+@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(153, 246, 228, 0); } 50% { box-shadow: 0 0 12px 4px rgba(153, 246, 228, 0.15); } }
+@keyframes pulse-scale { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+.animate-pulse-scale { animation: pulse-scale 2s ease-in-out infinite; }
+
+/* Shake */
+@keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+.animate-shake { animation: shake 0.5s ease-in-out; }
+
+/* Blur */
+@keyframes blur-in { from { filter: blur(8px); opacity: 0; } to { filter: blur(0); opacity: 1; } }
+@keyframes blur-out { from { filter: blur(0); opacity: 1; } to { filter: blur(8px); opacity: 0; } }
+.animate-blur-in { animation: blur-in 0.4s ease-out forwards; }
+.animate-blur-out { animation: blur-out 0.3s ease-in forwards; }
+
+/* Stagger delay utilities for animation chaining */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
 
 /* ── Button press ──────────────────────────────────────────── */
 button,
