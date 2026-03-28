@@ -5,145 +5,80 @@ import { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "motion/react";
 import type { ComponentStatus } from "@/types/system";
 
-/* ------------------------------------------------------------------ */
-/*  Animated number display — smoothly transitions between values     */
-/* ------------------------------------------------------------------ */
+/* ── Animated number ───────────────────────────────────────── */
 
-interface AnimatedNumberProps {
-  value: number;
-  suffix?: string;
-  className?: string;
-}
-
-function AnimatedNumber({ value, suffix = "", className }: AnimatedNumberProps) {
+function AnimatedNumber({ value, suffix = "", className }: { value: number; suffix?: string; className?: string }) {
   const motionVal = useMotionValue(value);
   const displayed = useTransform(motionVal, (v) => Math.round(v));
   const [current, setCurrent] = useState(value);
 
   useEffect(() => {
     const controls = animate(motionVal, value, {
-      duration: 0.6,
-      ease: [0.25, 0.46, 0.45, 0.94],
+      duration: 0.5,
+      ease: [0.16, 1, 0.3, 1],
     });
     const unsub = displayed.on("change", (v) => setCurrent(v));
-    return () => {
-      controls.stop();
-      unsub();
-    };
+    return () => { controls.stop(); unsub(); };
   }, [value, motionVal, displayed]);
 
   return <span className={className}>{current}{suffix}</span>;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Pulse dot — animated ping ring for live status indication         */
-/* ------------------------------------------------------------------ */
+/* ── Status indicator dot ──────────────────────────────────── */
 
-interface PulseDotProps {
-  status: string;
-}
-
-function PulseDot({ status }: PulseDotProps) {
-  const colorMap: Record<string, { bg: string; ring: string }> = {
-    ok:        { bg: "bg-profit",  ring: "bg-profit" },
-    healthy:   { bg: "bg-profit",  ring: "bg-profit" },
-    online:    { bg: "bg-profit",  ring: "bg-profit" },
-    closed:    { bg: "bg-profit",  ring: "bg-profit" },
-    degraded:  { bg: "bg-warning", ring: "bg-warning" },
-    warning:   { bg: "bg-warning", ring: "bg-warning" },
-    half_open: { bg: "bg-warning", ring: "bg-warning" },
-    offline:   { bg: "bg-loss",    ring: "bg-loss" },
-    error:     { bg: "bg-loss",    ring: "bg-loss" },
-    open:      { bg: "bg-loss",    ring: "bg-loss" },
+function StatusDot({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    ok: "#00C896", healthy: "#00C896", online: "#00C896", closed: "#00C896",
+    degraded: "#FFB347", warning: "#FFB347", half_open: "#FFB347",
+    offline: "#FF4D6A", error: "#FF4D6A", open: "#FF4D6A",
   };
-
-  const colors = colorMap[status] ?? { bg: "bg-tertiary", ring: "bg-tertiary" };
+  const color = colorMap[status] ?? "var(--color-text-tertiary)";
+  const isHealthy = ["ok", "healthy", "online", "closed"].includes(status);
 
   return (
-    <span className="relative flex h-2 w-2">
-      <motion.span
-        className={`absolute inline-flex h-full w-full rounded-full ${colors.ring} opacity-75`}
-        animate={{ scale: [1, 1.8, 1], opacity: [0.75, 0, 0.75] }}
-        transition={{
-          duration: status === "ok" || status === "healthy" || status === "closed" ? 2.4 : 1.2,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-      <span className={`relative inline-flex rounded-full h-2 w-2 ${colors.bg}`} />
+    <span className="relative flex h-1.5 w-1.5">
+      {!isHealthy && (
+        <motion.span
+          className="absolute inline-flex h-full w-full rounded-full"
+          style={{ backgroundColor: color }}
+          animate={{ scale: [1, 2, 1], opacity: [0.6, 0, 0.6] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+      <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ backgroundColor: color }} />
     </span>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Overall status badge with color transition                        */
-/* ------------------------------------------------------------------ */
+/* ── Overall status badge ──────────────────────────────────── */
 
-interface StatusBadgeProps {
-  status: "healthy" | "degraded" | "offline";
-}
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  const colorMap: Record<string, string> = {
-    healthy:  "text-profit",
-    degraded: "text-warning",
-    offline:  "text-loss",
+function OverallBadge({ status }: { status: "healthy" | "degraded" | "offline" }) {
+  const styles: Record<string, { bg: string; color: string }> = {
+    healthy:  { bg: "rgba(0, 200, 150, 0.1)", color: "var(--color-profit)" },
+    degraded: { bg: "rgba(255, 179, 71, 0.1)", color: "var(--color-warning)" },
+    offline:  { bg: "rgba(255, 77, 106, 0.1)", color: "var(--color-loss)" },
   };
-
-  const bgMap: Record<string, string> = {
-    healthy:  "bg-profit/10",
-    degraded: "bg-warning/10",
-    offline:  "bg-loss/10",
-  };
+  const s = styles[status] || styles.offline;
 
   return (
     <AnimatePresence mode="wait">
       <motion.span
         key={status}
-        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${colorMap[status]} ${bgMap[status]}`}
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest"
+        style={{ background: s.bg, color: s.color }}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
+        transition={{ duration: 0.2 }}
       >
-        <span className="relative flex h-1.5 w-1.5">
-          <motion.span
-            className={`absolute inline-flex h-full w-full rounded-full ${status === "healthy" ? "bg-profit" : status === "degraded" ? "bg-warning" : "bg-loss"}`}
-            animate={{ opacity: [1, 0.4, 1] }}
-            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          />
-        </span>
+        <span className="w-1 h-1 rounded-full" style={{ backgroundColor: s.color }} />
         {status}
       </motion.span>
     </AnimatePresence>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Uptime display with animated hour/minute counters                 */
-/* ------------------------------------------------------------------ */
-
-interface UptimeDisplayProps {
-  uptimeSeconds: number;
-}
-
-function UptimeDisplay({ uptimeSeconds }: UptimeDisplayProps) {
-  const hours = Math.floor(uptimeSeconds / 3600);
-  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
-
-  return (
-    <span className="text-[10px] font-mono text-secondary tabular-nums">
-      <AnimatedNumber value={hours} className="text-[10px] font-mono text-secondary" />
-      <span>h </span>
-      <AnimatedNumber value={minutes} className="text-[10px] font-mono text-secondary" />
-      <span>m</span>
-    </span>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Component row data shape                                          */
-/* ------------------------------------------------------------------ */
+/* ── Component info shape ──────────────────────────────────── */
 
 interface ComponentInfo {
   label: string;
@@ -153,32 +88,23 @@ interface ComponentInfo {
   numericSuffix?: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main panel                                                        */
-/* ------------------------------------------------------------------ */
+/* ── Main panel — muted glass, compact ─────────────────────── */
 
 export default function SystemStatusPanel() {
   const { health, loading } = useSystemStatus();
-  const prevHealthRef = useRef(health);
-
-  useEffect(() => {
-    if (health) {
-      prevHealthRef.current = health;
-    }
-  }, [health]);
 
   if (loading || !health) {
     return (
-      <div className="glass p-5 h-48">
-        <div className="animate-pulse space-y-3">
+      <div className="glass-muted p-5 h-[220px]">
+        <div className="animate-pulse space-y-2.5">
           <div className="flex justify-between">
-            <div className="h-3 w-24 rounded bg-elevated" />
-            <div className="h-3 w-16 rounded bg-elevated" />
+            <div className="h-3 w-20 rounded bg-elevated" />
+            <div className="h-3 w-14 rounded bg-elevated" />
           </div>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex justify-between">
-              <div className="h-2.5 w-20 rounded bg-elevated" />
-              <div className="h-2.5 w-12 rounded bg-elevated" />
+              <div className="h-2 w-16 rounded bg-elevated" />
+              <div className="h-2 w-10 rounded bg-elevated" />
             </div>
           ))}
         </div>
@@ -227,73 +153,62 @@ export default function SystemStatusPanel() {
     },
   ];
 
+  const hours = Math.floor(health.uptime_seconds / 3600);
+  const minutes = Math.floor((health.uptime_seconds % 3600) / 60);
+
   return (
     <motion.div
-      className="glass p-5"
+      className="glass-muted p-5 h-full"
       aria-live="polite"
       aria-atomic="true"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
+      transition={{ duration: 0.35 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <p className="text-label text-tertiary">System Status</p>
-        <StatusBadge status={health.status} />
+        <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>Status</span>
+        <OverallBadge status={health.status} />
       </div>
 
-      {/* Component rows — staggered entrance */}
-      <div className="space-y-2.5">
+      {/* Component rows — tight layout */}
+      <div className="space-y-2">
         {components.map(({ label, status, detail, numericValue, numericSuffix }, index) => (
           <motion.div
             key={label}
             className="flex items-center justify-between"
-            initial={{ opacity: 0, x: -8 }}
+            initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{
-              duration: 0.3,
-              delay: index * 0.05,
-              ease: "easeOut",
-            }}
+            transition={{ duration: 0.25, delay: index * 0.04 }}
           >
             <div className="flex items-center gap-2">
-              <PulseDot status={status} />
-              <span className="text-xs text-primary">{label}</span>
+              <StatusDot status={status} />
+              <span className="text-[11px]" style={{ color: "var(--color-text-secondary)" }}>{label}</span>
             </div>
-
             {numericValue !== undefined && numericSuffix !== undefined ? (
-              <span className="text-[10px] font-mono text-tertiary tabular-nums">
-                <AnimatedNumber
-                  value={numericValue}
-                  className="text-[10px] font-mono text-tertiary"
-                />
+              <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
+                <AnimatedNumber value={numericValue} className="text-[10px] font-mono" />
                 {numericSuffix}
               </span>
             ) : (
-              <motion.span
-                key={detail}
-                className="text-[10px] font-mono text-tertiary"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3 }}
-              >
+              <span className="text-[10px] font-mono" style={{ color: "var(--color-text-tertiary)" }}>
                 {detail}
-              </motion.span>
+              </span>
             )}
           </motion.div>
         ))}
       </div>
 
-      {/* Uptime footer */}
-      <motion.div
-        className="mt-3 pt-3 border-t border-border flex items-center justify-between"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.35 }}
+      {/* Uptime — subtle footer */}
+      <div
+        className="mt-3 pt-2.5 flex items-center justify-between"
+        style={{ borderTop: "1px solid rgba(30, 55, 92, 0.2)" }}
       >
-        <span className="text-[10px] text-tertiary">Uptime</span>
-        <UptimeDisplay uptimeSeconds={health.uptime_seconds} />
-      </motion.div>
+        <span className="text-[10px]" style={{ color: "var(--color-text-tertiary)" }}>Uptime</span>
+        <span className="text-[10px] font-mono tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
+          {hours}h {minutes}m
+        </span>
+      </div>
     </motion.div>
   );
 }

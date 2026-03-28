@@ -4,24 +4,10 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  LayoutDashboard,
-  Zap,
-  History,
-  BarChart2,
-  Settings,
-  Menu,
-  X,
-  ChevronsLeft,
-  ChevronsRight,
-  BookOpen,
-  MessageCircle,
-  TrendingUp,
-  Store,
-  Users,
-  FlaskConical,
-  Key,
+  LayoutDashboard, Zap, History, BarChart2, Settings, Menu, X,
+  ChevronsLeft, ChevronsRight, BookOpen, MessageCircle, TrendingUp,
+  Store, Users, FlaskConical, Key,
 } from "lucide-react";
-import StatusDot from "@/components/ui/StatusDot";
 
 interface NavItem {
   href: string;
@@ -46,11 +32,8 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const COLLAPSED_KEY = "lumitrade-sidebar-collapsed";
-
 const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 64;
-
-/** Spring config for sidebar width and indicator transitions */
 const sidebarSpring = { type: "spring" as const, stiffness: 300, damping: 30 };
 const indicatorSpring = { type: "spring" as const, stiffness: 400, damping: 35 };
 
@@ -60,7 +43,6 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const navRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
-  // Restore collapsed state from localStorage
   useEffect(() => {
     const saved = localStorage.getItem(COLLAPSED_KEY);
     if (saved === "true") setCollapsed(true);
@@ -74,50 +56,39 @@ export default function Sidebar() {
     });
   }, []);
 
-  // Close mobile sidebar on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  // Close sidebar on escape key
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMobileOpen(false);
-    };
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, []);
 
-  // Prevent body scroll when mobile sidebar is open
   useEffect(() => {
-    if (mobileOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
   }, [mobileOpen]);
 
-  /** Find the active nav item index for the indicator position */
-  const activeIndex = NAV_ITEMS.findIndex((item) =>
-    pathname?.startsWith(item.href)
-  );
+  const activeIndex = NAV_ITEMS.findIndex((item) => pathname?.startsWith(item.href));
 
   const sidebarContent = (isCollapsed: boolean) => (
     <>
       {/* Logo */}
       <div
-        className={`flex items-center ${isCollapsed ? "justify-center px-2 py-5" : "justify-between px-5 py-6"}`}
-        style={{ borderBottom: "1px solid var(--color-border)" }}
+        className={`flex items-center ${isCollapsed ? "justify-center px-2 py-5" : "justify-between px-5 py-5"}`}
+        style={{ borderBottom: "1px solid rgba(30, 55, 92, 0.25)" }}
       >
         <AnimatePresence mode="wait" initial={false}>
           {isCollapsed ? (
             <motion.span
               key="logo-collapsed"
-              className="font-mono text-sm font-bold"
-              style={{ color: "var(--color-brand)" }}
+              className="text-sm font-bold"
+              style={{
+                background: "var(--gradient-accent)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                fontFamily: "'JetBrains Mono', monospace",
+              }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -134,24 +105,25 @@ export default function Sidebar() {
               transition={{ duration: 0.15 }}
             >
               <span
-                className="font-mono text-lg font-bold"
-                style={{ color: "var(--color-brand)" }}
+                className="text-lg font-bold tracking-tight"
+                style={{
+                  background: "var(--gradient-accent)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
               >
                 LUMITRADE
               </span>
-              <p
-                className="mt-0.5 font-mono text-xs"
-                style={{ color: "var(--color-text-tertiary)" }}
-              >
-                v1.0 · Phase 0
+              <p className="mt-0.5 text-[10px] font-mono" style={{ color: "var(--color-text-tertiary)" }}>
+                AI Trading Platform
               </p>
             </motion.div>
           )}
         </AnimatePresence>
-        {/* Mobile close button */}
         <button
           onClick={() => setMobileOpen(false)}
-          className="lg:hidden p-1.5 rounded-lg hover:bg-elevated transition-colors"
+          className="lg:hidden p-1.5 rounded-lg transition-colors"
           style={{ color: "var(--color-text-secondary)" }}
           aria-label="Close navigation"
         >
@@ -160,18 +132,12 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="relative flex-1 overflow-y-auto scrollbar-hide px-2 py-4 space-y-0.5">
-        {/* Animated active indicator bar (desktop expanded only) */}
+      <nav className="relative flex-1 overflow-y-auto scrollbar-hide px-2 py-3 space-y-0.5">
         {!isCollapsed && activeIndex >= 0 && (
           <motion.div
             className="absolute left-0 w-[2px] rounded-r-full"
-            style={{
-              height: 36,
-              background: "var(--color-brand)",
-            }}
-            animate={{
-              top: activeIndex * 36 + 16, // 36px per item + 16px nav padding
-            }}
+            style={{ height: 36, background: "var(--gradient-accent)" }}
+            animate={{ top: activeIndex * 36 + 12 }}
             transition={indicatorSpring}
             layoutId="active-indicator"
           />
@@ -186,39 +152,29 @@ export default function Sidebar() {
               key={href}
               whileHover={{
                 x: isCollapsed ? 0 : 2,
-                backgroundColor: active
-                  ? "transparent"
-                  : "var(--color-bg-elevated)",
+                backgroundColor: active ? "transparent" : "rgba(18, 30, 52, 0.5)",
               }}
               transition={{ duration: 0.15 }}
               className="rounded-lg"
             >
               <Link
-                ref={(el) => {
-                  if (el) navRefs.current.set(href, el);
-                }}
+                ref={(el) => { if (el) navRefs.current.set(href, el); }}
                 href={href}
-                title={
-                  isCollapsed
-                    ? `${label}${phase ? ` (Phase ${phase})` : ""}`
-                    : undefined
-                }
-                className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} ${isCollapsed ? "px-0 py-2.5" : "px-3 py-2.5"} rounded-lg text-sm`}
+                title={isCollapsed ? `${label}${phase ? ` (Phase ${phase})` : ""}` : undefined}
+                className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} ${isCollapsed ? "px-0 py-2.5" : "px-3 py-2.5"} rounded-lg text-sm transition-colors`}
                 style={
                   active
                     ? {
-                        background: "var(--color-brand-dim)",
+                        background: "var(--gradient-accent-subtle)",
                         color: "var(--color-text-primary)",
                       }
                     : {
-                        color: isFuture
-                          ? "var(--color-text-tertiary)"
-                          : "var(--color-text-secondary)",
-                        opacity: isFuture ? 0.6 : 1,
+                        color: isFuture ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
+                        opacity: isFuture ? 0.5 : 1,
                       }
                 }
               >
-                <Icon size={isCollapsed ? 20 : 16} />
+                <Icon size={isCollapsed ? 20 : 16} style={active ? { color: "var(--color-accent)" } : undefined} />
                 <AnimatePresence mode="wait" initial={false}>
                   {!isCollapsed && (
                     <motion.span
@@ -237,11 +193,8 @@ export default function Sidebar() {
                   {!isCollapsed && phase && (
                     <motion.span
                       key={`phase-${href}`}
-                      className="text-[9px] font-mono px-1 py-0.5 rounded"
-                      style={{
-                        background: "var(--color-bg-elevated)",
-                        color: "var(--color-text-tertiary)",
-                      }}
+                      className="text-[8px] font-mono px-1.5 py-0.5 rounded-full"
+                      style={{ background: "rgba(18, 30, 52, 0.6)", color: "var(--color-text-tertiary)" }}
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
@@ -257,20 +210,16 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse toggle (desktop only) */}
+      {/* Collapse toggle */}
       <motion.button
         onClick={toggleCollapsed}
         className="hidden lg:flex items-center justify-center py-2 mx-2 mb-2 rounded-lg"
         style={{ color: "var(--color-text-tertiary)" }}
-        whileHover={{ backgroundColor: "var(--color-bg-elevated)" }}
+        whileHover={{ backgroundColor: "rgba(18, 30, 52, 0.5)" }}
         transition={{ duration: 0.15 }}
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        {isCollapsed ? (
-          <ChevronsRight size={16} />
-        ) : (
-          <ChevronsLeft size={16} />
-        )}
+        {isCollapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}
         <AnimatePresence initial={false}>
           {!isCollapsed && (
             <motion.span
@@ -286,82 +235,55 @@ export default function Sidebar() {
         </AnimatePresence>
       </motion.button>
 
-      {/* Bottom status section */}
+      {/* Bottom status */}
       <div
-        className={`${isCollapsed ? "px-2 py-3" : "px-4 py-4"} space-y-3`}
-        style={{ borderTop: "1px solid var(--color-border)" }}
+        className={`${isCollapsed ? "px-2 py-3" : "px-4 py-3"} space-y-2`}
+        style={{ borderTop: "1px solid rgba(30, 55, 92, 0.2)" }}
       >
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center">
           <span
-            className={`text-xs font-label px-2 py-0.5 rounded bg-warning-dim text-warning ${isCollapsed ? "text-[9px] px-1" : ""}`}
+            className={`text-[10px] font-bold tracking-widest px-2.5 py-0.5 rounded-full ${isCollapsed ? "text-[8px] px-1.5" : ""}`}
+            style={{ background: "rgba(255, 179, 71, 0.1)", color: "var(--color-warning)" }}
           >
             PAPER
           </span>
         </div>
-        <AnimatePresence mode="wait" initial={false}>
-          {!isCollapsed ? (
-            <motion.div
-              key="status-expanded"
-              className="flex items-center gap-2 text-xs"
-              style={{ color: "var(--color-text-tertiary)" }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-            >
+        <div className={`flex items-center ${isCollapsed ? "justify-center" : "gap-2"}`}>
+          <motion.span
+            className="inline-block w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: "var(--color-profit)" }}
+            animate={{
+              boxShadow: [
+                "0 0 0px 0px rgba(0, 200, 150, 0)",
+                "0 0 6px 2px rgba(0, 200, 150, 0.4)",
+                "0 0 0px 0px rgba(0, 200, 150, 0)",
+              ],
+            }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <AnimatePresence mode="wait" initial={false}>
+            {!isCollapsed && (
               <motion.span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "var(--color-profit)" }}
-                animate={{
-                  boxShadow: [
-                    "0 0 0px 0px var(--color-profit)",
-                    "0 0 6px 2px var(--color-profit)",
-                    "0 0 0px 0px var(--color-profit)",
-                  ],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              />
-              <span>All systems online</span>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="status-collapsed"
-              className="flex justify-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.12 }}
-            >
-              <motion.span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "var(--color-profit)" }}
-                animate={{
-                  boxShadow: [
-                    "0 0 0px 0px var(--color-profit)",
-                    "0 0 6px 2px var(--color-profit)",
-                    "0 0 0px 0px var(--color-profit)",
-                  ],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+                key="status-text"
+                className="text-[10px]"
+                style={{ color: "var(--color-text-tertiary)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.12 }}
+              >
+                Systems online
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </>
   );
 
   return (
     <>
-      {/* Mobile hamburger button */}
+      {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed top-3.5 left-4 z-40 lg:hidden p-2 rounded-lg"
@@ -380,7 +302,8 @@ export default function Sidebar() {
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            className="fixed inset-0 z-40 lg:hidden"
+            style={{ backgroundColor: "rgba(0, 0, 0, 0.6)" }}
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
             initial={{ opacity: 0 }}
@@ -397,10 +320,8 @@ export default function Sidebar() {
           <motion.aside
             className="fixed left-0 top-0 z-50 flex min-h-screen w-60 flex-col lg:hidden"
             style={{
-              background: "var(--color-bg-surface)",
-              backdropFilter: "var(--glass-blur)",
-              WebkitBackdropFilter: "var(--glass-blur)",
-              borderRight: "1px solid var(--color-border)",
+              background: "var(--color-bg-surface-solid)",
+              borderRight: "1px solid rgba(30, 55, 92, 0.25)",
             }}
             initial={{ x: "-100%" }}
             animate={{ x: 0 }}
@@ -413,14 +334,12 @@ export default function Sidebar() {
         )}
       </AnimatePresence>
 
-      {/* Desktop sidebar with animated width */}
+      {/* Desktop sidebar */}
       <motion.aside
         className="hidden lg:flex fixed left-0 top-0 z-50 min-h-screen flex-col"
         style={{
-          background: "var(--color-bg-surface)",
-          backdropFilter: "var(--glass-blur)",
-          WebkitBackdropFilter: "var(--glass-blur)",
-          borderRight: "1px solid var(--color-border)",
+          background: "var(--color-bg-surface-solid)",
+          borderRight: "1px solid rgba(30, 55, 92, 0.2)",
         }}
         animate={{ width: collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED }}
         transition={sidebarSpring}

@@ -52,9 +52,9 @@ function UTCClock() {
   if (!time) return null;
 
   return (
-    <span className="text-micro" style={{ color: "var(--color-text-tertiary)" }}>
+    <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--color-text-tertiary)" }}>
       {time}{" "}
-      <span style={{ opacity: 0.6 }}>UTC</span>
+      <span style={{ opacity: 0.5 }}>UTC</span>
     </span>
   );
 }
@@ -70,44 +70,42 @@ export default function TopBar() {
     <header
       className="fixed top-0 right-0 left-0 lg:left-60 z-20 h-12 flex items-center justify-between px-5 pl-14 lg:pl-5"
       style={{
-        background: "var(--color-bg-surface)",
-        backdropFilter: "var(--glass-blur)",
-        WebkitBackdropFilter: "var(--glass-blur)",
-        borderBottom: "1px solid var(--color-border)",
+        background: "rgba(8, 15, 26, 0.8)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderBottom: "1px solid rgba(30, 55, 92, 0.2)",
       }}
     >
-      {/* Left -- Page title */}
+      {/* Left: Page title */}
       <h1
-        className="text-sm font-medium"
-        style={{ color: "var(--color-text-primary)" }}
+        className="text-sm font-semibold tracking-tight"
+        style={{
+          fontFamily: "'Space Grotesk', sans-serif",
+          color: "var(--color-text-primary)",
+        }}
       >
         {getPageTitle(pathname)}
       </h1>
 
-      {/* Right -- mode badge, status, clock */}
-      <div className="flex items-center gap-4">
-
+      {/* Right: controls */}
+      <div className="flex items-center gap-3">
         {/* Trading mode badge */}
-        {mode === "LIVE" ? (
-          <span className="text-[10px] font-label px-2 py-0.5 rounded bg-profit-dim text-profit">
-            LIVE
-          </span>
-        ) : (
-          <span className="text-[10px] font-label px-2 py-0.5 rounded bg-warning-dim text-warning">
-            PAPER
-          </span>
-        )}
+        <span
+          className="text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-full"
+          style={mode === "LIVE" ? {
+            background: "rgba(0, 200, 150, 0.1)",
+            color: "var(--color-profit)",
+          } : {
+            background: "rgba(255, 179, 71, 0.1)",
+            color: "var(--color-warning)",
+          }}
+        >
+          {mode}
+        </span>
 
-        {/* Notifications */}
         <NotificationCenter />
-
-        {/* Theme toggle */}
         <ThemeToggle />
-
-        {/* Connection status */}
         <StatusDot status={systemStatus} size="sm" />
-
-        {/* UTC clock */}
         <UTCClock />
       </div>
     </header>
