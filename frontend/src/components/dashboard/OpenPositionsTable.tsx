@@ -196,30 +196,31 @@ export default function OpenPositionsTable() {
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center">
+        <div className="flex items-center gap-2.5">
           <h3
-            className="text-sm font-semibold font-display"
-            style={{ color: "var(--color-text-primary)" }}
+            className="text-sm font-semibold"
+            style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}
           >
-            {countLabel()}
+            Open Positions
           </h3>
+          <span
+            className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full"
+            style={{
+              background: positions.length > 0 ? "var(--color-accent-glow)" : "var(--color-bg-elevated)",
+              color: positions.length > 0 ? "var(--color-accent)" : "var(--color-text-tertiary)",
+            }}
+          >
+            {positions.length}
+          </span>
           {positions.length > 0 && <PulseDot />}
-          {positions.length > 0 && (
-            <span
-              className="ml-2 text-xs"
-              style={{ color: "var(--color-text-tertiary)" }}
-            >
-              Live
-            </span>
-          )}
         </div>
         {hasMore && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs font-medium px-2 py-1 rounded transition-colors"
+            className="text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors"
             style={{
               color: "var(--color-accent)",
-              backgroundColor: "var(--color-bg-elevated)",
+              backgroundColor: "var(--color-accent-glow)",
             }}
           >
             {expanded ? "Show Less" : `Show All ${positions.length}`}

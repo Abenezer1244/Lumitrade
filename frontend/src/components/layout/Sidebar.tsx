@@ -117,12 +117,7 @@ export default function Sidebar() {
             <motion.span
               key="logo-collapsed"
               className="text-sm font-bold"
-              style={{
-                background: "linear-gradient(135deg, #3D8EFF, #7C5CFC)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                fontFamily: "'Space Grotesk', sans-serif",
-              }}
+              style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -140,12 +135,7 @@ export default function Sidebar() {
             >
               <span
                 className="text-lg font-bold tracking-tight"
-                style={{
-                  background: "linear-gradient(135deg, #3D8EFF, #7C5CFC)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  fontFamily: "'Space Grotesk', sans-serif",
-                }}
+                style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
                 LUMITRADE
               </span>
