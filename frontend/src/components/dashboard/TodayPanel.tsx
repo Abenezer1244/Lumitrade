@@ -62,8 +62,14 @@ function WinRateArc({ percentage, size = "sm" }: { percentage: number; size?: "s
 
   return (
     <svg width={svgSize} height={svgSize} viewBox={`0 0 ${svgSize} ${svgSize}`} className="shrink-0">
+      <defs>
+        <linearGradient id="winArcGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00C896" />
+          <stop offset="100%" stopColor="#00A3FF" />
+        </linearGradient>
+      </defs>
       <circle cx={radius + strokeWidth} cy={radius + strokeWidth} r={radius} fill="none" stroke="var(--color-border)" strokeWidth={strokeWidth} />
-      <motion.circle cx={radius + strokeWidth} cy={radius + strokeWidth} r={radius} fill="none" stroke={arcColor} strokeWidth={strokeWidth} strokeDasharray={circumference} style={{ strokeDashoffset }} strokeLinecap="round" transform={`rotate(-90 ${radius + strokeWidth} ${radius + strokeWidth})`} />
+      <motion.circle cx={radius + strokeWidth} cy={radius + strokeWidth} r={radius} fill="none" stroke={normalizedPct >= 55 ? "url(#winArcGradient)" : arcColor} strokeWidth={strokeWidth} strokeDasharray={circumference} style={{ strokeDashoffset }} strokeLinecap="round" transform={`rotate(-90 ${radius + strokeWidth} ${radius + strokeWidth})`} />
       <text x={radius + strokeWidth} y={radius + strokeWidth} textAnchor="middle" dominantBaseline="central" className="fill-current text-primary" style={{ fontSize, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
         {normalizedPct.toFixed(0)}%
       </text>
@@ -151,17 +157,21 @@ export default function TodayPanel() {
       animate={{ opacity: 1, y: 0 }}
       aria-live="polite"
     >
-      {/* Tab bar */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-0.5">
+      {/* Tab bar — pill style */}
+      <div className="flex items-center justify-between mb-4">
+        <div
+          className="flex items-center gap-0.5 p-0.5 rounded-full"
+          style={{ backgroundColor: "var(--color-bg-elevated)" }}
+        >
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className="px-2 py-0.5 rounded text-[10px] font-medium transition-all"
+              className="px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide transition-all duration-200"
               style={{
                 backgroundColor: tab === activeTab ? "var(--color-accent)" : "transparent",
                 color: tab === activeTab ? "#fff" : "var(--color-text-tertiary)",
+                boxShadow: tab === activeTab ? "0 2px 8px rgba(61, 142, 255, 0.25)" : "none",
               }}
             >
               {tab}
