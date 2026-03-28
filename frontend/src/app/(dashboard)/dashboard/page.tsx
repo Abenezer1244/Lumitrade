@@ -6,10 +6,8 @@ import TodayPanel from "@/components/dashboard/TodayPanel";
 import SystemStatusPanel from "@/components/dashboard/SystemStatusPanel";
 import OpenPositionsTable from "@/components/dashboard/OpenPositionsTable";
 import MissionControl from "@/components/dashboard/MissionControl";
-import MarketWatchlist from "@/components/dashboard/MarketWatchlist";
 import PerformanceSummaryCards from "@/components/dashboard/PerformanceSummaryCards";
 import RiskUtilization from "@/components/analytics/RiskUtilization";
-import ScanTimeline from "@/components/dashboard/ScanTimeline";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
 
@@ -53,15 +51,6 @@ export default function DashboardPage() {
       <motion.div variants={item}>
         <PerformanceSummaryCards />
       </motion.div>
-      <motion.div variants={item}>
-        <MarketWatchlist />
-      </motion.div>
-
-      {/* Scan Timeline */}
-      <motion.div variants={item}>
-        <ScanTimeline />
-      </motion.div>
-
       <motion.div
         className="grid grid-cols-1 lg:grid-cols-5 gap-4"
         variants={item}
