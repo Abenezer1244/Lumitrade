@@ -19,7 +19,7 @@ export default function SignalCard({ signal }: Props) {
     <div
       className={`glass p-3 transition-colors ${
         canExpand ? "cursor-pointer hover:border-accent/40" : ""
-      }`}
+      } ${expanded ? "col-span-full" : ""}`}
       onClick={() => canExpand && setExpanded(!expanded)}
       role={canExpand ? "button" : undefined}
       tabIndex={canExpand ? 0 : undefined}
