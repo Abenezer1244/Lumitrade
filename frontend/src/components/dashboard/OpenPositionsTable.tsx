@@ -176,24 +176,12 @@ export default function OpenPositionsTable() {
 
   if (loading) {
     return (
-      <div
-        className="rounded-[16px] p-5 animate-pulse h-48"
-        style={{
-          backgroundColor: "var(--glass-bg-solid)",
-          border: "var(--glass-border)",
-        }}
-      />
+      <div className="glass p-5 animate-pulse h-48" />
     );
   }
 
   return (
-    <div
-      className="rounded-[16px] p-5"
-      style={{
-        backgroundColor: "var(--glass-bg-solid)",
-        border: "var(--glass-border)",
-      }}
-    >
+    <div className="glass p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
