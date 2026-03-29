@@ -90,7 +90,7 @@ export default function DashboardPage() {
 
   return (
     <motion.div
-      className="space-y-5"
+      className="space-y-3"
       variants={container}
       initial="hidden"
       animate="show"
