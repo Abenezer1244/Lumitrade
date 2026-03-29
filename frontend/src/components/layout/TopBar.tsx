@@ -78,7 +78,7 @@ export default function TopBar() {
     >
       {/* Left -- Page title */}
       <h1
-        className="text-sm font-bold"
+        className="text-base font-bold"
         style={{ fontFamily: "'PT Serif', serif", color: "var(--color-text-primary)" }}
       >
         {getPageTitle(pathname)}

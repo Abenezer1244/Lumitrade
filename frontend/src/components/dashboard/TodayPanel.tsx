@@ -176,7 +176,7 @@ export default function TodayPanel() {
               onClick={() => setActiveTab(tab)}
               className="px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide transition-all duration-200"
               style={{
-                backgroundColor: tab === activeTab ? "var(--color-accent)" : "transparent",
+                background: tab === activeTab ? "linear-gradient(135deg, #00C896, #3D8EFF)" : "transparent",
                 color: tab === activeTab ? "#fff" : "var(--color-text-tertiary)",
                 boxShadow: tab === activeTab ? "0 2px 8px rgba(61, 142, 255, 0.25)" : "none",
               }}

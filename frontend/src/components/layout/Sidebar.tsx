@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LayoutDashboard,
@@ -177,11 +177,23 @@ export default function Sidebar() {
           />
         )}
 
-        {NAV_ITEMS.map(({ href, label, icon: Icon, phase }) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon, phase }, idx) => {
           const active = pathname?.startsWith(href);
           const isFuture = !!phase;
+          const prevItem = idx > 0 ? NAV_ITEMS[idx - 1] : null;
+          const showDivider = isFuture && prevItem && !prevItem.phase;
 
           return (
+            <React.Fragment key={href}>
+              {showDivider && !isCollapsed && (
+                <div className="my-2 mx-3 flex items-center gap-2">
+                  <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
+                  <span className="text-[8px] font-bold tracking-widest" style={{ color: "var(--color-text-tertiary)" }}>
+                    COMING SOON
+                  </span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
+                </div>
+              )}
             <motion.div
               key={href}
               whileHover={{
@@ -254,6 +266,7 @@ export default function Sidebar() {
                 </AnimatePresence>
               </Link>
             </motion.div>
+            </React.Fragment>
           );
         })}
       </nav>

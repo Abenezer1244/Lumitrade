@@ -57,9 +57,33 @@ export default function TradesPage() {
     );
   }
 
+  // Summary stats
+  const totalPnl = filteredTrades.reduce((sum, t) => sum + (parseFloat(String(t.pnl_usd)) || 0), 0);
+  const wins = filteredTrades.filter(t => t.outcome === "WIN").length;
+  const losses = filteredTrades.filter(t => t.outcome === "LOSS").length;
+  const winRate = filteredTrades.length > 0 ? (wins / filteredTrades.length) * 100 : 0;
+  const avgPnl = filteredTrades.length > 0 ? totalPnl / filteredTrades.length : 0;
+
   return (
     <div>
-      <div className="flex items-center justify-end mb-6">
+      {/* Summary Stats Row */}
+      {filteredTrades.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+          {[
+            { label: "Total P&L", value: `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(2)}`, color: totalPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
+            { label: "Win Rate", value: `${winRate.toFixed(1)}%`, color: winRate >= 50 ? "var(--color-profit)" : "var(--color-loss)" },
+            { label: "Trades", value: `${wins}W / ${losses}L`, color: "var(--color-text-primary)" },
+            { label: "Avg Trade", value: `${avgPnl >= 0 ? "+" : ""}$${Math.abs(avgPnl).toFixed(2)}`, color: avgPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
+          ].map((stat) => (
+            <div key={stat.label} className="glass p-4 text-center">
+              <p className="text-label mb-1" style={{ color: "var(--color-text-tertiary)" }}>{stat.label}</p>
+              <p className="text-lg font-mono font-bold" style={{ color: stat.color }}>{stat.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-end mb-5">
         <ExportButton trades={filteredTrades} />
       </div>
 
