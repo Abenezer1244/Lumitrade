@@ -146,7 +146,33 @@ function ModeBadge({ mode }: ModeBadgeProps) {
 export default function AccountPanel() {
   const { account, loading, error } = useAccount();
 
-  if (loading) return <div className="glass p-5 animate-pulse h-48" />;
+  if (loading) {
+    return (
+      <div className="glass p-6 h-full">
+        <div className="animate-pulse space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-elevated" />
+              <div className="h-3 w-24 rounded bg-elevated" />
+            </div>
+            <div className="h-6 w-16 rounded-full bg-elevated" />
+          </div>
+          <div className="h-9 w-48 rounded bg-elevated" />
+          <div className="h-3 w-36 rounded bg-elevated" />
+          <div className="pt-4 border-t border-border grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="h-2.5 w-20 rounded bg-elevated" />
+              <div className="h-5 w-24 rounded bg-elevated" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-2.5 w-16 rounded bg-elevated" />
+              <div className="h-5 w-20 rounded bg-elevated" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

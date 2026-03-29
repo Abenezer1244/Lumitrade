@@ -10,6 +10,7 @@ import MissionControl from "@/components/dashboard/MissionControl";
 import RiskUtilization from "@/components/analytics/RiskUtilization";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
+import InsightCards from "@/components/dashboard/InsightCards";
 import { useAccount } from "@/hooks/useAccount";
 
 const container = {
@@ -127,6 +128,11 @@ export default function DashboardPage() {
         <motion.div className="lg:col-span-3" variants={item}>
           <SystemStatusPanel />
         </motion.div>
+      </motion.div>
+
+      {/* AI Insight Cards */}
+      <motion.div variants={item}>
+        <InsightCards />
       </motion.div>
 
       {/* Row 2: Wider positions table + right column */}

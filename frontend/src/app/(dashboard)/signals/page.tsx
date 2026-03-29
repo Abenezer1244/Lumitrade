@@ -64,12 +64,10 @@ export default function SignalsPage() {
           />
         </div>
       ) : (
-        <div className="glass p-4">
-          <div className="space-y-2" aria-live="polite" aria-relevant="additions">
-            {filtered.map((s) => (
-              <SignalCard key={s.id} signal={s} />
-            ))}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-live="polite" aria-relevant="additions">
+          {filtered.map((s) => (
+            <SignalCard key={s.id} signal={s} />
+          ))}
         </div>
       )}
     </div>
