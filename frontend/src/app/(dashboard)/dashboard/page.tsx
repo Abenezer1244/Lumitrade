@@ -124,8 +124,8 @@ export default function DashboardPage() {
         {/* Left column (8 cols) — stacks vertically */}
         <motion.div className="lg:col-span-8 space-y-4" variants={item}>
           {/* Top cards: Account + Today/Calendar stacked */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            <motion.div className="md:col-span-7 space-y-3" variants={heroItem}>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
+            <motion.div className="md:col-span-7 space-y-3 flex flex-col" variants={heroItem}>
               <AccountPanel />
               <InsightCards />
             </motion.div>

@@ -100,7 +100,7 @@ export default function NewsFeed() {
       ) : (
         <div
           ref={scrollRef}
-          className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1"
+          className="space-y-1.5 flex-1 overflow-y-auto pr-1"
           style={{ scrollbarWidth: "thin" }}
         >
           <AnimatePresence>
