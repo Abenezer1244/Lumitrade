@@ -12,6 +12,7 @@ import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
 import InsightCards from "@/components/dashboard/InsightCards";
 import { useAccount } from "@/hooks/useAccount";
+import { useTradeHistory } from "@/hooks/useTradeHistory";
 
 const container = {
   hidden: { opacity: 0 },
@@ -86,7 +87,7 @@ function TradeProgress({ count }: { count: number }) {
 
 export default function DashboardPage() {
   const { account } = useAccount();
-  const totalTrades = account?.daily_trade_count ?? 0;
+  const { total: totalTrades } = useTradeHistory({ limit: 1 });
 
   return (
     <motion.div
