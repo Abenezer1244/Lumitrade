@@ -72,6 +72,7 @@ class HealthServer:
         self._app.router.add_post("/reconcile", self._handle_reconcile)
         self._app.router.add_get("/account", self._handle_account)
         self._app.router.add_post("/fix-breakeven", self._handle_fix_breakeven)
+        self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/", self._handle_root)
 
@@ -541,6 +542,53 @@ class HealthServer:
             })
         except Exception as e:
             logger.error("fix_breakeven_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_fix_timestamps(self, request: web.Request) -> web.Response:
+        """POST /fix-timestamps — correct closed_at on all closed trades using OANDA closeTime."""
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+
+            closed_trades = await self._db.select("trades", {"status": "CLOSED"})
+            fixed = []
+            errors = []
+            try:
+                for trade in closed_trades:
+                    broker_id = trade.get("broker_trade_id", "")
+                    if not broker_id:
+                        continue
+                    try:
+                        oanda_trade = await oanda.get_trade(broker_id)
+                        close_time = oanda_trade.get("closeTime")
+                        if close_time and close_time != trade.get("closed_at"):
+                            await self._db.update(
+                                "trades",
+                                {"id": trade["id"]},
+                                {"closed_at": close_time},
+                            )
+                            fixed.append({
+                                "trade_id": trade["id"],
+                                "pair": trade.get("pair"),
+                                "old_closed_at": trade.get("closed_at"),
+                                "new_closed_at": close_time,
+                            })
+                    except Exception as e:
+                        errors.append({"broker_id": broker_id, "error": str(e)})
+            finally:
+                await oanda.close()
+
+            return web.json_response({
+                "total_closed": len(closed_trades),
+                "fixed": len(fixed),
+                "errors": len(errors),
+                "details": fixed,
+            })
+        except Exception as e:
+            logger.error("fix_timestamps_error", error=str(e))
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
