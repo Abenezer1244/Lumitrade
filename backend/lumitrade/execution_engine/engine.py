@@ -429,12 +429,22 @@ class ExecutionEngine:
         try:
             if self._oanda_read and broker_id:
                 oanda_trade = await self._oanda_read.get_trade(broker_id)
+                trade_state = oanda_trade.get("state", "UNKNOWN")
+                logger.info(
+                    "oanda_trade_closure_data",
+                    broker_id=broker_id,
+                    pair=pair,
+                    state=trade_state,
+                    averageClosePrice=oanda_trade.get("averageClosePrice"),
+                    realizedPL=oanda_trade.get("realizedPL"),
+                    currentUnits=oanda_trade.get("currentUnits"),
+                )
                 # OANDA returns averageClosePrice and realizedPL for closed trades
                 close_price = oanda_trade.get("averageClosePrice")
-                if close_price:
+                if close_price and float(close_price) != 0:
                     exit_price = Decimal(str(close_price))
                 real_pl = oanda_trade.get("realizedPL")
-                if real_pl:
+                if real_pl and float(real_pl) != 0:
                     realized_pnl = Decimal(str(real_pl))
 
                 # Determine exit reason from OANDA close reason
