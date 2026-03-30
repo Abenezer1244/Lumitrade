@@ -63,8 +63,9 @@ export default function PriceChart({ pair: initialPair, trades }: PriceChartProp
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
 
+  const initialLoadRef = useRef(true);
   const fetchCandles = useCallback(async () => {
-    setLoading(true);
+    if (initialLoadRef.current) setLoading(true);
     try {
       const res = await fetch(`/api/candles?pair=${selectedPair}&granularity=${selectedTf}&count=150`);
       if (!res.ok) return;
@@ -144,6 +145,7 @@ export default function PriceChart({ pair: initialPair, trades }: PriceChartProp
       console.error("Failed to fetch candles:", e);
     } finally {
       setLoading(false);
+      initialLoadRef.current = false;
     }
   }, [selectedPair, selectedTf, trades]);
 
@@ -224,13 +226,26 @@ export default function PriceChart({ pair: initialPair, trades }: PriceChartProp
     };
   }, []); // Only init once
 
-  // Refetch when pair or timeframe changes
+  // Refetch when pair or timeframe changes + auto-refresh interval
   useEffect(() => {
     if (chartRef.current && seriesRef.current) {
-      // Remove all extra series (trade markers) before refetch
-      // The candlestick series stays
       fetchCandles();
     }
+
+    // Auto-refresh: poll based on timeframe
+    const intervalMs: Record<string, number> = {
+      S5: 5_000, S10: 10_000, S30: 15_000,
+      M1: 10_000, M2: 15_000, M5: 15_000, M10: 30_000,
+      M15: 30_000, H1: 60_000, H4: 120_000, D: 300_000,
+    };
+    const ms = intervalMs[selectedTf] || 30_000;
+    const timer = setInterval(() => {
+      if (chartRef.current && seriesRef.current) {
+        fetchCandles();
+      }
+    }, ms);
+
+    return () => clearInterval(timer);
   }, [selectedPair, selectedTf, fetchCandles]);
 
   return (
