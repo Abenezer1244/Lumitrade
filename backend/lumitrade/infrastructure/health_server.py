@@ -74,6 +74,7 @@ class HealthServer:
         self._app.router.add_post("/fix-breakeven", self._handle_fix_breakeven)
         self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
+        self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -590,6 +591,42 @@ class HealthServer:
         except Exception as e:
             logger.error("fix_timestamps_error", error=str(e))
             return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_candles(self, request: web.Request) -> web.Response:
+        """GET /candles?pair=EUR_USD&granularity=H1&count=100 — fetch OANDA candles."""
+        pair = request.query.get("pair", "EUR_USD")
+        granularity = request.query.get("granularity", "H1")
+        count = request.query.get("count", "100")
+
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+            try:
+                candles = await oanda.get_candles(pair, granularity, int(count))
+                formatted = []
+                for c in candles:
+                    mid = c.get("mid", {})
+                    formatted.append({
+                        "time": int(
+                            __import__("datetime").datetime.fromisoformat(
+                                c["time"].replace("Z", "+00:00").split(".")[0] + "+00:00"
+                            ).timestamp()
+                        ),
+                        "open": float(mid.get("o", 0)),
+                        "high": float(mid.get("h", 0)),
+                        "low": float(mid.get("l", 0)),
+                        "close": float(mid.get("c", 0)),
+                        "volume": c.get("volume", 0),
+                    })
+                return web.json_response({"candles": formatted})
+            finally:
+                await oanda.close()
+        except Exception as e:
+            logger.error("candles_endpoint_error", error=str(e))
+            return web.json_response({"candles": []})
 
     async def _handle_prices(self, request: web.Request) -> web.Response:
         """
