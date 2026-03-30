@@ -371,7 +371,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="min-h-[100dvh] relative" style={{ backgroundColor: "transparent" }}>
+    <div className="min-h-[100dvh] relative" data-theme="dark" style={{ backgroundColor: "transparent" }}>
       {/* ── Loading Screen ──────────────────────────────── */}
       {!loadingComplete && <LoadingScreen onComplete={handleLoadingComplete} />}
 
@@ -399,13 +399,13 @@ export default function LandingPage() {
             <div
               className="w-2 h-2 rounded-full"
               style={{
-                backgroundColor: "#00C896",
-                boxShadow: "0 0 8px rgba(0, 200, 150, 0.5)",
+                backgroundColor: "var(--color-brand)",
+                boxShadow: "0 0 8px rgba(5, 150, 105, 0.5)",
               }}
             />
             <span
-              className="font-display font-semibold text-sm tracking-wide"
-              style={{ color: "#FFFFFF" }}
+              className="font-semibold text-sm tracking-wide"
+              style={{ color: "#FFFFFF", fontFamily: "'Space Grotesk', sans-serif" }}
             >
               LUMITRADE
             </span>
@@ -430,7 +430,7 @@ export default function LandingPage() {
             <Link
               href="/auth/login"
               className="text-sm transition-colors duration-200 hover:text-white hidden sm:block"
-              style={{ color: "#8A9BC0" }}
+              style={{ color: "var(--color-text-secondary)" }}
             >
               Log in
             </Link>
@@ -481,9 +481,9 @@ export default function LandingPage() {
             >
               <span
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ backgroundColor: "#00C896" }}
+                style={{ backgroundColor: "var(--color-brand)" }}
               />
-              <span className="font-mono text-xs" style={{ color: "#8A9BC0" }}>
+              <span className="font-mono text-xs" style={{ color: "var(--color-text-secondary)" }}>
                 v1.0 — Paper Trading Live
               </span>
             </div>
@@ -497,7 +497,7 @@ export default function LandingPage() {
               <br />
               <span
                 style={{
-                  background: "linear-gradient(135deg, #00C896, #3D8EFF)",
+                  background: "linear-gradient(135deg, var(--color-brand), var(--color-accent))",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   backgroundClip: "text",
@@ -510,7 +510,7 @@ export default function LandingPage() {
             {/* Subtext */}
             <p
               className="text-lg md:text-xl max-w-xl mb-10 leading-relaxed"
-              style={{ color: "#8A9BC0" }}
+              style={{ color: "var(--color-text-secondary)" }}
             >
               Lumitrade uses Claude AI to scan 6 forex pairs across 3
               timeframes, generate explainable signals with confidence scores,
@@ -524,11 +524,11 @@ export default function LandingPage() {
                 href="/auth/signup"
                 className="inline-flex items-center justify-center gap-2.5 px-8 py-4 font-semibold rounded-full text-base transition-all duration-200"
                 style={{
-                  backgroundColor: "#00C896",
+                  backgroundColor: "var(--color-brand)",
                   color: "#0D1B2A",
                   minHeight: 52,
                   boxShadow:
-                    "0 0 30px rgba(0, 200, 150, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3)",
+                    "0 0 30px rgba(5, 150, 105, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3)",
                 }}
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLElement).style.boxShadow =
@@ -930,7 +930,7 @@ export default function LandingPage() {
                       href={tier.name === "Enterprise" ? "#" : "/auth/signup"}
                       className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 font-semibold rounded-full text-sm transition-all duration-200"
                       style={{
-                        backgroundColor: tier.featured ? "#00C896" : "rgba(255, 255, 255, 0.06)",
+                        backgroundColor: tier.featured ? "var(--color-brand)" : "rgba(255, 255, 255, 0.06)",
                         color: tier.featured ? "#0D1B2A" : "var(--color-text-primary)",
                         border: tier.featured
                           ? "none"
@@ -1032,7 +1032,7 @@ export default function LandingPage() {
               >
                 Trade Smarter.
                 <br />
-                <span style={{ color: "#8A9BC0" }}>Sleep Better.</span>
+                <span style={{ color: "var(--color-text-secondary)" }}>Sleep Better.</span>
               </h2>
 
               <p
@@ -1109,7 +1109,7 @@ export default function LandingPage() {
                   <div
                     className="w-2 h-2 rounded-full"
                     style={{
-                      backgroundColor: "#00C896",
+                      backgroundColor: "var(--color-brand)",
                       boxShadow: "0 0 8px rgba(0, 200, 150, 0.4)",
                     }}
                   />
