@@ -85,7 +85,7 @@ export default function SessionAnalysis({ equityCurve }: SessionAnalysisProps) {
         <h3 className="text-card-title mb-4" style={{ color: "var(--color-text-primary)" }}>
           Session Performance
         </h3>
-        <EmptyState message="Need trade data across different sessions to show analysis." />
+        <EmptyState message="Session data building up." description="Lumitrade tracks performance across Tokyo, London, and New York sessions." />
       </motion.div>
     );
   }

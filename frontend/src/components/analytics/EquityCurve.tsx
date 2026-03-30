@@ -133,7 +133,7 @@ export default function EquityCurve({ data }: EquityCurveProps) {
 
       {/* Chart */}
       {data.length === 0 ? (
-        <EmptyState message="No equity data yet. Complete trades to see your equity curve." />
+        <EmptyState message="Equity curve is empty." description="Your account growth will be plotted here as Lumitrade closes trades." />
       ) : (
         <motion.div
           style={{ width: "100%", height: 320 }}

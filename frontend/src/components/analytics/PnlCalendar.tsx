@@ -96,7 +96,7 @@ export default function PnlCalendar({ equityCurve }: PnlCalendarProps) {
         <h3 className="text-card-title mb-4" style={{ color: "var(--color-text-primary)" }}>
           P&L Calendar
         </h3>
-        <EmptyState message="No trade data yet. Calendar fills as trades complete." />
+        <EmptyState message="Calendar is empty." description="Each day will show net P&L as Lumitrade closes trades." />
       </motion.div>
     );
   }

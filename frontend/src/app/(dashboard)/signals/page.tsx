@@ -59,8 +59,8 @@ export default function SignalsPage() {
         <div className="glass p-5">
           <EmptyState
             icon={Zap}
-            message="No signals match your filters."
-            description="Try adjusting the pair or action filter."
+            message="No signals match your current filters."
+            description="Adjust pair or action filters above. Lumitrade scans all 8 instruments every 15 minutes."
           />
         </div>
       ) : (

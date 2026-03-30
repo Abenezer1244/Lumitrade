@@ -122,7 +122,7 @@ export default function TradeDistribution({ equityCurve }: TradeDistributionProp
         <h3 className="text-card-title mb-4" style={{ color: "var(--color-text-primary)" }}>
           Trade Distribution
         </h3>
-        <EmptyState message="Need more closed trades to show distribution." />
+        <EmptyState message="Not enough data yet." description="Lumitrade will chart your win/loss distribution as trades close." />
       </motion.div>
     );
   }

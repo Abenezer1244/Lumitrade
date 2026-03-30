@@ -72,7 +72,7 @@ export default function PairBreakdown({ data }: PairBreakdownProps) {
         <h3 className="text-card-title mb-4" style={{ color: "var(--color-text-primary)" }}>
           Performance by Pair
         </h3>
-        <EmptyState message="No closed trades yet. Pair breakdown appears after trades complete." />
+        <EmptyState message="No pair data yet." description="Lumitrade will show win rate, P&L, and trade count per instrument here." />
       </motion.div>
     );
   }

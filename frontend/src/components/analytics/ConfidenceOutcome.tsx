@@ -84,7 +84,7 @@ export default function ConfidenceOutcome() {
         <h3 className="text-card-title mb-4" style={{ color: "var(--color-text-primary)" }}>
           AI Confidence vs Outcome
         </h3>
-        <EmptyState message="Need closed trades with confidence scores to analyze calibration." />
+        <EmptyState message="Calibration data building." description="Lumitrade will compare AI confidence levels against actual trade outcomes." />
       </motion.div>
     );
   }

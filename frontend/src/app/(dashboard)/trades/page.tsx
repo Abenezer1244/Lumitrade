@@ -97,13 +97,13 @@ export default function TradesPage() {
             icon={History}
             message={
               trades.length > 0
-                ? "No trades match your filters."
-                : "No trades yet."
+                ? "No trades match your current filters."
+                : "No trade history yet."
             }
             description={
               trades.length > 0
-                ? "Try adjusting your filters to see more results."
-                : "Trade history will appear here after the system executes its first trade."
+                ? "Adjust your filters above to see more results."
+                : "Lumitrade will log every trade here — entry, exit, P&L, and AI reasoning."
             }
           />
         ) : (
