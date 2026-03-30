@@ -73,6 +73,7 @@ class HealthServer:
         self._app.router.add_get("/account", self._handle_account)
         self._app.router.add_post("/fix-breakeven", self._handle_fix_breakeven)
         self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
+        self._app.router.add_post("/purge-ghosts", self._handle_purge_ghosts)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
@@ -544,6 +545,49 @@ class HealthServer:
             })
         except Exception as e:
             logger.error("fix_breakeven_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_purge_ghosts(self, request: web.Request) -> web.Response:
+        """POST /purge-ghosts — remove BREAKEVEN trades with no broker_trade_id (never executed)."""
+        try:
+            # Find all CLOSED BREAKEVEN trades
+            breakeven_trades = await self._db.select(
+                "trades", {"status": "CLOSED", "outcome": "BREAKEVEN"}
+            )
+
+            # Filter to those with no broker_trade_id or empty broker_trade_id
+            ghosts = [
+                t for t in breakeven_trades
+                if not t.get("broker_trade_id") or t["broker_trade_id"].strip() == ""
+            ]
+
+            deleted = []
+            for ghost in ghosts:
+                try:
+                    await self._db.delete("trades", {"id": ghost["id"]})
+                    deleted.append({
+                        "trade_id": ghost["id"],
+                        "pair": ghost.get("pair"),
+                        "opened_at": ghost.get("opened_at"),
+                    })
+                except Exception as e:
+                    logger.error("purge_ghost_failed", trade_id=ghost["id"], error=str(e))
+
+            logger.info(
+                "ghost_purge_complete",
+                total_breakeven=len(breakeven_trades),
+                ghosts_found=len(ghosts),
+                deleted=len(deleted),
+            )
+
+            return web.json_response({
+                "total_breakeven": len(breakeven_trades),
+                "ghosts_without_broker_id": len(ghosts),
+                "deleted": len(deleted),
+                "details": deleted,
+            })
+        except Exception as e:
+            logger.error("purge_ghosts_error", error=str(e))
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_fix_timestamps(self, request: web.Request) -> web.Response:
