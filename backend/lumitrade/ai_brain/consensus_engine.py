@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 CONSENSUS_MODEL = "claude-haiku-4-5-20251001"
 CONSENSUS_MAX_TOKENS = 50
 CONFIDENCE_BOOST = Decimal("0.05")
-CONFIDENCE_PENALTY = Decimal("0.10")
+CONFIDENCE_PENALTY = Decimal("0.05")
 CONFIDENCE_MAX = Decimal("1.0")
 CONFIDENCE_MIN = Decimal("0.0")
 
