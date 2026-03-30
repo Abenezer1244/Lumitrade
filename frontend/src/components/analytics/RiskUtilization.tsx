@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { ShieldHalfHalf, TriangleAlert } from "lucide-react";
+import { ShieldHalf, TriangleAlert } from "lucide-react";
 import { useAccount } from "@/hooks/useAccount";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 
