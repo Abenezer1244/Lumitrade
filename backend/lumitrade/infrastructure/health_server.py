@@ -409,6 +409,16 @@ class HealthServer:
                 alerts = AlertService(config, self._db)
                 reconciler = PositionReconciler(self._db, oanda, alerts)
                 result = await reconciler.reconcile()
+
+                # Sync system_state.open_trades with reconciliation result
+                matched_ids = [
+                    m.get("broker_trade_id") for m in result.get("matched", [])
+                ]
+                await self._db.upsert("system_state", {
+                    "id": STATE_ROW_ID,
+                    "open_trades": matched_ids,
+                })
+
                 logger.info(
                     "manual_reconciliation_complete",
                     ghosts=len(result.get("ghosts", [])),
