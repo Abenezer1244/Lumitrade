@@ -271,7 +271,7 @@ export default function OpenPositionsTable() {
                       }}
                       className="group cursor-default"
                       style={{
-                        borderTop: "1px solid rgba(30, 58, 95, 0.2)",
+                        borderTop: "1px solid var(--color-border)",
                       }}
                       whileHover={{
                         backgroundColor: "var(--color-bg-elevated)",
