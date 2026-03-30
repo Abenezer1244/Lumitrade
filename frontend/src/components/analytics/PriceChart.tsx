@@ -35,6 +35,13 @@ interface PriceChartProps {
 
 const PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "XAU_USD"];
 const TIMEFRAMES = [
+  { label: "5s", value: "S5" },
+  { label: "10s", value: "S10" },
+  { label: "30s", value: "S30" },
+  { label: "1m", value: "M1" },
+  { label: "2m", value: "M2" },
+  { label: "5m", value: "M5" },
+  { label: "10m", value: "M10" },
   { label: "15m", value: "M15" },
   { label: "1H", value: "H1" },
   { label: "4H", value: "H4" },
