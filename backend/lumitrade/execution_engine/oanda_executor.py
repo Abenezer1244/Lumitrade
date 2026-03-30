@@ -56,11 +56,23 @@ class OandaExecutor:
             # Last resort: use the fill transaction ID itself
             if not trade_id:
                 trade_id = str(order_fill.get("id", ""))
+        # Log cancel reason if order was rejected
+        order_cancel = response.get("orderCancelTransaction", {})
+        cancel_reason = order_cancel.get("reason", "") if order_cancel else ""
+        if cancel_reason:
+            logger.warning(
+                "oanda_order_cancelled",
+                order_ref=str(order.order_ref),
+                reason=cancel_reason,
+                reject_reason=order_cancel.get("rejectReason", ""),
+            )
+
         logger.info(
             "oanda_response_parsed",
             order_ref=str(order.order_ref),
             broker_trade_id=trade_id,
             has_fill=bool(order_fill),
+            cancel_reason=cancel_reason,
             response_keys=list(response.keys()),
             fill_keys=list(order_fill.keys()) if order_fill else [],
         )
