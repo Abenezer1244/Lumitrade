@@ -387,7 +387,7 @@ class RiskEngine:
 
     # Per-instrument max spread for risk check (in pips)
     _MAX_SPREAD_BY_PAIR: dict[str, Decimal] = {
-        "XAU_USD": Decimal("150"),
+        "XAU_USD": Decimal("200"),
     }
 
     def _check_spread(self, proposal: SignalProposal) -> CheckResult:

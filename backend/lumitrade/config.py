@@ -61,7 +61,7 @@ class LumitradeConfig(BaseSettings):
     max_position_units: int = 500_000
     daily_loss_limit_pct: Decimal = Decimal("0.05")
     weekly_loss_limit_pct: Decimal = Decimal("0.10")
-    max_spread_pips: Decimal = Decimal("3.0")
+    max_spread_pips: Decimal = Decimal("5.0")
     news_blackout_before_min: int = 30
     news_blackout_after_min: int = 15
     trade_cooldown_minutes: int = 5

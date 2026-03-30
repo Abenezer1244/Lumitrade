@@ -21,7 +21,7 @@ from ..infrastructure.secure_logger import get_logger
 logger = get_logger(__name__)
 
 # Classification thresholds — all Decimal to avoid float contamination
-_LOW_LIQ_SPREAD_THRESHOLD = Decimal("4.0")
+_LOW_LIQ_SPREAD_THRESHOLD = Decimal("6.0")
 _HIGH_VOL_ATR_MULTIPLIER = Decimal("2.0")
 _TRENDING_EMA_ATR_RATIO = Decimal("1.5")
 _RANGING_EMA_ATR_RATIO = Decimal("0.5")

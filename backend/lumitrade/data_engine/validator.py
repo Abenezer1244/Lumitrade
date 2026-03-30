@@ -21,14 +21,14 @@ ROLLING_WINDOW = 100  # ~25 seconds of ticks at 250ms — larger window = more s
 
 # Per-instrument max spread (in pips). Gold/metals have wider spreads.
 MAX_SPREAD_PIPS: dict[str, Decimal] = {
-    "EUR_USD": Decimal("3.0"),
-    "GBP_USD": Decimal("4.0"),
-    "USD_JPY": Decimal("3.0"),
-    "USD_CHF": Decimal("3.0"),
-    "AUD_USD": Decimal("3.0"),
-    "USD_CAD": Decimal("4.0"),
-    "NZD_USD": Decimal("4.0"),
-    "XAU_USD": Decimal("150"),   # Gold spread is typically 30-100+ pips
+    "EUR_USD": Decimal("5.0"),
+    "GBP_USD": Decimal("5.0"),
+    "USD_JPY": Decimal("5.0"),
+    "USD_CHF": Decimal("5.0"),
+    "AUD_USD": Decimal("5.0"),
+    "USD_CAD": Decimal("5.0"),
+    "NZD_USD": Decimal("5.0"),
+    "XAU_USD": Decimal("200"),   # Gold spread wider on practice account
 }
 DEFAULT_MAX_SPREAD = Decimal("5.0")
 
