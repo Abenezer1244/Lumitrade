@@ -75,6 +75,7 @@ class HealthServer:
         self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/candles", self._handle_candles)
+        self._app.router.add_get("/ws/prices", self._handle_ws_prices)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -591,6 +592,67 @@ class HealthServer:
         except Exception as e:
             logger.error("fix_timestamps_error", error=str(e))
             return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_ws_prices(self, request: web.Request) -> web.WebSocketResponse:
+        """
+        WebSocket /ws/prices?pair=EUR_USD — stream live OANDA ticks.
+        Sends JSON: {"time": epoch, "bid": float, "ask": float, "mid": float}
+        """
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
+        pair = request.query.get("pair", "EUR_USD")
+
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+            import httpx
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            stream_env = "fxpractice" if config.oanda_environment != "live" else "fxtrade"
+            stream_base = f"https://stream-{stream_env}.oanda.com"
+            url = f"{stream_base}/v3/accounts/{config.oanda_account_id}/pricing/stream?instruments={pair}"
+
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "GET", url,
+                    headers={"Authorization": f"Bearer {config.oanda_api_key_data}"},
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if ws.closed:
+                            break
+                        if not line.strip():
+                            continue
+                        try:
+                            import json as _json
+                            tick = _json.loads(line)
+                            if tick.get("type") == "PRICE":
+                                bids = tick.get("bids", [])
+                                asks = tick.get("asks", [])
+                                if bids and asks:
+                                    bid = float(bids[0]["price"])
+                                    ask = float(asks[0]["price"])
+                                    mid = round((bid + ask) / 2, 6)
+                                    ts = tick.get("time", "")
+                                    # Convert ISO to epoch
+                                    from datetime import datetime as _dt
+                                    epoch = int(_dt.fromisoformat(
+                                        ts.replace("Z", "+00:00").split(".")[0] + "+00:00"
+                                    ).timestamp())
+                                    await ws.send_json({
+                                        "time": epoch,
+                                        "bid": bid,
+                                        "ask": ask,
+                                        "mid": mid,
+                                    })
+                        except Exception:
+                            continue
+        except Exception as e:
+            logger.error("ws_prices_error", error=str(e))
+        finally:
+            await ws.close()
+
+        return ws
 
     async def _handle_candles(self, request: web.Request) -> web.Response:
         """GET /candles?pair=EUR_USD&granularity=H1&count=100 — fetch OANDA candles."""

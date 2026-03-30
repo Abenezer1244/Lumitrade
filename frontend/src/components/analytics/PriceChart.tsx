@@ -226,26 +226,101 @@ export default function PriceChart({ pair: initialPair, trades }: PriceChartProp
     };
   }, []); // Only init once
 
-  // Refetch when pair or timeframe changes + auto-refresh interval
+  // Refetch when pair or timeframe changes
   useEffect(() => {
     if (chartRef.current && seriesRef.current) {
       fetchCandles();
     }
+  }, [selectedPair, selectedTf, fetchCandles]);
 
-    // Auto-refresh: poll based on timeframe
-    const intervalMs: Record<string, number> = {
-      S5: 5_000, S10: 10_000, S30: 15_000,
-      M1: 10_000, M2: 15_000, M5: 15_000, M10: 30_000,
-      M15: 30_000, H1: 60_000, H4: 120_000, D: 300_000,
+  // WebSocket for real-time tick updates
+  useEffect(() => {
+    if (!seriesRef.current) return;
+
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_WS_URL
+      || window.location.origin.replace("https://lumitrade-dashboard", "wss://lumitrade-engine").replace("http://", "ws://");
+    // Fallback: use the backend URL from env or construct from known pattern
+    const wsUrl = `wss://lumitrade-engine-production.up.railway.app/ws/prices?pair=${selectedPair}`;
+
+    let ws: WebSocket | null = null;
+    let currentCandle: Candle | null = null;
+
+    // Determine candle duration in seconds for building candles from ticks
+    const tfSeconds: Record<string, number> = {
+      S5: 5, S10: 10, S30: 30,
+      M1: 60, M2: 120, M5: 300, M10: 600,
+      M15: 900, H1: 3600, H4: 14400, D: 86400,
     };
-    const ms = intervalMs[selectedTf] || 30_000;
-    const timer = setInterval(() => {
-      if (chartRef.current && seriesRef.current) {
-        fetchCandles();
-      }
-    }, ms);
+    const candleDuration = tfSeconds[selectedTf] || 3600;
 
-    return () => clearInterval(timer);
+    try {
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const tick = JSON.parse(event.data);
+          const price = tick.mid;
+          const tickTime = tick.time;
+
+          // Round down to candle boundary
+          const candleTime = Math.floor(tickTime / candleDuration) * candleDuration;
+
+          if (!currentCandle || currentCandle.time !== candleTime) {
+            // New candle
+            currentCandle = {
+              time: candleTime,
+              open: price,
+              high: price,
+              low: price,
+              close: price,
+            };
+          } else {
+            // Update current candle
+            currentCandle.high = Math.max(currentCandle.high, price);
+            currentCandle.low = Math.min(currentCandle.low, price);
+            currentCandle.close = price;
+          }
+
+          // Update chart with latest candle
+          if (seriesRef.current) {
+            seriesRef.current.update({
+              time: currentCandle.time as import("lightweight-charts").UTCTimestamp,
+              open: currentCandle.open,
+              high: currentCandle.high,
+              low: currentCandle.low,
+              close: currentCandle.close,
+            });
+          }
+
+          setLastPrice(price);
+        } catch { /* ignore parse errors */ }
+      };
+
+      ws.onerror = () => {
+        // Fallback to polling if WebSocket fails
+        ws?.close();
+      };
+
+      ws.onclose = () => {
+        // Fallback: poll when WS disconnects
+        const pollMs = Math.max(candleDuration * 500, 5000); // half the candle duration, min 5s
+        const timer = setInterval(() => {
+          if (chartRef.current && seriesRef.current) fetchCandles();
+        }, pollMs);
+        // Store cleanup — will be cleared on next effect run
+        (ws as unknown as Record<string, unknown>).__pollTimer = timer;
+      };
+    } catch {
+      // WebSocket not available — fall back to polling
+    }
+
+    return () => {
+      if (ws) {
+        const timer = (ws as unknown as Record<string, unknown>).__pollTimer as ReturnType<typeof setInterval>;
+        if (timer) clearInterval(timer);
+        ws.close();
+      }
+    };
   }, [selectedPair, selectedTf, fetchCandles]);
 
   return (
