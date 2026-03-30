@@ -48,15 +48,14 @@ export async function GET() {
       return NextResponse.json({ positions: [] });
     }
 
-    // Fetch OANDA open trades for real unrealized P&L
     const backendUrl =
       process.env.BACKEND_URL ||
       "http://lumitrade-engine.railway.internal:8000";
 
-    // Fetch prices and OANDA account data in parallel
     const pairs = Array.from(new Set((data as Record<string, unknown>[]).map((t) => t.pair as string)));
     let prices: Record<string, { bid: number; ask: number; mid: number }> = {};
-    let oandaTrades: Record<string, { unrealizedPL: number; currentUnits: number; price: number }> = {};
+    let accountUnrealizedPnl = 0;
+    let oandaOpenCount = 0;
 
     try {
       const [priceRes, accountRes] = await Promise.all([
@@ -64,56 +63,23 @@ export async function GET() {
         fetch(`${backendUrl}/account`, { cache: "no-store" }),
       ]);
       if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        prices = priceData.prices || {};
+        prices = (await priceRes.json()).prices || {};
       }
-      // Also try to get per-trade P&L from OANDA
-      // Match DB trades to OANDA trades by broker_trade_id
-      for (const trade of data as Record<string, unknown>[]) {
-        const brokerId = trade.broker_trade_id as string;
-        if (brokerId) {
-          try {
-            const tradeRes = await fetch(`${backendUrl}/trade/${brokerId}`, { cache: "no-store" });
-            if (tradeRes.ok) {
-              const oTrade = await tradeRes.json();
-              oandaTrades[brokerId] = {
-                unrealizedPL: parseFloat(oTrade.unrealizedPL || "0"),
-                currentUnits: Math.abs(parseInt(oTrade.currentUnits || "0")),
-                price: parseFloat(oTrade.price || "0"),
-              };
-            }
-          } catch { /* continue */ }
-        }
+      if (accountRes.ok) {
+        const acct = await accountRes.json();
+        accountUnrealizedPnl = acct.unrealized_pnl || 0;
+        oandaOpenCount = acct.open_trade_count || 0;
       }
-    } catch {
-      // If pricing fails, we'll calculate from mid
-    }
+    } catch { /* continue with fallback */ }
+
+    const openCount = (data as unknown[]).length;
 
     const positions = (data as Record<string, unknown>[]).map((trade) => {
       const pair = trade.pair as string;
       const entry = Number(trade.entry_price) || 0;
       const direction = trade.direction as string;
       const units = Number(trade.position_size) || 0;
-      const brokerId = trade.broker_trade_id as string;
       const priceInfo = prices[pair];
-      const oandaTrade = brokerId ? oandaTrades[brokerId] : null;
-
-      // Use OANDA's unrealizedPL if available (most accurate)
-      if (oandaTrade && priceInfo) {
-        const currentPrice = priceInfo.mid;
-        const ps = PIP_SIZE[pair] ?? 0.0001;
-        const priceDiff = direction === "BUY"
-          ? currentPrice - entry
-          : entry - currentPrice;
-        const pnlPips = Math.round((priceDiff / ps) * 10) / 10;
-
-        return {
-          ...trade,
-          live_pnl_pips: pnlPips,
-          live_pnl_usd: oandaTrade.unrealizedPL,
-          current_price: currentPrice,
-        };
-      }
 
       if (!priceInfo || !entry) {
         return { ...trade, live_pnl_pips: 0, live_pnl_usd: 0, current_price: entry };
@@ -125,8 +91,16 @@ export async function GET() {
         ? currentPrice - entry
         : entry - currentPrice;
       const pnlPips = Math.round((priceDiff / ps) * 10) / 10;
-      const pv = pipValue(pair, currentPrice);
-      const pnlUsd = Math.round(pnlPips * units * pv * 100) / 100;
+
+      // Use OANDA account unrealizedPL directly when only 1 position
+      // This guarantees exact match with Account Panel's unrealized P&L
+      let pnlUsd: number;
+      if (openCount === 1 && oandaOpenCount === 1) {
+        pnlUsd = Math.round(accountUnrealizedPnl * 100) / 100;
+      } else {
+        const pv = pipValue(pair, currentPrice);
+        pnlUsd = Math.round(pnlPips * units * pv * 100) / 100;
+      }
 
       return {
         ...trade,

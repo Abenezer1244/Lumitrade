@@ -247,7 +247,7 @@ export default function OpenPositionsTable() {
             <AnimatePresence mode="popLayout">
               <tbody>
                 {displayPositions.map((p) => {
-                  const pnlValue = Number(p.pnl_usd || p.live_pnl_usd || 0);
+                  const pnlValue = p.live_pnl_usd != null ? Number(p.live_pnl_usd) : Number(p.pnl_usd || 0);
                   const pips = Number(p.live_pnl_pips || 0);
                   const pipsColor =
                     pips > 0
