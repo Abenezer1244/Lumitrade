@@ -72,6 +72,7 @@ class HealthServer:
         self._app.router.add_post("/reconcile", self._handle_reconcile)
         self._app.router.add_get("/account", self._handle_account)
         self._app.router.add_post("/fix-breakeven", self._handle_fix_breakeven)
+        self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -393,6 +394,26 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("account_endpoint_error", error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_get_trade(self, request: web.Request) -> web.Response:
+        """GET /trade/{trade_id} — fetch a specific trade from OANDA."""
+        trade_id = request.match_info.get("trade_id", "")
+        if not trade_id:
+            return web.json_response({"error": "Missing trade_id"}, status=400)
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+            try:
+                trade = await oanda.get_trade(trade_id)
+                return web.json_response(trade)
+            finally:
+                await oanda.close()
+        except Exception as e:
+            logger.error("trade_lookup_error", trade_id=trade_id, error=str(e))
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_reconcile(self, request: web.Request) -> web.Response:
