@@ -710,16 +710,39 @@ class HealthServer:
             env = "fxpractice" if config.oanda_environment != "live" else "fxtrade"
             base = f"https://api-{env}.oanda.com"
 
-            # Fetch calendar for all major currencies
+            # Try both API keys — ForexLabs may require trading key
+            keys_to_try = [config.oanda_api_key_data, config.oanda_api_key_trading]
+            events = []
+            last_status = 0
             async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(
-                    f"{base}/labs/v1/calendar",
-                    params={"instrument": "EUR_USD", "period": period},
-                    headers={"Authorization": f"Bearer {config.oanda_api_key_data}"},
-                )
-                if resp.status_code != 200:
-                    return web.json_response({"events": [], "error": f"OANDA returned {resp.status_code}"})
-                events = resp.json()
+                for key in keys_to_try:
+                    resp = await client.get(
+                        f"{base}/labs/v1/calendar",
+                        params={"instrument": "EUR_USD", "period": period},
+                        headers={"Authorization": f"Bearer {key}"},
+                    )
+                    last_status = resp.status_code
+                    if resp.status_code == 200:
+                        events = resp.json()
+                        break
+
+            if not events and last_status != 200:
+                # ForexLabs not available — try live API endpoint as fallback
+                try:
+                    live_resp = await httpx.AsyncClient(timeout=10).__aenter__()
+                    resp2 = await live_resp.get(
+                        "https://api-fxtrade.oanda.com/labs/v1/calendar",
+                        params={"instrument": "EUR_USD", "period": period},
+                        headers={"Authorization": f"Bearer {config.oanda_api_key_trading}"},
+                    )
+                    if resp2.status_code == 200:
+                        events = resp2.json()
+                    await live_resp.__aexit__(None, None, None)
+                except Exception:
+                    pass
+
+            if not events:
+                return web.json_response({"events": [], "error": f"OANDA calendar unavailable (status {last_status})"})
 
             # Sort by timestamp descending (newest first) and limit
             if isinstance(events, list):
