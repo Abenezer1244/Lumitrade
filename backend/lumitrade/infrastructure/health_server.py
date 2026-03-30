@@ -504,16 +504,22 @@ class HealthServer:
                         tp_dist = abs(exit_price - tp)
                         exit_reason = "SL_HIT" if sl_dist < tp_dist else "TP_HIT"
 
-                        await self._db.update(
-                            "trades",
-                            {"id": trade["id"]},
-                            {
+                        update_fields: dict = {
                                 "exit_price": str(exit_price),
                                 "pnl_pips": str(pnl_pips),
                                 "pnl_usd": str(realized_pnl),
                                 "outcome": outcome,
                                 "exit_reason": exit_reason,
-                            },
+                        }
+                        # Also fix closed_at from OANDA if available
+                        close_time = oanda_trade.get("closeTime")
+                        if close_time:
+                            update_fields["closed_at"] = close_time
+
+                        await self._db.update(
+                            "trades",
+                            {"id": trade["id"]},
+                            update_fields,
                         )
                         fixed.append({
                             "trade_id": trade["id"],
