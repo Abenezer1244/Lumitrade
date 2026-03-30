@@ -356,7 +356,38 @@ class ExecutionEngine:
         else:
             profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
-        # Per-instrument activation threshold
+        # Break-even stop: move SL to entry when +15 pips (gold: +300 pips)
+        be_threshold = Decimal("300") if pair == "XAU_USD" else Decimal("15")
+        sl_is_behind_entry = (direction == "BUY" and current_sl < entry) or (direction == "SELL" and current_sl > entry)
+        if profit_pips >= be_threshold and sl_is_behind_entry:
+            # Move SL to entry (breakeven)
+            be_sl = entry
+            if ps >= Decimal("0.01"):
+                be_sl = be_sl.quantize(Decimal("0.001"))
+            else:
+                be_sl = be_sl.quantize(Decimal("0.00001"))
+
+            await self._oanda_trade.modify_trade(broker_id, be_sl, tp)
+            await self._db.update(
+                "trades",
+                {"id": trade.get("id")},
+                {"stop_loss": str(be_sl)},
+            )
+            logger.info(
+                "breakeven_stop_set",
+                pair=pair, broker_id=broker_id, direction=direction,
+                entry=str(entry), old_sl=str(current_sl), new_sl=str(be_sl),
+                profit_pips=str(profit_pips),
+            )
+            if self._events:
+                self._events.publish(
+                    "EXECUTION", "BREAKEVEN_STOP",
+                    f"SL moved to breakeven: {pair} {direction} — {current_sl} → {be_sl} (+{profit_pips:.1f} pips)",
+                    pair=pair, severity="INFO",
+                )
+            return  # Don't also trail in the same cycle
+
+        # Per-instrument activation threshold for trailing stop
         activation = self.TRAIL_ACTIVATION_PIPS.get(pair, self.DEFAULT_TRAIL_ACTIVATION)
         if profit_pips < activation:
             return
