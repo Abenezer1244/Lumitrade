@@ -156,24 +156,53 @@ class PositionReconciler:
             pair=pair,
         )
 
-        # Mark as closed in DB
-        # NOTE: Only use columns that exist on the trades table.
-        # reconciliation_note does NOT exist — don't include it.
+        # Mark as closed in DB — try to fetch real P&L from OANDA first.
         try:
-            # Use opened_at as closed_at for ghost trades so they don't
-            # trigger the cooldown timer on their pair. These were never
-            # real trades — they shouldn't block future trading.
             opened_at = db_trade.get("opened_at", now.isoformat())
+            outcome = "BREAKEVEN"
+            pnl_usd = 0
+            pnl_pips = 0
+            exit_price = db_trade.get("entry_price")
+            close_time = opened_at
+
+            # Attempt to get real P&L from OANDA if we have a broker_trade_id
+            if broker_trade_id:
+                try:
+                    oanda_trade = await self._oanda.get_trade(broker_trade_id)
+                    real_pl = float(oanda_trade.get("realizedPL", 0))
+                    if real_pl != 0:
+                        pnl_usd = real_pl
+                        outcome = "WIN" if real_pl > 0 else "LOSS"
+                    close_price = oanda_trade.get("averageClosePrice")
+                    if close_price:
+                        exit_price = close_price
+                    close_t = oanda_trade.get("closeTime")
+                    if close_t:
+                        close_time = close_t
+                    logger.info(
+                        "ghost_trade_real_pnl_fetched",
+                        trade_id=trade_id,
+                        pnl_usd=pnl_usd,
+                        outcome=outcome,
+                    )
+                except Exception:
+                    logger.warning(
+                        "ghost_trade_pnl_fetch_failed",
+                        trade_id=trade_id,
+                        broker_trade_id=broker_trade_id,
+                    )
+
             await self._db.update(
                 "trades",
                 {"id": trade_id},
                 {
                     "status": "CLOSED",
                     "exit_reason": ExitReason.UNKNOWN.value,
-                    "outcome": "BREAKEVEN",
-                    "pnl_usd": 0,
-                    "pnl_pips": 0,
-                    "closed_at": opened_at,
+                    "outcome": outcome,
+                    "pnl_usd": pnl_usd,
+                    "pnl_pips": pnl_pips,
+                    "exit_price": str(exit_price) if exit_price else None,
+                    "closed_at": close_time,
                 },
             )
             logger.info(
