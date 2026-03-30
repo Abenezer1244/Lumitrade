@@ -123,20 +123,16 @@ export default function DashboardPage() {
       >
         {/* Left column (8 cols) — stacks vertically */}
         <motion.div className="lg:col-span-8 space-y-4" variants={item}>
-          {/* Top cards: Account + Today side by side */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <motion.div className="md:col-span-7" variants={heroItem}>
+          {/* Top cards: Account + Today/Calendar stacked */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <motion.div className="md:col-span-7 space-y-3" variants={heroItem}>
               <AccountPanel />
+              <InsightCards />
             </motion.div>
-            <motion.div className="md:col-span-5" variants={item}>
+            <motion.div className="md:col-span-5 space-y-3" variants={item}>
               <TodayPanel />
+              <NewsFeed />
             </motion.div>
-          </div>
-
-          {/* AI Insight Cards + Economic Calendar */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <InsightCards />
-            <NewsFeed />
           </div>
 
           {/* Positions + Signals */}
