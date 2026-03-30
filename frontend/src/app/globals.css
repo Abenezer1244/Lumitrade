@@ -5,8 +5,45 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Dark Terminal Theme (default) ───────────────────────── */
-:root,
+/* ── Light Theme (default) ──────────────────────────────── */
+:root {
+  --color-bg-primary: #F8FAFB;
+  --color-bg-surface: rgba(255, 255, 255, 0.85);
+  --color-bg-surface-solid: #FFFFFF;
+  --color-bg-elevated: rgba(241, 245, 249, 0.85);
+  --color-bg-elevated-solid: #F1F5F9;
+  --color-bg-input: rgba(226, 232, 240, 0.4);
+
+  --color-border: rgba(203, 213, 225, 0.7);
+  --color-border-accent: rgba(61, 142, 255, 0.15);
+
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94A3B8;
+
+  --color-brand: #059669;
+  --color-brand-dim: rgba(5, 150, 105, 0.08);
+  --color-accent: #2563EB;
+  --color-accent-glow: rgba(37, 99, 235, 0.1);
+
+  --color-profit: #059669;
+  --color-profit-dim: rgba(5, 150, 105, 0.08);
+  --color-loss: #DC2626;
+  --color-loss-dim: rgba(220, 38, 38, 0.08);
+  --color-warning: #D97706;
+  --color-warning-dim: rgba(217, 119, 6, 0.08);
+
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid #e7e5e4;
+  --glass-bg: #ffffff;
+  --glass-bg-solid: #ffffff;
+  --glass-shadow: rgba(50, 50, 93, 0.25) 0px 50px 100px -20px,
+                  rgba(0, 0, 0, 0.3) 0px 30px 60px -30px,
+                  rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
+  --card-radius: 16px;
+}
+
+/* ── Dark Terminal Theme ───────────────────────────────── */
 [data-theme="dark"] {
   --color-bg-primary: #0D1B2A;
   --color-bg-surface: rgba(17, 29, 46, 0.7);
@@ -41,44 +78,6 @@
   --glass-shadow: rgba(0, 0, 0, 0.3) 0px 50px 100px -20px,
                   rgba(0, 0, 0, 0.4) 0px 30px 60px -30px,
                   rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
-  --card-radius: 16px;
-}
-
-/* ── Light Mode ─────────────────────────────────────────── */
-[data-theme="light"] {
-  --color-bg-primary: #F8FAFB;
-  --color-bg-surface: rgba(255, 255, 255, 0.85);
-  --color-bg-surface-solid: #FFFFFF;
-  --color-bg-elevated: rgba(241, 245, 249, 0.85);
-  --color-bg-elevated-solid: #F1F5F9;
-  --color-bg-input: rgba(226, 232, 240, 0.4);
-
-  --color-border: rgba(203, 213, 225, 0.7);
-  --color-border-accent: rgba(61, 142, 255, 0.15);
-
-  --color-text-primary: #0F172A;
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #94A3B8;
-
-  --color-brand: #059669;
-  --color-brand-dim: rgba(5, 150, 105, 0.08);
-  --color-accent: #2563EB;
-  --color-accent-glow: rgba(37, 99, 235, 0.1);
-
-  --color-profit: #059669;
-  --color-profit-dim: rgba(5, 150, 105, 0.08);
-  --color-loss: #DC2626;
-  --color-loss-dim: rgba(220, 38, 38, 0.08);
-  --color-warning: #D97706;
-  --color-warning-dim: rgba(217, 119, 6, 0.08);
-
-  --glass-blur: blur(12px);
-  --glass-border: 1px solid #e7e5e4;
-  --glass-bg: #f1f5f9;
-  --glass-bg-solid: #f1f5f9;
-  --glass-shadow: rgba(50, 50, 93, 0.15) 0px 50px 100px -20px,
-                  rgba(0, 0, 0, 0.15) 0px 30px 60px -30px,
-                  rgba(10, 37, 64, 0.2) 0px -2px 6px 0px inset;
   --card-radius: 16px;
 }
 
@@ -120,22 +119,22 @@ body {
 
 /* ── Frosted Glass ─────────────────────────────────────────── */
 .glass {
-  background-color: #ffffff;
-  border: 1px solid #e7e5e4; /* stone-200 */
+  background-color: var(--glass-bg-solid);
+  border: var(--glass-border);
   border-radius: var(--card-radius);
-  box-shadow: rgba(50, 50, 93, 0.25) 0px 50px 100px -20px, rgba(0, 0, 0, 0.3) 0px 30px 60px -30px, rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
+  box-shadow: var(--glass-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 .glass:hover {
   transform: translateY(-2px);
-  border-color: #a8a29e; /* stone-400 */
+  border-color: var(--color-border);
 }
 
 .glass-elevated {
-  background-color: #e5e5e5; /* neutral-200 */
-  border: 1px solid #e7e5e4; /* stone-200 */
+  background-color: var(--color-bg-elevated-solid);
+  border: var(--glass-border);
   border-radius: var(--card-radius);
-  box-shadow: rgba(50, 50, 93, 0.25) 0px 50px 100px -20px, rgba(0, 0, 0, 0.3) 0px 30px 60px -30px, rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
+  box-shadow: var(--glass-shadow);
 }
 
 /* ── Focus visible for accessibility ───────────────────────── */
