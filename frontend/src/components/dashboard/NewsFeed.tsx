@@ -72,7 +72,7 @@ export default function NewsFeed() {
   }
 
   return (
-    <div className="glass p-4 overflow-hidden">
+    <div className="glass p-4 overflow-hidden flex-1 flex flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <div
@@ -100,7 +100,7 @@ export default function NewsFeed() {
       ) : (
         <div
           ref={scrollRef}
-          className="space-y-1.5 max-h-[80px] overflow-y-auto pr-1"
+          className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1"
           style={{ scrollbarWidth: "thin" }}
         >
           <AnimatePresence>

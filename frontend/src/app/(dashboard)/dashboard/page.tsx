@@ -129,7 +129,7 @@ export default function DashboardPage() {
               <AccountPanel />
               <InsightCards />
             </motion.div>
-            <motion.div className="md:col-span-5 space-y-3" variants={item}>
+            <motion.div className="md:col-span-5 space-y-3 flex flex-col" variants={item}>
               <TodayPanel />
               <NewsFeed />
             </motion.div>
