@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Radar, Layers } from "lucide-react";
 import { useOpenPositions } from "@/hooks/useOpenPositions";
+import { useAccount } from "@/hooks/useAccount";
 import { formatPrice, formatPnl, formatPair } from "@/lib/formatters";
 import Badge from "@/components/ui/Badge";
 
@@ -157,6 +158,7 @@ const COLLAPSED_MAX_ROWS = 5;
 
 export default function OpenPositionsTable() {
   const { positions, loading } = useOpenPositions();
+  const { account } = useAccount();
   const [expanded, setExpanded] = useState(false);
 
   // Track previous position IDs to detect removals for exit animation
@@ -247,7 +249,11 @@ export default function OpenPositionsTable() {
             <AnimatePresence mode="popLayout">
               <tbody>
                 {displayPositions.map((p) => {
-                  const pnlValue = p.live_pnl_usd != null ? Number(p.live_pnl_usd) : Number(p.pnl_usd || 0);
+                  // Use account unrealizedPnl directly when 1 position — guarantees match with Account Panel
+                  const acctPnl = account ? parseFloat(account.unrealized_pnl || "0") : null;
+                  const pnlValue = (positions.length === 1 && acctPnl !== null)
+                    ? acctPnl
+                    : (p.live_pnl_usd != null ? Number(p.live_pnl_usd) : Number(p.pnl_usd || 0));
                   const pips = Number(p.live_pnl_pips || 0);
                   const pipsColor =
                     pips > 0
