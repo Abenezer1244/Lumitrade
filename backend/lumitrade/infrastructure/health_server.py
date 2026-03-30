@@ -77,6 +77,7 @@ class HealthServer:
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
+        self._app.router.add_get("/calendar", self._handle_calendar)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -697,6 +698,38 @@ class HealthServer:
             await ws.close()
 
         return ws
+
+    async def _handle_calendar(self, request: web.Request) -> web.Response:
+        """GET /calendar — fetch economic calendar events from OANDA ForexLabs."""
+        period = request.query.get("period", "604800")  # Default 7 days
+        try:
+            from ..config import LumitradeConfig
+            import httpx
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            env = "fxpractice" if config.oanda_environment != "live" else "fxtrade"
+            base = f"https://api-{env}.oanda.com"
+
+            # Fetch calendar for all major currencies
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(
+                    f"{base}/labs/v1/calendar",
+                    params={"instrument": "EUR_USD", "period": period},
+                    headers={"Authorization": f"Bearer {config.oanda_api_key_data}"},
+                )
+                if resp.status_code != 200:
+                    return web.json_response({"events": [], "error": f"OANDA returned {resp.status_code}"})
+                events = resp.json()
+
+            # Sort by timestamp descending (newest first) and limit
+            if isinstance(events, list):
+                events.sort(key=lambda e: e.get("timestamp", 0), reverse=True)
+                return web.json_response({"events": events[:50]})
+
+            return web.json_response({"events": []})
+        except Exception as e:
+            logger.error("calendar_endpoint_error", error=str(e))
+            return web.json_response({"events": [], "error": str(e)})
 
     async def _handle_candles(self, request: web.Request) -> web.Response:
         """GET /candles?pair=EUR_USD&granularity=H1&count=100 — fetch OANDA candles."""

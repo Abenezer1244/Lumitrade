@@ -11,6 +11,7 @@ import RiskUtilization from "@/components/analytics/RiskUtilization";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
 import InsightCards from "@/components/dashboard/InsightCards";
+import NewsFeed from "@/components/dashboard/NewsFeed";
 import { useAccount } from "@/hooks/useAccount";
 import { useTradeHistory } from "@/hooks/useTradeHistory";
 
@@ -132,8 +133,11 @@ export default function DashboardPage() {
             </motion.div>
           </div>
 
-          {/* AI Insight Cards */}
-          <InsightCards />
+          {/* AI Insight Cards + Economic Calendar */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <InsightCards />
+            <NewsFeed />
+          </div>
 
           {/* Positions + Signals */}
           <OpenPositionsTable />
