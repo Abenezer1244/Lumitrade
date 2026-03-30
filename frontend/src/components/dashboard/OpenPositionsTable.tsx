@@ -189,7 +189,7 @@ export default function OpenPositionsTable() {
             className="w-6 h-6 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
           >
-            <BarChart3 size={12} style={{ color: "var(--color-accent)" }} />
+            <BarChart3 size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
           </div>
           <h3
             className="text-sm font-semibold"
@@ -278,6 +278,7 @@ export default function OpenPositionsTable() {
                         y: -1,
                         transition: { duration: 0.15 },
                       }}
+                      whileTap={{ scale: 0.99 }}
                     >
                       <td
                         className="py-2 px-2 font-mono"

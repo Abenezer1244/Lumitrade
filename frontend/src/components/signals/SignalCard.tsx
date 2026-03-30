@@ -17,7 +17,7 @@ export default function SignalCard({ signal }: Props) {
 
   return (
     <div
-      className={`glass p-3 transition-colors ${
+      className={`glass p-4 transition-colors ${
         canExpand ? "cursor-pointer hover:border-accent/40" : ""
       } ${expanded ? "col-span-full" : ""}`}
       onClick={() => canExpand && setExpanded(!expanded)}
@@ -47,7 +47,7 @@ export default function SignalCard({ signal }: Props) {
         )}
         {canExpand && (
           <svg
-            className={`w-4 h-4 text-tertiary transition-transform ${expanded ? "rotate-180" : ""}`}
+            className={`w-4 h-4 text-secondary transition-transform ${expanded ? "rotate-180" : ""}`}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"

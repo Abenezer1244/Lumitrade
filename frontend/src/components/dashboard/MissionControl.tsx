@@ -286,7 +286,7 @@ export default function MissionControl() {
               animate={{ rotate: 360 }}
               transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
             >
-              <Radio size={24} style={{ color: "var(--color-text-tertiary)", opacity: 0.4 }} />
+              <Radio size={24} style={{ color: "var(--color-text-tertiary)", opacity: 0.4 }} aria-hidden="true" />
             </motion.div>
             <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
               Awaiting agent activity...

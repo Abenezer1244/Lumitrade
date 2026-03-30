@@ -174,11 +174,11 @@ export default function TodayPanel() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className="px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide transition-all duration-200"
+              className="px-3 py-1 rounded-full text-[10px] font-semibold tracking-wide transition-all duration-200 hover:bg-[var(--color-bg-elevated)]"
               style={{
-                background: tab === activeTab ? "linear-gradient(135deg, #00C896, #3D8EFF)" : "transparent",
-                color: tab === activeTab ? "#fff" : "var(--color-text-tertiary)",
-                boxShadow: tab === activeTab ? "0 2px 8px rgba(61, 142, 255, 0.25)" : "none",
+                background: tab === activeTab ? "linear-gradient(135deg, var(--color-profit), var(--color-accent))" : undefined,
+                color: tab === activeTab ? "#fff" : "var(--color-text-secondary)",
+                boxShadow: tab === activeTab ? "0 2px 8px rgba(37, 99, 235, 0.25)" : "none",
               }}
             >
               {tab}
@@ -186,7 +186,7 @@ export default function TodayPanel() {
           ))}
           </div>
         </div>
-        <TrendIcon className={`w-4 h-4 ${trendColor}`} />
+        <TrendIcon className={`w-4 h-4 ${trendColor}`} aria-label={`Trend ${trendColor.includes('profit') ? 'up' : trendColor.includes('loss') ? 'down' : 'neutral'}`} />
       </div>
 
       {/* Animated content swap */}

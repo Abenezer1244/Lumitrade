@@ -70,10 +70,10 @@ export default function PerformanceSummaryCards() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className="px-2.5 py-1 rounded text-[10px] font-medium transition-all"
+            className="px-3 py-1 rounded text-[10px] font-medium transition-all hover:bg-[var(--color-bg-elevated)]"
             style={{
-              backgroundColor: tab === activeTab ? "var(--color-accent)" : "transparent",
-              color: tab === activeTab ? "#fff" : "var(--color-text-tertiary)",
+              backgroundColor: tab === activeTab ? "var(--color-accent)" : undefined,
+              color: tab === activeTab ? "#fff" : "var(--color-text-secondary)",
             }}
           >
             {tab}

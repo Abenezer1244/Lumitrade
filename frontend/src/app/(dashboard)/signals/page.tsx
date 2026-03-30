@@ -52,7 +52,7 @@ export default function SignalsPage() {
 
       {/* Signal Feed */}
       {loading ? (
-        <div className="glass p-5">
+        <div className="glass p-5" aria-busy="true" aria-label="Loading signals">
           <div className="animate-pulse h-20 bg-elevated rounded-lg" />
         </div>
       ) : filtered.length === 0 ? (

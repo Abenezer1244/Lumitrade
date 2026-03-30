@@ -136,6 +136,7 @@ export default function MarketWatchlist() {
                 borderColor: "var(--color-accent)",
                 transition: { duration: 0.15 },
               }}
+              whileTap={{ scale: 0.98 }}
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[11px] font-bold" style={{ color: "var(--color-text-primary)" }}>

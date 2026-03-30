@@ -244,9 +244,9 @@ export default function SystemStatusPanel() {
             className="w-6 h-6 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
           >
-            <Activity size={12} style={{ color: "var(--color-accent)" }} />
+            <Activity size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
           </div>
-          <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>System Status</span>
+          <span className="text-label" style={{ color: "var(--color-text-secondary)" }}>System Status</span>
         </div>
         <StatusBadge status={health.status} />
       </div>

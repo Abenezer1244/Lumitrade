@@ -75,7 +75,7 @@ export default function KillSwitchButton() {
           >
             <ShieldOff size={12} style={{ color: "var(--color-loss)" }} />
           </div>
-          <p className="text-label" style={{ color: "var(--color-text-tertiary)" }}>Emergency</p>
+          <p className="text-label" style={{ color: "var(--color-text-secondary)" }}>Emergency</p>
         </div>
         <button
           onClick={handleActivate}
