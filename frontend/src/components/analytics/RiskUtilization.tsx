@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { Shield, AlertTriangle } from "lucide-react";
+import { ShieldHalfHalf, TriangleAlert } from "lucide-react";
 import { useAccount } from "@/hooks/useAccount";
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 
@@ -81,7 +81,7 @@ export default function RiskUtilization() {
             className="w-6 h-6 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
           >
-            <Shield size={12} style={{ color: "var(--color-accent)" }} />
+            <ShieldHalf size={12} style={{ color: "var(--color-accent)" }} />
           </div>
           <h3 className="text-card-title" style={{ color: "var(--color-text-primary)" }}>
             Risk
@@ -96,7 +96,7 @@ export default function RiskUtilization() {
           animate={{ opacity: riskState !== "NORMAL" ? [1, 0.6, 1] : 1 }}
           transition={riskState !== "NORMAL" ? { duration: 1.5, repeat: Infinity } : {}}
         >
-          {riskState !== "NORMAL" && <AlertTriangle size={10} />}
+          {riskState !== "NORMAL" && <TriangleAlert size={10} />}
           {riskState}
         </motion.div>
       </div>

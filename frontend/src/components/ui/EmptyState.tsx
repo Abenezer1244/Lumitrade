@@ -1,4 +1,4 @@
-import { Inbox, type LucideIcon } from "lucide-react";
+import { PackageOpen, type LucideIcon } from "lucide-react";
 
 interface Props {
   message: string;
@@ -7,7 +7,7 @@ interface Props {
   action?: { label: string; onClick: () => void };
 }
 
-export default function EmptyState({ message, description, icon: Icon = Inbox, action }: Props) {
+export default function EmptyState({ message, description, icon: Icon = PackageOpen, action }: Props) {
   return (
     <div className="flex flex-col items-center justify-center text-center min-h-[200px] py-12">
       <Icon

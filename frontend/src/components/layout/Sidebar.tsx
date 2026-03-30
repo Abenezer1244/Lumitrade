@@ -4,20 +4,20 @@ import { usePathname } from "next/navigation";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  LayoutDashboard,
-  Zap,
-  History,
-  BarChart2,
-  Settings,
+  Gauge,
+  Crosshair,
+  ArrowLeftRight,
+  LineChart,
+  SlidersHorizontal,
   Menu,
   X,
   ChevronsLeft,
   ChevronsRight,
-  BookOpen,
-  MessageCircle,
-  TrendingUp,
-  Store,
-  Users,
+  NotebookPen,
+  BotMessageSquare,
+  Newspaper,
+  ShoppingBag,
+  UserPlus,
   FlaskConical,
   Key,
 } from "lucide-react";
@@ -26,21 +26,21 @@ import StatusDot from "@/components/ui/StatusDot";
 interface NavItem {
   href: string;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof Gauge;
   phase?: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/signals", label: "Signals", icon: Zap },
-  { href: "/trades", label: "Trades", icon: History },
-  { href: "/analytics", label: "Analytics", icon: BarChart2 },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/journal", label: "Journal", icon: BookOpen, phase: 2 },
-  { href: "/coach", label: "AI Coach", icon: MessageCircle, phase: 2 },
-  { href: "/intelligence", label: "Intel Report", icon: TrendingUp, phase: 2 },
-  { href: "/marketplace", label: "Marketplace", icon: Store, phase: 3 },
-  { href: "/copy", label: "Copy Trading", icon: Users, phase: 3 },
+  { href: "/dashboard", label: "Dashboard", icon: Gauge },
+  { href: "/signals", label: "Signals", icon: Crosshair },
+  { href: "/trades", label: "Trades", icon: ArrowLeftRight },
+  { href: "/analytics", label: "Analytics", icon: LineChart },
+  { href: "/settings", label: "Settings", icon: SlidersHorizontal },
+  { href: "/journal", label: "Journal", icon: NotebookPen, phase: 2 },
+  { href: "/coach", label: "AI Coach", icon: BotMessageSquare, phase: 2 },
+  { href: "/intelligence", label: "Intel Report", icon: Newspaper, phase: 2 },
+  { href: "/marketplace", label: "Marketplace", icon: ShoppingBag, phase: 3 },
+  { href: "/copy", label: "Copy Trading", icon: UserPlus, phase: 3 },
   { href: "/backtest", label: "Backtest", icon: FlaskConical, phase: 3 },
   { href: "/api-keys", label: "API Access", icon: Key, phase: 3 },
 ];

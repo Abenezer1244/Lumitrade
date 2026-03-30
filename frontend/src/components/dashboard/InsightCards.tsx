@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { Lightbulb, TrendingUp, Award, BarChart2 } from "lucide-react";
+import { Sparkles, ArrowUpRight, Trophy, BarChart4 } from "lucide-react";
 
 interface Insight {
-  icon: typeof Lightbulb;
+  icon: typeof Sparkles;
   title: string;
   value: string;
   color: string;
@@ -45,7 +45,7 @@ export default function InsightCards() {
 
         if (all.winRate >= 50) {
           cards.push({
-            icon: Award,
+            icon: Trophy,
             title: "Win Rate",
             value: `${all.winRate.toFixed(0)}% — ${all.winRate >= 60 ? "Excellent" : "Solid"} performance`,
             color: "var(--color-profit)",
@@ -54,7 +54,7 @@ export default function InsightCards() {
 
         if (bestPair !== "N/A") {
           cards.push({
-            icon: TrendingUp,
+            icon: ArrowUpRight,
             title: "Best Pair",
             value: `${bestPair} — ${bestPairPnl >= 0 ? "+" : ""}$${Math.abs(bestPairPnl).toFixed(2)}`,
             color: bestPairPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)",
@@ -64,7 +64,7 @@ export default function InsightCards() {
         if (all.trades > 0) {
           const avgPnl = all.pnl / all.trades;
           cards.push({
-            icon: BarChart2,
+            icon: BarChart4,
             title: "Avg Trade",
             value: `${avgPnl >= 0 ? "+" : ""}$${Math.abs(avgPnl).toFixed(2)} per trade`,
             color: avgPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)",
@@ -73,7 +73,7 @@ export default function InsightCards() {
 
         if (cards.length < 3) {
           cards.push({
-            icon: Lightbulb,
+            icon: Sparkles,
             title: "Tip",
             value: `${50 - all.trades > 0 ? `${50 - all.trades} more trades` : "Review"} to reach go/no-go gate`,
             color: "var(--color-accent)",

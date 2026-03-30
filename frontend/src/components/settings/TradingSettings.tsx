@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, Lock } from "lucide-react";
+import { SlidersHorizontal, ShieldCheck } from "lucide-react";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 
 export interface TradingSettingsData {
@@ -130,7 +130,7 @@ export default function TradingSettings({
       {/* User-adjustable settings */}
       <div className="glass p-5">
         <div className="flex items-center gap-2 mb-4">
-          <Shield size={18} className="text-brand" />
+          <SlidersHorizontal size={18} className="text-brand" />
           <h2 className="text-heading text-primary">Trading Parameters</h2>
         </div>
         <p className="text-xs text-tertiary mb-5">
@@ -187,7 +187,7 @@ export default function TradingSettings({
       {/* Guardrails — read-only */}
       <div className="glass p-5 border border-border/50">
         <div className="flex items-center gap-2 mb-4">
-          <Lock size={18} className="text-warning" />
+          <ShieldCheck size={18} className="text-warning" />
           <h2 className="text-heading text-primary">Safety Guardrails</h2>
         </div>
         <p className="text-xs text-tertiary mb-4">

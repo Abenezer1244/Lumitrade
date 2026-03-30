@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAccount } from "@/hooks/useAccount";
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ArrowDownRight, Landmark } from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -99,9 +99,9 @@ function TrendArrow({ isProfit }: TrendArrowProps) {
         className="inline-flex"
       >
         {isProfit ? (
-          <TrendingUp className="w-3.5 h-3.5 text-profit" />
+          <ArrowUpRight className="w-3.5 h-3.5 text-profit" />
         ) : (
-          <TrendingDown className="w-3.5 h-3.5 text-loss" />
+          <ArrowDownRight className="w-3.5 h-3.5 text-loss" />
         )}
       </motion.span>
     </AnimatePresence>
@@ -208,7 +208,7 @@ export default function AccountPanel() {
             className="w-7 h-7 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
           >
-            <Wallet size={14} style={{ color: "var(--color-accent)" }} />
+            <Landmark size={14} style={{ color: "var(--color-accent)" }} />
           </div>
           <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>
             Account Balance

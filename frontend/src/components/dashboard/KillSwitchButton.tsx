@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { AlertTriangle, ShieldOff } from "lucide-react";
+import { OctagonX, CircleSlash } from "lucide-react";
 
 type KillSwitchState = "idle" | "confirming" | "loading" | "success" | "error";
 
@@ -49,7 +49,7 @@ export default function KillSwitchButton() {
     return (
       <div className="glass p-4" style={{ borderColor: "var(--color-loss)", borderWidth: 1 }} role="alert" aria-live="assertive">
         <div className="flex items-center gap-2">
-          <ShieldOff className="w-5 h-5 text-loss" />
+          <CircleSlash className="w-5 h-5 text-loss" />
           <span className="text-sm font-bold text-loss">Trading Halted</span>
         </div>
         <p className="text-xs text-secondary mt-2">
@@ -73,7 +73,7 @@ export default function KillSwitchButton() {
             className="w-6 h-6 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-loss-dim)" }}
           >
-            <ShieldOff size={12} style={{ color: "var(--color-loss)" }} />
+            <CircleSlash size={12} style={{ color: "var(--color-loss)" }} />
           </div>
           <p className="text-label" style={{ color: "var(--color-text-secondary)" }}>Emergency</p>
         </div>
@@ -81,7 +81,7 @@ export default function KillSwitchButton() {
           onClick={handleActivate}
           className="w-full py-2.5 px-4 bg-loss-dim border border-loss/30 rounded-lg text-sm font-bold text-loss hover:bg-loss/20 transition-colors flex items-center justify-center gap-2"
         >
-          <AlertTriangle size={14} />
+          <OctagonX size={14} />
           Kill Switch
         </button>
       </div>

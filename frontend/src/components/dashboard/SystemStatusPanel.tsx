@@ -3,7 +3,7 @@
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "motion/react";
-import { Activity } from "lucide-react";
+import { Cpu } from "lucide-react";
 import type { ComponentStatus } from "@/types/system";
 
 /* ------------------------------------------------------------------ */
@@ -244,7 +244,7 @@ export default function SystemStatusPanel() {
             className="w-6 h-6 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: "var(--color-accent-glow)" }}
           >
-            <Activity size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
+            <Cpu size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
           </div>
           <span className="text-label" style={{ color: "var(--color-text-secondary)" }}>System Status</span>
         </div>
