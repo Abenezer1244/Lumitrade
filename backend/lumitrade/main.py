@@ -291,8 +291,13 @@ class OrchestratorService:
 
                         # 1b. Consensus validation — second Claude opinion
                         try:
+                            consensus_context = (
+                                f"{pair} | Price: {proposal.entry_price} | "
+                                f"Indicators: {proposal.indicators_snapshot}\n"
+                                f"Analysis: {proposal.summary}"
+                            )
                             proposal = await self.consensus.validate(
-                                proposal, market_context=pair,
+                                proposal, market_context=consensus_context,
                             )
                             logger.info(
                                 "consensus_complete",
@@ -302,14 +307,8 @@ class OrchestratorService:
                         except Exception as e:
                             logger.warning("consensus_failed", pair=pair, error=str(e))
 
-                        if proposal.confidence_adjusted < self.config.min_confidence:
-                            logger.info(
-                                "signal_below_threshold",
-                                pair=pair,
-                                confidence=str(proposal.confidence_adjusted),
-                                threshold=str(self.config.min_confidence),
-                            )
-                            continue
+                        # Confidence threshold is checked by risk engine
+                        # (which also accounts for CAUTIOUS state)
 
                         # 2. Get account balance for risk sizing
                         account = await self.oanda.get_account_summary()

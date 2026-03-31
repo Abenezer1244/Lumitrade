@@ -43,8 +43,8 @@ class ConfidenceAdjuster:
         adjustments["news_proximity"] = float(news_adj)
         adjusted += news_adj
 
-        # Factor 3: Session quality
-        session_adj = self._session_quality(snapshot.session)
+        # Factor 3: Session quality (pair-aware)
+        session_adj = self._session_quality(snapshot.session, snapshot.pair)
         adjustments["session_quality"] = float(session_adj)
         adjusted += session_adj
 
@@ -124,12 +124,28 @@ class ConfidenceAdjuster:
                     return Decimal("-0.10")
         return Decimal("0")
 
-    def _session_quality(self, session: Session) -> Decimal:
-        """Adjust for trading session quality."""
+    # Pairs that are native to each session (no penalty applied)
+    _TOKYO_PAIRS = {"USD_JPY", "AUD_USD", "NZD_USD", "AUD_JPY", "NZD_JPY"}
+    _LONDON_PAIRS = {"EUR_USD", "GBP_USD", "EUR_GBP", "USD_CHF", "EUR_CHF"}
+    _NY_PAIRS = {"USD_CAD", "EUR_USD", "GBP_USD", "USD_CHF", "XAU_USD"}
+
+    def _session_quality(self, session: Session, pair: str = "") -> Decimal:
+        """
+        Adjust for trading session quality, accounting for pair relevance.
+
+        A pair native to the current session gets no penalty — e.g. USD/JPY
+        during Tokyo has full liquidity and tight spreads.
+        """
         if session == Session.OVERLAP:
             return Decimal("0.05")
         elif session == Session.TOKYO:
-            return Decimal("-0.10")
+            if pair in self._TOKYO_PAIRS:
+                return Decimal("0")  # Native pair — no penalty
+            return Decimal("-0.05")
+        elif session == Session.LONDON:
+            return Decimal("0")  # London is always good liquidity
+        elif session == Session.NEW_YORK:
+            return Decimal("0")  # NY is always good liquidity
         elif session == Session.OTHER:
             return Decimal("-0.10")
         return Decimal("0")
