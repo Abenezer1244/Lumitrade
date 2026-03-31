@@ -176,17 +176,37 @@ class OandaTradingClient(OandaClient):
     ) -> dict:
         """Place market order with attached SL and TP."""
         url = f"{self._base_url}/v3/accounts/{self._account_id}/orders"
+        # OANDA requires specific price precision per instrument
+        # JPY pairs: 3 decimals, XAU: 2 decimals, others: 5 decimals
+        if "JPY" in pair:
+            fmt_sl, fmt_tp = f"{float(sl):.3f}", f"{float(tp):.3f}"
+        elif "XAU" in pair:
+            fmt_sl, fmt_tp = f"{float(sl):.2f}", f"{float(tp):.2f}"
+        else:
+            fmt_sl, fmt_tp = f"{float(sl):.5f}", f"{float(tp):.5f}"
         body = {
             "order": {
                 "type": "MARKET",
                 "instrument": pair,
                 "units": str(units),
-                "stopLossOnFill": {"price": str(sl)},
-                "takeProfitOnFill": {"price": str(tp)},
+                "stopLossOnFill": {"price": fmt_sl},
+                "takeProfitOnFill": {"price": fmt_tp},
                 "clientExtensions": {"id": client_request_id},
             }
         }
         resp = await self._trading_client.post(url, json=body)
+        if resp.status_code >= 400:
+            error_body = resp.text
+            from ..infrastructure.secure_logger import get_logger
+            get_logger(__name__).error(
+                "oanda_order_error_detail",
+                status=resp.status_code,
+                body=error_body[:500],
+                pair=pair,
+                units=units,
+                sl=fmt_sl,
+                tp=fmt_tp,
+            )
         resp.raise_for_status()
         return resp.json()
 
