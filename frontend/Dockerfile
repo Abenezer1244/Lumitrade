@@ -5,7 +5,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Force fresh copy of source files
-ARG CACHE_DATE=20260330a
+ARG CACHE_DATE=20260330b
 COPY . .
 
 ARG NEXT_PUBLIC_SUPABASE_URL
