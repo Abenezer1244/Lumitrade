@@ -125,11 +125,11 @@ export default function DashboardPage() {
         <motion.div className="lg:col-span-8 space-y-4" variants={item}>
           {/* Top cards: Account + Today/Calendar stacked */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
-            <motion.div className="md:col-span-7 space-y-3 flex flex-col" variants={heroItem}>
+            <motion.div className="md:col-span-7 flex flex-col gap-3" variants={heroItem}>
               <AccountPanel />
               <InsightCards />
             </motion.div>
-            <motion.div className="md:col-span-5 space-y-3 flex flex-col" variants={item}>
+            <motion.div className="md:col-span-5 flex flex-col gap-3" variants={item}>
               <TodayPanel />
               <NewsFeed />
             </motion.div>
