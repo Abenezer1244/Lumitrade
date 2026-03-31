@@ -153,16 +153,17 @@ class AIOutputValidator:
             pair = data.get("pair", "")
             tp_pips = abs(float(pips_between(entry, tp, pair)))
             sl_pips = abs(float(pips_between(entry, sl, pair)))
-            min_pips = 5.0 if "XAU" in pair else 8.0
-            if tp_pips < min_pips:
+            min_tp_pips = 10.0 if "XAU" in pair else 15.0
+            min_sl_pips = 10.0 if "XAU" in pair else 15.0
+            if tp_pips < min_tp_pips:
                 return ValidationResult(
                     False,
-                    reason=f"TP too close to entry ({tp_pips:.1f} pips, min {min_pips})",
+                    reason=f"TP too close to entry ({tp_pips:.1f} pips, min {min_tp_pips})",
                 )
-            if sl_pips < min_pips:
+            if sl_pips < min_sl_pips:
                 return ValidationResult(
                     False,
-                    reason=f"SL too close to entry ({sl_pips:.1f} pips, min {min_pips})",
+                    reason=f"SL too close to entry ({sl_pips:.1f} pips, min {min_sl_pips})",
                 )
 
         # Step 8: Summary and reasoning quality
