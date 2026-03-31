@@ -89,31 +89,31 @@ export default function InsightCards() {
   if (insights.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {insights.map((insight, i) => {
         const Icon = insight.icon;
         return (
           <motion.div
             key={insight.title}
-            className="glass p-4 flex items-start gap-3"
+            className="glass relative overflow-hidden px-4 py-3"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: i * 0.08, ease: [0.16, 1, 0.3, 1] as const }}
           >
+            {/* Colored accent line at top */}
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-              style={{ backgroundColor: `${insight.color}15` }}
-            >
-              <Icon size={16} style={{ color: insight.color }} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: "var(--color-text-tertiary)" }}>
+              className="absolute top-0 left-0 right-0 h-[2px]"
+              style={{ background: insight.color }}
+            />
+            <div className="flex items-center gap-1.5 mb-1">
+              <Icon size={12} style={{ color: insight.color }} strokeWidth={2.5} />
+              <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: insight.color }}>
                 {insight.title}
               </p>
-              <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                {insight.value}
-              </p>
             </div>
+            <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-primary)" }}>
+              {insight.value}
+            </p>
           </motion.div>
         );
       })}
