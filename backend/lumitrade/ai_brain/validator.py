@@ -145,6 +145,26 @@ class AIOutputValidator:
                     False, reason=f"RR ratio {rr:.2f} below minimum 1.5"
                 )
 
+        # Step 7b: Minimum pip distance — TP/SL must be far enough
+        # from entry to survive broker spread. Prevents OANDA
+        # TAKE_PROFIT_ON_FILL_LOSS rejections.
+        if action != "HOLD":
+            from ..utils.pip_math import pips_between
+            pair = data.get("pair", "")
+            tp_pips = abs(float(pips_between(entry, tp, pair)))
+            sl_pips = abs(float(pips_between(entry, sl, pair)))
+            min_pips = 5.0 if "XAU" in pair else 8.0
+            if tp_pips < min_pips:
+                return ValidationResult(
+                    False,
+                    reason=f"TP too close to entry ({tp_pips:.1f} pips, min {min_pips})",
+                )
+            if sl_pips < min_pips:
+                return ValidationResult(
+                    False,
+                    reason=f"SL too close to entry ({sl_pips:.1f} pips, min {min_pips})",
+                )
+
         # Step 8: Summary and reasoning quality
         if len(data.get("summary", "")) < 20:
             return ValidationResult(False, reason="Summary too short")
