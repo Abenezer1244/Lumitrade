@@ -358,7 +358,7 @@ class OrchestratorService:
                             try:
                                 if order_num == 0:
                                     # First order uses the original approved order
-                                    await self.exec_eng.execute_order(approved, current_price)
+                                    exec_result = await self.exec_eng.execute_order(approved, current_price)
                                 else:
                                     # Subsequent orders get a fresh order_ref
                                     scaled_order = ApprovedOrder(
@@ -378,7 +378,15 @@ class OrchestratorService:
                                         expiry=datetime.now(timezone.utc) + timedelta(seconds=30),
                                         mode=approved.mode,
                                     )
-                                    await self.exec_eng.execute_order(scaled_order, current_price)
+                                    exec_result = await self.exec_eng.execute_order(scaled_order, current_price)
+                                if exec_result is None:
+                                    logger.warning(
+                                        "trade_execution_failed",
+                                        pair=pair,
+                                        action=_action_str(proposal.action),
+                                        order_num=order_num + 1,
+                                    )
+                                    break
                                 logger.info(
                                     "trade_executed_successfully",
                                     pair=pair,

@@ -23,10 +23,13 @@ class OandaExecutor:
 
     async def execute(self, order: ApprovedOrder) -> OrderResult:
         client_request_id = str(order.order_ref)
+        # OANDA uses negative units for SELL orders
+        direction_str = order.direction.value if hasattr(order.direction, "value") else str(order.direction)
+        units = -abs(order.units) if direction_str == "SELL" else abs(order.units)
         try:
             response = await self._client.place_market_order(
                 pair=order.pair,
-                units=order.units,
+                units=units,
                 sl=order.stop_loss,
                 tp=order.take_profit,
                 client_request_id=client_request_id,
