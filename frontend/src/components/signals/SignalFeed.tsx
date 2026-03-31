@@ -11,7 +11,7 @@ export function SignalFeed({ limit, compact }: Props) {
   if (loading) return <div className="glass p-5"><div className="animate-pulse h-20 bg-elevated rounded-lg" /></div>;
   if (!displayed.length) return <div className="glass p-5"><EmptyState icon={Zap} message="No signals yet." description="Lumitrade is scanning the markets. Signals appear here when the AI identifies opportunities." /></div>;
   return (
-    <div className={`glass p-4 ${compact ? "" : ""}`}>
+    <div className={`glass p-4 ${compact ? "!border-t-0" : ""}`}>
       <h3 className="text-card-title text-primary mb-3">Recent Signals</h3>
       <div className="space-y-2" aria-live="polite" aria-relevant="additions">{displayed.map(s => <SignalCard key={s.id} signal={s} />)}</div>
     </div>
