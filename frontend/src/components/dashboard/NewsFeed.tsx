@@ -104,7 +104,7 @@ export default function NewsFeed() {
           style={{ scrollbarWidth: "thin" }}
         >
           <AnimatePresence>
-            {relevant.slice(0, 20).map((event, i) => {
+            {relevant.slice(0, 5).map((event, i) => {
               const impact = IMPACT_LABEL[event.impact] || IMPACT_LABEL[1];
               const isPast = event.timestamp < now;
               const beat = event.actual && event.forecast
