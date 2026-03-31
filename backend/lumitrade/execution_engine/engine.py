@@ -357,6 +357,8 @@ class ExecutionEngine:
             profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
         # Break-even stop: move SL to entry when +15 pips (gold: +300 pips)
+        from ..utils.pip_math import pip_size as get_pip_size
+        ps = get_pip_size(pair)
         be_threshold = Decimal("300") if pair == "XAU_USD" else Decimal("15")
         sl_is_behind_entry = (direction == "BUY" and current_sl < entry) or (direction == "SELL" and current_sl > entry)
         if profit_pips >= be_threshold and sl_is_behind_entry:
@@ -393,8 +395,6 @@ class ExecutionEngine:
             return
 
         # Trail distance = original SL distance from entry
-        from ..utils.pip_math import pip_size as get_pip_size
-        ps = get_pip_size(pair)
         original_sl_distance = abs(entry - current_sl)
 
         # Calculate new trailing SL
