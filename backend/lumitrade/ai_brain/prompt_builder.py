@@ -150,6 +150,17 @@ class PromptBuilder:
             "  For SCALP, tighter targets are acceptable (0.5-1x ATR).",
             "Do NOT set conservative 10-20 pip TPs unless the trade is a scalp.",
             "Let winners run — use key levels and Bollinger Bands to find realistic targets.",
+            "",
+            "=== GOLD (XAU_USD) SPECIFIC RULES ===" if snapshot.pair == "XAU_USD" else "",
+            (
+                "Gold trades at ~$3000-5000/oz. SL/TP must reflect this scale:\n"
+                "  - Typical SL: $15-50 from entry (1500-5000 pips at 0.01 pip size)\n"
+                "  - Typical TP: $25-100+ from entry (must be ≥1.5x SL distance)\n"
+                "  - ATR for gold is in dollars, not micro-pips. A $30 ATR = 3000 pips.\n"
+                "  - Gold is volatile — use WIDE SL/TP or return HOLD.\n"
+                "  - If you cannot find TP ≥ 1.5x SL distance, return HOLD.\n"
+                "  - NEVER set TP closer to entry than SL — this guarantees RR < 1.0."
+            ) if snapshot.pair == "XAU_USD" else "",
         ]
         return "\n".join(sections)
 

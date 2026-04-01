@@ -83,6 +83,12 @@ class DataEngine:
         """Build a MarketSnapshot from all data sources."""
         # 1. Get latest price tick
         latest_tick = self._stream.latest_tick.get(pair)
+        # Fall back to REST if stream tick is missing or stale (>5s old).
+        # Gold/metals tick less frequently, causing stale stream data.
+        if latest_tick:
+            age = (datetime.now(timezone.utc) - latest_tick.timestamp).total_seconds()
+            if age > 5:
+                latest_tick = None  # Force REST fallback
         if not latest_tick:
             # Fallback: fetch from REST
             try:

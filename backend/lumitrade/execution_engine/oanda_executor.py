@@ -80,7 +80,7 @@ class OandaExecutor:
             fill_keys=list(order_fill.keys()) if order_fill else [],
         )
         # If OANDA cancelled the order (e.g. TP within spread), treat as rejected
-        if cancel_reason and not order_fill:
+        if cancel_reason:
             logger.error(
                 "oanda_order_rejected",
                 order_ref=str(order.order_ref),
@@ -89,6 +89,18 @@ class OandaExecutor:
             )
             raise ExecutionError(
                 f"OANDA rejected order for {order.pair}: {cancel_reason}"
+            )
+
+        # If no fill transaction at all, treat as failed
+        if not order_fill:
+            logger.error(
+                "oanda_order_no_fill",
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+                response_keys=list(response.keys()),
+            )
+            raise ExecutionError(
+                f"OANDA returned no orderFillTransaction for {order.pair}. Keys: {list(response.keys())}"
             )
 
         order_create = response.get("orderCreateTransaction", {})

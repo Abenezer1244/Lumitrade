@@ -386,6 +386,11 @@ class OrchestratorService:
                                         action=_action_str(proposal.action),
                                         order_num=order_num + 1,
                                     )
+                                    self.events.publish(
+                                        "EXECUTION", "ORDER_FAILED",
+                                        f"FAILED: {_action_str(proposal.action)} {pair} — execution returned None",
+                                        severity="ERROR", pair=pair,
+                                    )
                                     break
                                 logger.info(
                                     "trade_executed_successfully",
@@ -400,6 +405,11 @@ class OrchestratorService:
                                     pair=pair,
                                     order_num=order_num + 1,
                                     error=str(e),
+                                )
+                                self.events.publish(
+                                    "EXECUTION", "ORDER_FAILED",
+                                    f"FAILED: {_action_str(proposal.action)} {pair} — {str(e)[:200]}",
+                                    severity="ERROR", pair=pair,
                                 )
                                 break  # Stop scaling if one fails
                             # Small delay between scaled orders
