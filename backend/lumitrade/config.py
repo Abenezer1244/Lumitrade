@@ -53,6 +53,7 @@ class LumitradeConfig(BaseSettings):
 
     # ── Trading parameters (DB overrides env) ──────────────────
     pairs: list[str] = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "XAU_USD"]
+    buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=True)
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.65")

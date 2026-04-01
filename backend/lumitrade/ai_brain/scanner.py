@@ -287,6 +287,10 @@ class SignalScanner:
         if action == "HOLD":
             return None
 
+        # BUY_ONLY_MODE: block all SELL signals (configurable via env)
+        if action == "SELL" and self._config.buy_only_mode:
+            return "BUY_ONLY_MODE active — SELL signals blocked"
+
         ind = snapshot.indicators
         ema20 = float(ind.ema_20)
         ema50 = float(ind.ema_50)
