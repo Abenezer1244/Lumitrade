@@ -177,11 +177,23 @@ class OrchestratorService:
         self.risk_eng = RiskEngine(
             self.config, self.state, self.db, events=self.events,
         )
+        # Initialize Capital.com client for gold/metals (if configured)
+        capital_client = None
+        if self.config.capital_api_key and self.config.capital_identifier:
+            from .infrastructure.capital_client import CapitalComClient
+            capital_client = CapitalComClient(self.config)
+            logger.info("capital_client_initialized")
+            # Re-add XAU_USD to pairs if it was removed by OANDA validation
+            if "XAU_USD" not in self.config.pairs:
+                self.config.pairs.append("XAU_USD")
+                logger.info("xau_usd_restored_via_capital", pairs=self.config.pairs)
+
         self.exec_eng = ExecutionEngine(
             self.config, self.oanda_trade, self.state, self.db,
             self.alerts, self.subagents,
             oanda_read_client=self.oanda,
             events=self.events,
+            capital_client=capital_client,
         )
         self.watchdog = Watchdog(self.config, self.state, self.alerts)
 

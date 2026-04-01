@@ -73,6 +73,17 @@ class LumitradeConfig(BaseSettings):
         """Deterministic UUID derived from OANDA account ID for DB storage."""
         return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"lumitrade.{self.oanda_account_id}"))
 
+    # ── Capital.com (gold/metals trading) ────────────────────────
+    capital_api_key: Optional[str] = Field(
+        validation_alias="CAPITAL_API_KEY", default=None
+    )
+    capital_identifier: Optional[str] = Field(
+        validation_alias="CAPITAL_IDENTIFIER", default=None
+    )
+    capital_password: Optional[str] = Field(
+        validation_alias="CAPITAL_PASSWORD", default=None
+    )
+
     # ── Future features (optional — absence = feature inactive) ─
     openai_api_key: Optional[str] = Field(
         validation_alias="OPENAI_API_KEY", default=None

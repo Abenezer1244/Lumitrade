@@ -33,6 +33,9 @@ POSITION_MONITOR_INTERVAL = 60
 
 
 class ExecutionEngine:
+    # Instruments routed to Capital.com instead of OANDA
+    CAPITAL_INSTRUMENTS = {"XAU_USD"}
+
     def __init__(
         self,
         config: LumitradeConfig,
@@ -43,6 +46,7 @@ class ExecutionEngine:
         subagents=None,
         oanda_read_client: OandaClient | None = None,
         events: EventPublisher | None = None,
+        capital_client=None,
     ):
         self.config = config
         self._state = state_manager
@@ -52,10 +56,16 @@ class ExecutionEngine:
         self._oanda_read = oanda_read_client
         self._oanda_trade = trading_client
         self._events = events
+        self._capital_client = capital_client
         self._circuit_breaker = CircuitBreaker()
         self._fill_verifier = FillVerifier(alert_service)
         self._paper_executor = PaperExecutor()
         self._oanda_executor = OandaExecutor(trading_client)
+        if capital_client:
+            from .capital_executor import CapitalExecutor
+            self._capital_executor = CapitalExecutor(capital_client)
+        else:
+            self._capital_executor = None
         self.performance_analyzer = PerformanceAnalyzer(db)
 
     async def execute_order(
@@ -81,7 +91,11 @@ class ExecutionEngine:
                 )
                 return None
             try:
-                result = await self._oanda_executor.execute(order)
+                # Route to Capital.com for metals, OANDA for forex
+                if order.pair in self.CAPITAL_INSTRUMENTS and self._capital_executor:
+                    result = await self._capital_executor.execute(order)
+                else:
+                    result = await self._oanda_executor.execute(order)
                 await self._circuit_breaker.record_success()
             except Exception:
                 await self._circuit_breaker.record_failure()
