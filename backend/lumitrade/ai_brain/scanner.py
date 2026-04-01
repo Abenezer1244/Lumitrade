@@ -24,7 +24,7 @@ from .confidence import ConfidenceAdjuster
 from .fallback import RuleBasedFallback
 from .prompt_builder import PromptBuilder
 from .sentiment_analyzer import SentimentAnalyzer
-from .validator import AIOutputValidator
+from .validator import AIOutputValidator, ValidationResult
 
 logger = get_logger(__name__)
 
@@ -239,9 +239,23 @@ class SignalScanner:
                 # Validate output
                 result = self._validator.validate(raw_response, live_price)
                 if result.passed and result.data:
-                    return self._build_proposal(
-                        result.data, snapshot, prompt_hash
+                    # Server-side H4 trend enforcement — AI cannot override
+                    trend_block = self._check_h4_trend_alignment(
+                        result.data.get("action", "HOLD"), snapshot
                     )
+                    if trend_block:
+                        logger.warning(
+                            "ai_trend_override",
+                            pair=pair,
+                            attempt=attempt + 1,
+                            reason=trend_block,
+                            ai_action=result.data["action"],
+                        )
+                        result = ValidationResult(False, reason=trend_block)
+                    else:
+                        return self._build_proposal(
+                            result.data, snapshot, prompt_hash
+                        )
                 else:
                     logger.warning(
                         "ai_validation_failed",
@@ -260,6 +274,44 @@ class SignalScanner:
         # All AI attempts failed — use rule-based fallback
         logger.warning("ai_exhausted_using_fallback", pair=pair)
         return self._fallback.generate(snapshot)
+
+    def _check_h4_trend_alignment(self, action: str, snapshot) -> str | None:
+        """
+        Server-side enforcement: SELL forbidden when H4 EMAs are bullish,
+        BUY forbidden when H4 EMAs are bearish.
+        Returns blocking reason string, or None if aligned.
+
+        Historical data: 0% SELL win rate when H4 trend was bullish.
+        This check prevents the AI from overriding the trend rule.
+        """
+        if action == "HOLD":
+            return None
+
+        ind = snapshot.indicators
+        ema20 = float(ind.ema_20)
+        ema50 = float(ind.ema_50)
+        ema200 = float(ind.ema_200)
+
+        # All three must be non-zero (data available)
+        if ema20 == 0 or ema50 == 0 or ema200 == 0:
+            return None
+
+        # Bullish: EMA20 > EMA50 > EMA200
+        bullish = ema20 > ema50 > ema200
+        # Bearish: EMA20 < EMA50 < EMA200
+        bearish = ema20 < ema50 < ema200
+
+        if action == "SELL" and bullish:
+            return (
+                f"H4 trend is BULLISH (EMA20 {ema20:.5f} > EMA50 {ema50:.5f} > EMA200 {ema200:.5f}) "
+                f"— SELL forbidden. Must trade WITH the trend."
+            )
+        if action == "BUY" and bearish:
+            return (
+                f"H4 trend is BEARISH (EMA20 {ema20:.5f} < EMA50 {ema50:.5f} < EMA200 {ema200:.5f}) "
+                f"— BUY forbidden. Must trade WITH the trend."
+            )
+        return None
 
     def _build_proposal(
         self, data: dict, snapshot, prompt_hash: str
