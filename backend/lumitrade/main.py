@@ -378,11 +378,44 @@ class OrchestratorService:
                             continue
                         approved = result
 
-                        # 4. Single order per signal
-                        #    Multi-order scaling disabled: OANDA US accounts
-                        #    enforce FIFO rules — only 1 position per pair per
-                        #    direction allowed. Second order triggers
-                        #    FIFO_VIOLATION_SAFEGUARD_VIOLATION.
+                        # 4. Scale position SIZE by confidence (not multiple orders)
+                        #    OANDA US enforces FIFO — only 1 position per pair.
+                        #    Instead of 3x orders, place 1 order with 3x units.
+                        confidence_pct = float(proposal.confidence_adjusted) * 100
+                        if confidence_pct >= 85:
+                            size_multiplier = 3
+                        elif confidence_pct >= 75:
+                            size_multiplier = 2
+                        else:
+                            size_multiplier = 1
+
+                        if size_multiplier > 1:
+                            original_units = approved.units
+                            approved = ApprovedOrder(
+                                order_ref=approved.order_ref,
+                                signal_id=approved.signal_id,
+                                pair=approved.pair,
+                                direction=approved.direction,
+                                units=approved.units * size_multiplier,
+                                entry_price=approved.entry_price,
+                                stop_loss=approved.stop_loss,
+                                take_profit=approved.take_profit,
+                                risk_amount_usd=approved.risk_amount_usd * size_multiplier,
+                                risk_pct=approved.risk_pct,
+                                confidence=approved.confidence,
+                                account_balance_at_approval=approved.account_balance_at_approval,
+                                approved_at=approved.approved_at,
+                                expiry=approved.expiry,
+                                mode=approved.mode,
+                            )
+                            logger.info(
+                                "confidence_size_scaled",
+                                pair=pair,
+                                multiplier=size_multiplier,
+                                original_units=original_units,
+                                scaled_units=approved.units,
+                                confidence=confidence_pct,
+                            )
                         num_orders = 1
 
                         current_price = proposal.entry_price
