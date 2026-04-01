@@ -75,6 +75,7 @@ class HealthServer:
         self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
         self._app.router.add_post("/purge-ghosts", self._handle_purge_ghosts)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
+        self._app.router.add_get("/oanda-trades", self._handle_oanda_trades)
         self._app.router.add_post("/trade/{trade_id}/close", self._handle_close_trade)
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
@@ -421,6 +422,23 @@ class HealthServer:
         except Exception as e:
             logger.error("trade_lookup_error", trade_id=trade_id, error=str(e))
             return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_oanda_trades(self, request: web.Request) -> web.Response:
+        """GET /oanda-trades — return all open trades from OANDA with per-trade P&L."""
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            oanda = OandaClient(config)
+            try:
+                trades = await oanda.get_open_trades()
+                return web.json_response({"trades": trades})
+            finally:
+                await oanda.close()
+        except Exception as e:
+            logger.error("oanda_trades_error", error=str(e))
+            return web.json_response({"trades": []})
 
     async def _handle_close_trade(self, request: web.Request) -> web.Response:
         """POST /trade/{trade_id}/close — close a specific trade on OANDA."""

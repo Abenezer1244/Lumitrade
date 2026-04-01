@@ -54,21 +54,22 @@ export async function GET() {
 
     const pairs = Array.from(new Set((data as Record<string, unknown>[]).map((t) => t.pair as string)));
     let prices: Record<string, { bid: number; ask: number; mid: number }> = {};
-    let accountUnrealizedPnl = 0;
-    let oandaOpenCount = 0;
+    // Map broker_trade_id → OANDA's per-trade unrealized P&L
+    let oandaPnlMap: Record<string, number> = {};
 
     try {
-      const [priceRes, accountRes] = await Promise.all([
+      const [priceRes, oandaTradesRes] = await Promise.all([
         fetch(`${backendUrl}/prices?pairs=${pairs.join(",")}`, { cache: "no-store" }),
-        fetch(`${backendUrl}/account`, { cache: "no-store" }),
+        fetch(`${backendUrl}/oanda-trades`, { cache: "no-store" }),
       ]);
       if (priceRes.ok) {
         prices = (await priceRes.json()).prices || {};
       }
-      if (accountRes.ok) {
-        const acct = await accountRes.json();
-        accountUnrealizedPnl = acct.unrealized_pnl || 0;
-        oandaOpenCount = acct.open_trade_count || 0;
+      if (oandaTradesRes.ok) {
+        const oandaTrades = await oandaTradesRes.json();
+        for (const t of (oandaTrades.trades || [])) {
+          oandaPnlMap[t.id] = parseFloat(t.unrealizedPL || "0");
+        }
       }
     } catch { /* continue with fallback */ }
 
@@ -92,11 +93,12 @@ export async function GET() {
         : entry - currentPrice;
       const pnlPips = Math.round((priceDiff / ps) * 10) / 10;
 
-      // Use OANDA account unrealizedPL directly when only 1 position
-      // This guarantees exact match with Account Panel's unrealized P&L
+      // Use OANDA's per-trade unrealizedPL when available (most accurate)
+      // Falls back to pip math calculation if OANDA data unavailable
+      const brokerId = trade.broker_trade_id as string;
       let pnlUsd: number;
-      if (openCount === 1 && oandaOpenCount === 1) {
-        pnlUsd = Math.round(accountUnrealizedPnl * 100) / 100;
+      if (brokerId && oandaPnlMap[brokerId] !== undefined) {
+        pnlUsd = Math.round(oandaPnlMap[brokerId] * 100) / 100;
       } else {
         const pv = pipValue(pair, currentPrice);
         pnlUsd = Math.round(pnlPips * units * pv * 100) / 100;
