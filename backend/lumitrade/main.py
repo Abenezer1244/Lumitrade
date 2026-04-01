@@ -378,15 +378,12 @@ class OrchestratorService:
                             continue
                         approved = result
 
-                        # 4. Determine position multiplier based on confidence
-                        #    Higher confidence = more positions (scaling in)
-                        confidence_pct = float(proposal.confidence_adjusted) * 100
-                        if confidence_pct >= 85:
-                            num_orders = 5
-                        elif confidence_pct >= 75:
-                            num_orders = 3
-                        else:
-                            num_orders = 1
+                        # 4. Single order per signal
+                        #    Multi-order scaling disabled: OANDA US accounts
+                        #    enforce FIFO rules — only 1 position per pair per
+                        #    direction allowed. Second order triggers
+                        #    FIFO_VIOLATION_SAFEGUARD_VIOLATION.
+                        num_orders = 1
 
                         current_price = proposal.entry_price
                         logger.info(
