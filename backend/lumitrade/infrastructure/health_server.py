@@ -75,6 +75,7 @@ class HealthServer:
         self._app.router.add_post("/fix-timestamps", self._handle_fix_timestamps)
         self._app.router.add_post("/purge-ghosts", self._handle_purge_ghosts)
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
+        self._app.router.add_post("/trade/{trade_id}/close", self._handle_close_trade)
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
         self._app.router.add_get("/calendar", self._handle_calendar)
@@ -419,6 +420,26 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("trade_lookup_error", trade_id=trade_id, error=str(e))
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def _handle_close_trade(self, request: web.Request) -> web.Response:
+        """POST /trade/{trade_id}/close — close a specific trade on OANDA."""
+        trade_id = request.match_info.get("trade_id", "")
+        if not trade_id:
+            return web.json_response({"error": "Missing trade_id"}, status=400)
+        try:
+            from ..config import LumitradeConfig
+            from ..infrastructure.oanda_client import OandaTradingClient
+
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            client = OandaTradingClient(config)
+            try:
+                result = await client.close_trade(trade_id)
+                return web.json_response(result)
+            finally:
+                await client.close()
+        except Exception as e:
+            logger.error("trade_close_error", trade_id=trade_id, error=str(e))
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_reconcile(self, request: web.Request) -> web.Response:
