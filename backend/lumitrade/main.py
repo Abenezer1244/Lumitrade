@@ -139,6 +139,21 @@ class OrchestratorService:
         except Exception as e:
             logger.error("oanda_connection_failed", error=str(e))
 
+        # 6b. Validate which instruments are tradeable on this account
+        try:
+            tradeable = await self._validate_tradeable_instruments()
+            original = self.config.pairs[:]
+            self.config.pairs = [p for p in self.config.pairs if p in tradeable]
+            removed = set(original) - set(self.config.pairs)
+            if removed:
+                logger.warning(
+                    "instruments_not_tradeable_removed",
+                    removed=list(removed),
+                    remaining=self.config.pairs,
+                )
+        except Exception as e:
+            logger.warning("instrument_validation_failed", error=str(e))
+
         # 7. Initialize trading components (import here to avoid circular deps)
         from .ai_brain.claude_client import ClaudeClient
         from .ai_brain.consensus_engine import ConsensusEngine
@@ -206,6 +221,25 @@ class OrchestratorService:
             f"Lumitrade started ({self.config.trading_mode} mode) "
             f"on {self.config.instance_id}"
         )
+
+    async def _validate_tradeable_instruments(self) -> set[str]:
+        """Check OANDA account for tradeable instruments. Returns set of tradeable pair names."""
+        import httpx
+        url = f"{self.config.oanda_base_url}/v3/accounts/{self.config.oanda_account_id}/instruments"
+        async with httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {self.config.oanda_api_key_data}"},
+            timeout=10.0, verify=True,
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            instruments = resp.json().get("instruments", [])
+            tradeable = set()
+            for inst in instruments:
+                name = inst.get("name", "")
+                if name in self.config.pairs:
+                    tradeable.add(name)
+                    logger.info("instrument_tradeable", pair=name, type=inst.get("type", ""))
+            return tradeable
 
     async def shutdown(self, reason: str = "SIGTERM") -> None:
         """Graceful shutdown — waits for in-flight orders, persists state."""
