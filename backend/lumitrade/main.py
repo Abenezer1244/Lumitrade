@@ -328,6 +328,15 @@ class OrchestratorService:
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
+                # Session time filter — only trade Asian + London sessions
+                # Data: Asian 66.7% WR (+$6,524), London 53.3% (+$2,865)
+                #        NY 34.8% (-$3,279), NY Late 12.5% (-$6,637)
+                current_hour = datetime.now(timezone.utc).hour
+                if current_hour >= 13 or current_hour < 0:
+                    logger.info("session_filter_skip", hour=current_hour, reason="Outside Asian+London (00-13 UTC)")
+                    await asyncio.sleep(self.config.signal_interval_minutes * 60)
+                    continue
+
                 for pair in self.config.pairs:
                     # Kill switch check — skip all scanning if halted
                     if self.state and self.state.kill_switch_active:
