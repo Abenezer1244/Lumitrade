@@ -52,7 +52,9 @@ class LumitradeConfig(BaseSettings):
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
     # ── Trading parameters (DB overrides env) ──────────────────
-    pairs: list[str] = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "XAU_USD"]
+    # GBP_USD removed: 7.1% win rate, -$5,753 over 14 trades
+    # XAU_USD removed: not tradeable on US OANDA practice accounts
+    pairs: list[str] = ["EUR_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD"]
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=True)
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")

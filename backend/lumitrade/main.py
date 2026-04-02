@@ -310,6 +310,24 @@ class OrchestratorService:
                 except Exception:
                     pass  # Non-critical — balance stays at last known value
 
+                # Daily loss circuit breaker — stop trading if daily P&L < -$2000
+                # Prevents catastrophic days like Mar 31 (-$11,081)
+                daily_pnl = Decimal(str(self.state._state.get("daily_pnl", "0"))) if self.state else Decimal("0")
+                if daily_pnl < Decimal("-2000"):
+                    logger.warning(
+                        "daily_loss_limit_hit",
+                        daily_pnl=str(daily_pnl),
+                        limit="-2000",
+                    )
+                    if self.events:
+                        self.events.publish(
+                            "RISK", "DAILY_LIMIT",
+                            f"Trading paused — daily loss limit hit: ${daily_pnl:.2f}",
+                            severity="ERROR",
+                        )
+                    await asyncio.sleep(self.config.signal_interval_minutes * 60)
+                    continue
+
                 for pair in self.config.pairs:
                     # Kill switch check — skip all scanning if halted
                     if self.state and self.state.kill_switch_active:
@@ -378,44 +396,10 @@ class OrchestratorService:
                             continue
                         approved = result
 
-                        # 4. Scale position SIZE by confidence (not multiple orders)
-                        #    OANDA US enforces FIFO — only 1 position per pair.
-                        #    Instead of 3x orders, place 1 order with 3x units.
-                        confidence_pct = float(proposal.confidence_adjusted) * 100
-                        if confidence_pct >= 85:
-                            size_multiplier = 3
-                        elif confidence_pct >= 75:
-                            size_multiplier = 2
-                        else:
-                            size_multiplier = 1
-
-                        if size_multiplier > 1:
-                            original_units = approved.units
-                            approved = ApprovedOrder(
-                                order_ref=approved.order_ref,
-                                signal_id=approved.signal_id,
-                                pair=approved.pair,
-                                direction=approved.direction,
-                                units=approved.units * size_multiplier,
-                                entry_price=approved.entry_price,
-                                stop_loss=approved.stop_loss,
-                                take_profit=approved.take_profit,
-                                risk_amount_usd=approved.risk_amount_usd * size_multiplier,
-                                risk_pct=approved.risk_pct,
-                                confidence=approved.confidence,
-                                account_balance_at_approval=approved.account_balance_at_approval,
-                                approved_at=approved.approved_at,
-                                expiry=approved.expiry,
-                                mode=approved.mode,
-                            )
-                            logger.info(
-                                "confidence_size_scaled",
-                                pair=pair,
-                                multiplier=size_multiplier,
-                                original_units=original_units,
-                                scaled_units=approved.units,
-                                confidence=confidence_pct,
-                            )
+                        # 4. Fixed 1x position size — no confidence scaling.
+                        #    Data showed 80%+ confidence has WORSE win rate (16.7%)
+                        #    than 70-80% (48.1%). Scaling up on high confidence
+                        #    was amplifying losses, not gains.
                         num_orders = 1
 
                         current_price = proposal.entry_price
