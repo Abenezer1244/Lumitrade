@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/marketplace", label: "Marketplace", icon: ShoppingBag, phase: 3 },
   { href: "/copy", label: "Copy Trading", icon: UserPlus, phase: 3 },
   { href: "/backtest", label: "Backtest", icon: FlaskConical, phase: 3 },
-  { href: "/api-keys", label: "API Access", icon: Key, phase: 3 },
+  { href: "/api-access", label: "API Access", icon: Key, phase: 3 },
 ];
 
 const COLLAPSED_KEY = "lumitrade-sidebar-collapsed";
