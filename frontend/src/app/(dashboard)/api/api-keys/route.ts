@@ -21,7 +21,7 @@ export async function GET() {
 
   try {
     const res = await fetch(
-      `${url}/rest/v1/api_keys?select=id,label,scopes,rate_limit,active,last_used_at,created_at,key_hash&account_id=eq.${ACCOUNT_ID}&revoked_at=is.null&order=created_at.desc`,
+      `${url}/rest/v1/api_keys?select=id,name,permissions,rate_limit_rpm,is_active,last_used_at,created_at,key_hash&account_id=eq.${ACCOUNT_ID}&expires_at=is.null&is_active=eq.true&order=created_at.desc`,
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         cache: "no-store",
@@ -33,10 +33,10 @@ export async function GET() {
     // Mask key hashes — show first/last 4 of hash as identifier
     const keys = (rows as Record<string, unknown>[]).map((r) => ({
       id: r.id,
-      label: r.label || "Unnamed",
-      scopes: r.scopes,
-      rate_limit: r.rate_limit,
-      active: r.active,
+      label: r.name || "Unnamed",
+      scopes: r.permissions,
+      rate_limit: r.rate_limit_rpm,
+      active: r.is_active,
       last_used_at: r.last_used_at,
       created_at: r.created_at,
       key_preview: `sk_live_${String(r.key_hash || "").slice(0, 8)}...${String(r.key_hash || "").slice(-4)}`,
@@ -78,10 +78,9 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         account_id: ACCOUNT_ID,
         key_hash: keyHash,
-        label,
-        scopes: ["read_signals", "read_trades", "read_analytics"],
-        rate_limit: 100,
-        active: true,
+        name: label,
+        key_prefix: apiKey.slice(0, 16),
+        permissions: ["read_signals", "read_trades", "read_analytics"],
       }),
     });
 
@@ -134,8 +133,8 @@ export async function DELETE(req: NextRequest) {
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          revoked_at: new Date().toISOString(),
-          active: false,
+          expires_at: new Date().toISOString(),
+          is_active: false,
         }),
       }
     );

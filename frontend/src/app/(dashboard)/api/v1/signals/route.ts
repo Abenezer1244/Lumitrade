@@ -12,7 +12,7 @@ async function validateApiKey(apiKey: string): Promise<boolean> {
 
   try {
     const res = await fetch(
-      `${url}/rest/v1/api_keys?select=id,scopes&key_hash=eq.${keyHash}&active=eq.true&revoked_at=is.null`,
+      `${url}/rest/v1/api_keys?select=id,permissions&key_hash=eq.${keyHash}&is_active=eq.true&expires_at=is.null`,
       {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
         cache: "no-store",
@@ -22,7 +22,7 @@ async function validateApiKey(apiKey: string): Promise<boolean> {
     const rows = await res.json();
     if (!Array.isArray(rows) || rows.length === 0) return false;
 
-    const scopes = (rows[0] as Record<string, unknown>).scopes as string[];
+    const scopes = (rows[0] as Record<string, unknown>).permissions as string[];
     if (!scopes.includes("read_signals")) return false;
 
     // Update last_used_at
