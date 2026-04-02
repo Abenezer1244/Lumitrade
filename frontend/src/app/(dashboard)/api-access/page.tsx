@@ -1,7 +1,7 @@
 "use client";
 
-import { Key, Copy, Check, Lock, Zap, Globe, Shield } from "lucide-react";
-import { useState } from "react";
+import { Key, Copy, Check, Lock, Zap, Globe, Shield, Trash2, Plus, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Endpoint {
   method: string;
@@ -35,13 +35,71 @@ function MethodBadge({ method }: { method: string }) {
   );
 }
 
-export default function ApiAccessPage() {
-  const [copied, setCopied] = useState(false);
-  const sampleKey = "sk_live_****************************7f2a";
+interface ApiKeyRow {
+  id: string;
+  label: string;
+  key_preview: string;
+  scopes: string[];
+  rate_limit: number;
+  active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+}
 
-  function handleCopy() {
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+export default function ApiAccessPage() {
+  const [copied, setCopied] = useState<string | null>(null);
+  const [keys, setKeys] = useState<ApiKeyRow[]>([]);
+  const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [newKeyFull, setNewKeyFull] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchKeys = useCallback(async () => {
+    try {
+      const res = await fetch("/api/api-keys");
+      if (res.ok) {
+        const data = await res.json();
+        setKeys(data.keys || []);
+      }
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchKeys(); }, [fetchKeys]);
+
+  async function handleGenerate() {
+    setError("");
+    try {
+      const res = await fetch("/api/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newKeyLabel || "Default" }),
+      });
+      if (!res.ok) { setError("Failed to generate key"); return; }
+      const data = await res.json();
+      setNewKeyFull(data.key);
+      setShowGenerate(false);
+      setNewKeyLabel("");
+      fetchKeys();
+    } catch { setError("Failed to generate key"); }
+  }
+
+  async function handleRevoke(id: string) {
+    try {
+      await fetch("/api/api-keys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      fetchKeys();
+    } catch { /* ignore */ }
+  }
+
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(text);
+    setTimeout(() => setCopied(null), 2000);
   }
 
   return (
@@ -160,81 +218,111 @@ export default function ApiAccessPage() {
         </p>
       </div>
 
-      {/* Section 3: API Keys */}
+      {/* Section 3: API Keys — REAL key management */}
       <div className="glass p-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Key size={16} style={{ color: "var(--color-accent)" }} />
-            <h2
-              className="text-sm font-bold uppercase tracking-wider"
-              style={{ color: "var(--color-text-primary)", fontFamily: "'DM Sans', sans-serif" }}
-            >
+            <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: "var(--color-text-primary)" }}>
               API Keys
             </h2>
           </div>
-          <div className="relative group">
-            <button
-              disabled
-              className="text-xs font-medium px-3 py-1.5 rounded-lg opacity-50 cursor-not-allowed"
-              style={{
-                backgroundColor: "var(--color-accent)",
-                color: "#fff",
-              }}
-            >
-              Generate New Key
-            </button>
-            <div
-              className="absolute bottom-full right-0 mb-2 px-2 py-1 rounded text-[10px] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-              style={{
-                backgroundColor: "var(--color-bg-elevated)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              Available in Phase 3
-            </div>
-          </div>
-        </div>
-        <div
-          className="rounded-lg p-4 flex items-center justify-between gap-4"
-          style={{
-            backgroundColor: "var(--color-bg-primary)",
-            border: "1px solid var(--color-border)",
-          }}
-        >
-          <div className="flex items-center gap-4 min-w-0">
-            <span
-              className="text-sm font-medium shrink-0"
-              style={{ color: "var(--color-text-primary)" }}
-            >
-              MyBot
-            </span>
-            <span
-              className="font-mono text-sm truncate"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              {sampleKey}
-            </span>
-            <span
-              className="text-xs shrink-0"
-              style={{ color: "var(--color-text-tertiary)" }}
-            >
-              Created Mar 25, 2026
-            </span>
-          </div>
           <button
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors shrink-0"
-            style={{
-              backgroundColor: "var(--color-bg-elevated)",
-              color: copied ? "var(--color-profit)" : "var(--color-text-secondary)",
-              border: "1px solid var(--color-border)",
-            }}
+            onClick={() => setShowGenerate(!showGenerate)}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+            style={{ backgroundColor: "var(--color-accent)", color: "#fff" }}
           >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? "Copied" : "Copy"}
+            <Plus size={12} /> Generate New Key
           </button>
         </div>
+
+        {error && (
+          <div className="flex items-center gap-2 p-3 rounded-lg mb-4" style={{ backgroundColor: "var(--color-loss-dim)", color: "var(--color-loss)" }}>
+            <AlertCircle size={14} /> <span className="text-xs">{error}</span>
+          </div>
+        )}
+
+        {/* New key full display — shown once after generation */}
+        {newKeyFull && (
+          <div className="p-4 rounded-lg mb-4" style={{ backgroundColor: "var(--color-profit-dim)", border: "1px solid var(--color-profit)" }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-profit)" }}>
+              Copy this key now — it will not be shown again
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="font-mono text-sm flex-1 break-all" style={{ color: "var(--color-text-primary)" }}>{newKeyFull}</code>
+              <button
+                onClick={() => handleCopy(newKeyFull)}
+                className="shrink-0 px-3 py-1.5 rounded text-xs"
+                style={{ backgroundColor: "var(--color-profit)", color: "#fff" }}
+              >
+                {copied === newKeyFull ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <button onClick={() => setNewKeyFull(null)} className="text-xs mt-2 underline" style={{ color: "var(--color-text-tertiary)" }}>
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Generate form */}
+        {showGenerate && (
+          <div className="p-4 rounded-lg mb-4 flex items-center gap-3" style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}>
+            <input
+              type="text"
+              placeholder="Key label (e.g. MyBot)"
+              value={newKeyLabel}
+              onChange={(e) => setNewKeyLabel(e.target.value)}
+              className="flex-1 px-3 py-2 rounded text-sm bg-transparent"
+              style={{ color: "var(--color-text-primary)", border: "1px solid var(--color-border)" }}
+            />
+            <button onClick={handleGenerate} className="px-4 py-2 rounded text-xs font-medium" style={{ backgroundColor: "var(--color-accent)", color: "#fff" }}>
+              Create
+            </button>
+          </div>
+        )}
+
+        {/* Key list */}
+        {loading ? (
+          <div className="animate-pulse h-16 rounded-lg" style={{ backgroundColor: "var(--color-bg-primary)" }} />
+        ) : keys.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: "var(--color-text-tertiary)" }}>
+            No API keys yet. Generate one to get started.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {keys.map((k) => (
+              <div
+                key={k.id}
+                className="rounded-lg p-4 flex items-center justify-between gap-4"
+                style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
+              >
+                <div className="flex items-center gap-4 min-w-0">
+                  <span className="text-sm font-medium shrink-0" style={{ color: "var(--color-text-primary)" }}>
+                    {k.label}
+                  </span>
+                  <span className="font-mono text-sm truncate" style={{ color: "var(--color-text-secondary)" }}>
+                    {k.key_preview}
+                  </span>
+                  <span className="text-xs shrink-0" style={{ color: "var(--color-text-tertiary)" }}>
+                    {new Date(k.created_at).toLocaleDateString()}
+                  </span>
+                  {k.last_used_at && (
+                    <span className="text-xs shrink-0" style={{ color: "var(--color-text-tertiary)" }}>
+                      Last used: {new Date(k.last_used_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleRevoke(k.id)}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
+                  style={{ color: "var(--color-loss)" }}
+                >
+                  <Trash2 size={12} /> Revoke
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Section 4: Webhooks */}
