@@ -30,6 +30,11 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Public API routes (/api/v1/*) use API key auth, not session auth
+  if (request.nextUrl.pathname.startsWith("/api/v1/")) {
+    return response;
+  }
+
   // Redirect unauthenticated users to login, preserving the intended destination
   if (!user) {
     const redirectUrl = new URL("/auth/login", request.url);
