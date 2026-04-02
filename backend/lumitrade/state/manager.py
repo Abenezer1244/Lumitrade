@@ -95,6 +95,7 @@ class StateManager:
         logger.info("state_restore_started", instance_id=self._config.instance_id)
 
         # 1. Read persisted state from DB (flat columns, not key-value)
+        row = None
         try:
             row = await self._db.select_one(
                 "system_state",
@@ -127,6 +128,19 @@ class StateManager:
                 logger.info("state_no_persisted_state", msg="Starting with defaults")
         except Exception:
             logger.exception("state_restore_db_failed")
+
+        # 1b. Reset daily P&L if it's a new day
+        last_persist = row.get("updated_at", "") if row else ""
+        if last_persist:
+            from datetime import datetime as _dt
+            try:
+                last_date = _dt.fromisoformat(last_persist.replace("Z", "+00:00")).date()
+                today = _dt.now(timezone.utc).date()
+                if last_date < today:
+                    self._state["daily_pnl"] = "0"
+                    logger.info("daily_pnl_reset", last_date=str(last_date), today=str(today))
+            except (ValueError, TypeError):
+                pass
 
         # 2. Fetch live account data from OANDA
         try:
@@ -235,6 +249,15 @@ class StateManager:
 
             if self._shutdown_event.is_set():
                 break
+
+            # Check for daily reset (midnight UTC)
+            now = datetime.now(timezone.utc)
+            last_reset = self._state.get("_last_daily_reset", "")
+            today_str = now.strftime("%Y-%m-%d")
+            if last_reset != today_str:
+                self._state["daily_pnl"] = "0"
+                self._state["_last_daily_reset"] = today_str
+                logger.info("daily_pnl_reset_midnight", date=today_str)
 
             # Refresh OANDA balance every persist cycle
             if self._oanda:
