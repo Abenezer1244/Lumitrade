@@ -19,9 +19,11 @@ from ..data_engine.engine import DataEngine
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
+from .chart_generator import ChartGenerator, encode_chart_base64
 from .claude_client import ClaudeClient
 from .confidence import ConfidenceAdjuster
 from .fallback import RuleBasedFallback
+from .lesson_filter import LessonFilter
 from .prompt_builder import PromptBuilder
 from .sentiment_analyzer import SentimentAnalyzer
 from .validator import AIOutputValidator, ValidationResult
@@ -65,6 +67,8 @@ class SignalScanner:
         self._fallback = RuleBasedFallback()
         self._sentiment = SentimentAnalyzer(config)
         self._prompt_builder = PromptBuilder(db, config.oanda_account_id)
+        self._lesson_filter = LessonFilter(db, config)
+        self._chart_gen = ChartGenerator()
         self._pair_locks: dict[str, asyncio.Lock] = {}
 
     async def scan_loop(self) -> None:
@@ -141,6 +145,45 @@ class SignalScanner:
                 )
             return None
 
+        # 1b. Lesson filter — check BLOCK/BOOST rules before spending AI tokens
+        #     Determine session from snapshot, check both directions.
+        #     If BOTH BUY and SELL are blocked, skip the pair entirely.
+        session_str = (
+            snapshot.session.value
+            if hasattr(snapshot.session, "value")
+            else str(snapshot.session)
+        )
+        # Map Session enum values to lesson filter session names
+        _session_map = {
+            "TOKYO": "ASIAN", "LONDON": "LONDON", "NEW_YORK": "NY",
+            "OVERLAP": "LONDON", "OTHER": "OTHER",
+        }
+        lesson_session = _session_map.get(session_str, "OTHER")
+
+        buy_blocked, buy_boosts = await self._lesson_filter.check(
+            pair, "BUY", lesson_session,
+        )
+        sell_blocked, sell_boosts = await self._lesson_filter.check(
+            pair, "SELL", lesson_session,
+        )
+
+        if buy_blocked and sell_blocked:
+            logger.info(
+                "lesson_filter_pair_blocked",
+                pair=pair,
+                session=lesson_session,
+            )
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "LESSON_BLOCK",
+                    f"Skipping {pair} — both BUY and SELL blocked by trading memory",
+                    pair=pair, severity="WARNING",
+                )
+            return None
+
+        # Collect boost messages for prompt injection
+        boost_context = buy_boosts + sell_boosts
+
         # 2. Get analyst briefing (SA-01) and attach to snapshot
         analyst_briefing = ""
         if self._subagents:
@@ -179,19 +222,42 @@ class SignalScanner:
         except Exception as e:
             logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
 
-        # 3. Build prompt (includes analyst briefing + sentiment if available)
+        # 3. Generate chart image for visual analysis
+        chart_b64 = ""
+        try:
+            chart_bytes = await self._chart_gen.generate_chart(
+                pair=pair,
+                candles_h4=snapshot.candles_h4,
+                candles_h1=snapshot.candles_h1,
+                candles_m15=snapshot.candles_m15,
+                indicators=snapshot.indicators,
+            )
+            chart_b64 = encode_chart_base64(chart_bytes)
+            if chart_b64:
+                logger.info("chart_ready_for_claude", pair=pair,
+                            size_kb=len(chart_bytes) // 1024)
+        except Exception as e:
+            logger.warning("chart_generation_skipped", pair=pair, error=str(e))
+
+        has_chart = bool(chart_b64)
+
+        # 4. Build prompt (includes analyst briefing + sentiment + lesson boosts + chart flag)
         prompt = await self._prompt_builder.build_prompt(
-            snapshot, analyst_briefing=analyst_briefing, sentiment_context=sentiment_context,
+            snapshot,
+            analyst_briefing=analyst_briefing,
+            sentiment_context=sentiment_context,
+            boost_lessons=boost_context if boost_context else None,
+            has_chart=has_chart,
         )
         system = self._prompt_builder.get_system_prompt()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
-        # 4. Call Claude (with retry + fallback)
+        # 5. Call Claude (with retry + fallback; use multimodal if chart available)
         proposal = await self._call_ai_with_retry(
-            pair, system, prompt, prompt_hash, snapshot
+            pair, system, prompt, prompt_hash, snapshot, chart_b64=chart_b64,
         )
 
-        # 5. Publish signal result
+        # 6. Publish signal result
         if proposal and self._events:
             if (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) == "HOLD":
                 self._events.publish(
@@ -212,26 +278,33 @@ class SignalScanner:
                     },
                 )
 
-        # 6. Write signal record to DB
+        # 7. Write signal record to DB
         if proposal:
             await self._save_signal(proposal)
 
         return proposal
 
     async def _call_ai_with_retry(
-        self, pair: str, system: str, prompt: str, prompt_hash: str, snapshot
+        self, pair: str, system: str, prompt: str, prompt_hash: str, snapshot,
+        chart_b64: str = "",
     ) -> SignalProposal | None:
         """
         3 AI attempts + rule-based fallback.
-        Attempt 1: full prompt
-        Attempt 2: simplified prompt
+        Attempt 1: full prompt (with chart if available)
+        Attempt 2: simplified prompt (text-only fallback)
         Attempt 3: rule-based fallback
         """
         live_price = snapshot.bid
 
         for attempt in range(3):
             try:
-                raw_response = await self._claude.call(system, prompt)
+                # Use multimodal call on first attempt if chart is available
+                if chart_b64 and attempt == 0:
+                    raw_response = await self._claude.call_with_image(
+                        system, prompt, chart_b64,
+                    )
+                else:
+                    raw_response = await self._claude.call(system, prompt)
 
                 # Log AI interaction
                 await self._log_ai_interaction(prompt_hash, raw_response, attempt)

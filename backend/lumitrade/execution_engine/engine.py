@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from ..ai_brain.lesson_analyzer import LessonAnalyzer
 from ..analytics.performance_analyzer import PerformanceAnalyzer
 from ..config import LumitradeConfig
 from ..core.enums import OrderStatus, TradingMode
@@ -67,6 +68,7 @@ class ExecutionEngine:
         else:
             self._capital_executor = None
         self.performance_analyzer = PerformanceAnalyzer(db)
+        self._lesson_analyzer = LessonAnalyzer(db, config)
 
     async def execute_order(
         self, order: ApprovedOrder, current_price: Decimal
@@ -639,6 +641,18 @@ class ExecutionEngine:
                 )
         except Exception as e:
             logger.warning("post_trade_analysis_failed", error=str(e))
+
+        # Update trading memory — extract patterns and create/update BLOCK/BOOST rules
+        try:
+            rules = await self._lesson_analyzer.analyze_trade(trade, {})
+            if rules:
+                logger.info(
+                    "lesson_analysis_post_trade",
+                    trade_id=trade.get("id", ""),
+                    rules_updated=len(rules),
+                )
+        except Exception as e:
+            logger.warning("lesson_analysis_failed", error=str(e))
 
         await self._trigger_insight_analysis(trade)
 

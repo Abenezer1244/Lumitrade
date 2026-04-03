@@ -59,7 +59,14 @@ class PromptBuilder:
         """Return the static system prompt."""
         return SYSTEM_PROMPT
 
-    async def build_prompt(self, snapshot: MarketSnapshot, analyst_briefing: str = "", sentiment_context: str = "") -> str:
+    async def build_prompt(
+        self,
+        snapshot: MarketSnapshot,
+        analyst_briefing: str = "",
+        sentiment_context: str = "",
+        boost_lessons: list[str] | None = None,
+        has_chart: bool = False,
+    ) -> str:
         """Assemble the full user prompt from a MarketSnapshot."""
         ind = snapshot.indicators
         acc = snapshot.account_context
@@ -119,6 +126,7 @@ class PromptBuilder:
             "=== ANALYST BRIEFING (SA-01) ===",
             analyst_briefing if analyst_briefing else "No briefing available.",
             "",
+            "",
             "=== TREND DETERMINATION (DO THIS FIRST) ===",
             "Step 1: Determine H4 trend direction from EMA alignment:",
             "  - BULLISH: EMA20 > EMA50 > EMA200 (or price > EMA50 > EMA200)",
@@ -165,6 +173,49 @@ class PromptBuilder:
                 "  - NEVER set TP closer to entry than SL — this guarantees RR < 1.0."
             ) if snapshot.pair == "XAU_USD" else "",
         ]
+
+        # ── Trading Memory: BOOST lessons (historically profitable) ──
+        if boost_lessons:
+            sections.append("")
+            sections.append(
+                "=== TRADING MEMORY (historically profitable patterns) ==="
+            )
+            sections.append(
+                "The following setups have >65% win rate based on historical data:"
+            )
+            for lesson in boost_lessons:
+                sections.append(f"  - {lesson}")
+            sections.append(
+                "Prioritize these patterns when you see them in the chart."
+            )
+
+        # ── Visual Analysis Instructions (only when chart is sent) ──
+        if has_chart:
+            sections.append("")
+            sections.append("=== VISUAL ANALYSIS INSTRUCTIONS ===")
+            sections.append(
+                "You are receiving a multi-timeframe candlestick chart. "
+                "Analyze it like a professional trader:"
+            )
+            sections.append(
+                "1. H4 (top): Identify the dominant trend. "
+                "Look for trend continuation or reversal patterns."
+            )
+            sections.append(
+                "2. H1 (middle): Identify key support/resistance levels. "
+                "Is price at a decision point?"
+            )
+            sections.append(
+                "3. M15 (bottom): Look for entry timing patterns — "
+                "pin bars, engulfing candles, breakouts."
+            )
+            sections.append(
+                "Combine what you SEE in the chart with the indicator "
+                "data above. If the chart shows a clear pattern that "
+                "contradicts the indicators, trust the chart — price "
+                "action is king."
+            )
+
         return "\n".join(sections)
 
     async def _get_performance_insights(self, pair: str) -> str:
