@@ -44,8 +44,28 @@ REQUIRED JSON SCHEMA:
   "timeframe_m15_score": 0.0-1.0,
   "key_levels": [float, float],
   "invalidation_level": float,
-  "expected_duration": "SCALP" | "INTRADAY" | "SWING"
-}"""
+  "expected_duration": "SCALP" | "INTRADAY" | "SWING",
+  "risks_to_watch": ["string", "string"],
+  "signal_alignment_count": 0-5
+}
+
+SIGNAL ALIGNMENT RULE:
+Before recommending BUY or SELL, count how many of these 5 indicators
+confirm your direction:
+1. EMA20 vs EMA50 alignment
+2. RSI in favorable zone (not overbought for BUY, not oversold for SELL)
+3. MACD histogram confirms direction
+4. Price above/below Bollinger mid
+5. Price above/below EMA200
+Set signal_alignment_count to the number that confirm. If fewer than 3
+confirm, you MUST return HOLD. Do not force a trade with weak alignment.
+
+RISKS TO WATCH:
+Always include 2-3 specific risks in risks_to_watch. Examples:
+- "RSI approaching overbought at 68 — momentum may stall"
+- "Price near resistance at 150.20 — rejection likely"
+- "Low volume suggests move may not sustain"
+These help the system monitor and exit early if conditions change."""
 
 
 class PromptBuilder:
@@ -58,6 +78,39 @@ class PromptBuilder:
     def get_system_prompt(self) -> str:
         """Return the static system prompt."""
         return SYSTEM_PROMPT
+
+    def _assess_usd_strength(self, snapshot: MarketSnapshot) -> str:
+        """Derive USD strength from current pair's EMA alignment and price position."""
+        ind = snapshot.indicators
+        pair = snapshot.pair
+        price = float(snapshot.bid)
+        ema50 = float(ind.ema_50)
+        ema200 = float(ind.ema_200)
+
+        if not price or not ema50 or not ema200:
+            return "UNKNOWN — insufficient indicator data"
+
+        # For USD_XXX pairs (USD is base): price up = USD strengthening
+        # For XXX_USD pairs (USD is quote): price up = USD weakening
+        usd_is_base = pair.startswith("USD_")
+
+        above_ema50 = price > ema50
+        above_ema200 = price > ema200
+
+        if usd_is_base:
+            if above_ema50 and above_ema200:
+                return "STRONG — USD trending up (price > EMA50 > EMA200)"
+            elif not above_ema50 and not above_ema200:
+                return "WEAK — USD trending down (price < EMA50, EMA200)"
+            else:
+                return "MIXED — USD direction unclear"
+        else:
+            if above_ema50 and above_ema200:
+                return "WEAK — counter-currency rising vs USD"
+            elif not above_ema50 and not above_ema200:
+                return "STRONG — counter-currency falling vs USD"
+            else:
+                return "MIXED — USD direction unclear"
 
     async def build_prompt(
         self,
@@ -79,6 +132,9 @@ class PromptBuilder:
             snapshot.performance_context
         )
 
+        # Derive USD strength from EMA alignment
+        usd_strength = self._assess_usd_strength(snapshot)
+
         sections = [
             "=== MARKET CONTEXT ===",
             f"Pair: {snapshot.pair}",
@@ -86,6 +142,11 @@ class PromptBuilder:
             f"Timestamp: {snapshot.timestamp.isoformat()}",
             f"Current Bid: {snapshot.bid}  Ask: {snapshot.ask}",
             f"Spread: {snapshot.spread_pips} pips",
+            "",
+            "=== MACRO CONTEXT ===",
+            f"USD Strength Assessment: {usd_strength}",
+            "Consider this when trading USD pairs — if USD is strengthening,",
+            "USD_JPY and USD_CAD tend to rise. If weakening, they tend to fall.",
             "",
             "=== TECHNICAL INDICATORS ===",
             f"RSI(14): {ind.rsi_14}",

@@ -220,6 +220,34 @@ class ExecutionEngine:
         for trade in db_open:
             broker_id = trade.get("broker_trade_id", "")
 
+            # Max hold time: close after 6 hours regardless of P&L
+            opened_at = trade.get("opened_at", "")
+            if opened_at and broker_id and not broker_id.startswith("PAPER-"):
+                try:
+                    from datetime import datetime as _dt
+                    open_time = _dt.fromisoformat(opened_at.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - open_time).total_seconds() / 3600
+                    if age_hours >= 6:
+                        logger.warning(
+                            "max_hold_time_exceeded",
+                            pair=trade.get("pair", ""),
+                            broker_id=broker_id,
+                            age_hours=round(age_hours, 1),
+                        )
+                        try:
+                            await self._oanda_trade.close_trade(broker_id)
+                            if self._events:
+                                self._events.publish(
+                                    "EXECUTION", "MAX_HOLD_CLOSE",
+                                    f"Auto-closed {trade.get('pair', '')} after {age_hours:.1f}h (max 6h)",
+                                    pair=trade.get("pair", ""), severity="WARNING",
+                                )
+                        except Exception as e:
+                            logger.error("max_hold_close_failed", broker_id=broker_id, error=str(e))
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
             # Paper trades or trades with missing broker ID:
             # check SL/TP against current price
             if broker_id.startswith("PAPER-") or not broker_id:

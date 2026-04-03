@@ -257,6 +257,25 @@ class SignalScanner:
             pair, system, prompt, prompt_hash, snapshot, chart_b64=chart_b64,
         )
 
+        # 5b. Signal alignment check — at least 3 indicators must confirm direction
+        if proposal and (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) != "HOLD":
+            alignment = self._check_signal_alignment(proposal, snapshot)
+            if alignment < 3:
+                logger.warning(
+                    "signal_alignment_insufficient",
+                    pair=pair,
+                    action=(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
+                    alignment_score=alignment,
+                    required=3,
+                )
+                if self._events:
+                    self._events.publish(
+                        "SCANNER", "ALIGNMENT_FAIL",
+                        f"Rejected {pair} — only {alignment}/3 indicators align",
+                        pair=pair, severity="WARNING",
+                    )
+                proposal = None
+
         # 6. Publish signal result
         if proposal and self._events:
             if (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) == "HOLD":
@@ -347,6 +366,60 @@ class SignalScanner:
         # All AI attempts failed — use rule-based fallback
         logger.warning("ai_exhausted_using_fallback", pair=pair)
         return self._fallback.generate(snapshot)
+
+    def _check_signal_alignment(self, proposal, snapshot) -> int:
+        """
+        Count how many technical indicators confirm the trade direction.
+        Requires at least 3 to proceed. Prevents trades on conflicting signals.
+        """
+        action = proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)
+        ind = snapshot.indicators
+        is_buy = action == "BUY"
+        score = 0
+
+        # 1. EMA alignment (EMA20 vs EMA50)
+        ema20 = float(ind.ema_20)
+        ema50 = float(ind.ema_50)
+        if ema20 and ema50:
+            if (is_buy and ema20 > ema50) or (not is_buy and ema20 < ema50):
+                score += 1
+
+        # 2. RSI direction (not overbought for BUY, not oversold for SELL)
+        rsi = float(ind.rsi_14)
+        if rsi:
+            if (is_buy and 30 < rsi < 70) or (not is_buy and 30 < rsi < 70):
+                score += 1
+
+        # 3. MACD (histogram positive for BUY, negative for SELL)
+        macd_hist = float(ind.macd_histogram)
+        if (is_buy and macd_hist > 0) or (not is_buy and macd_hist < 0):
+            score += 1
+
+        # 4. Price vs Bollinger mid (above for BUY, below for SELL)
+        price = float(snapshot.bid)
+        bb_mid = float(ind.bb_mid)
+        if price and bb_mid:
+            if (is_buy and price > bb_mid) or (not is_buy and price < bb_mid):
+                score += 1
+
+        # 5. EMA200 trend (price above for BUY, below for SELL)
+        ema200 = float(ind.ema_200)
+        if price and ema200:
+            if (is_buy and price > ema200) or (not is_buy and price < ema200):
+                score += 1
+
+        logger.info(
+            "signal_alignment_check",
+            pair=snapshot.pair,
+            action=action,
+            score=score,
+            ema_ok=bool((is_buy and ema20 > ema50) or (not is_buy and ema20 < ema50)) if ema20 and ema50 else False,
+            rsi_ok=bool(30 < rsi < 70) if rsi else False,
+            macd_ok=bool((is_buy and macd_hist > 0) or (not is_buy and macd_hist < 0)),
+            bb_ok=bool((is_buy and price > bb_mid) or (not is_buy and price < bb_mid)) if price and bb_mid else False,
+            ema200_ok=bool((is_buy and price > ema200) or (not is_buy and price < ema200)) if price and ema200 else False,
+        )
+        return score
 
     def _check_h4_trend_alignment(self, action: str, snapshot) -> str | None:
         """

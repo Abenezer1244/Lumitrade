@@ -60,7 +60,7 @@ class LumitradeConfig(BaseSettings):
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=True)
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
-    min_confidence: Decimal = Decimal("0.65")
+    min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
     max_open_trades: int = 100
     max_positions_per_pair: int = 10
     max_position_units: int = 500_000
