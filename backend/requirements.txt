@@ -181,7 +181,9 @@ python-http-client==3.3.7
 realtime==2.28.3
     # via supabase
 requests==2.32.5
-    # via pyiceberg
+    # via
+    #   pyiceberg
+    #   tradingview-ta
 rich==14.3.3
     # via pyiceberg
 sendgrid==6.12.5
@@ -212,6 +214,8 @@ tenacity==9.1.4
     # via pyiceberg
 tqdm==4.67.3
     # via pandas-ta
+tradingview-ta==3.3.0
+    # via -r requirements.in
 typing-extensions==4.15.0
     # via
     #   aiosignal

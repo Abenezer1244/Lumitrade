@@ -22,6 +22,9 @@ pandas-ta>=0.4.71b0
 # ── Chart generation (visual analysis for Claude) ────────────
 matplotlib>=3.8
 
+# ── TradingView consensus (26-indicator second opinion) ──────
+tradingview-ta>=3.3
+
 # ── Alerting ──────────────────────────────────────────────────
 # Telnyx SMS via raw httpx — no SDK needed
 sendgrid>=6.11

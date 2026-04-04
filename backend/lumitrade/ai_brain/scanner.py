@@ -26,6 +26,7 @@ from .fallback import RuleBasedFallback
 from .lesson_filter import LessonFilter
 from .prompt_builder import PromptBuilder
 from .sentiment_analyzer import SentimentAnalyzer
+from .tradingview_signal import TradingViewSignal
 from .validator import AIOutputValidator, ValidationResult
 
 logger = get_logger(__name__)
@@ -69,6 +70,7 @@ class SignalScanner:
         self._prompt_builder = PromptBuilder(db, config.oanda_account_id)
         self._lesson_filter = LessonFilter(db, config)
         self._chart_gen = ChartGenerator()
+        self._tv_signal = TradingViewSignal()
         self._pair_locks: dict[str, asyncio.Lock] = {}
 
     async def scan_loop(self) -> None:
@@ -183,6 +185,26 @@ class SignalScanner:
 
         # Collect boost messages for prompt injection
         boost_context = buy_boosts + sell_boosts
+
+        # 1c. TradingView consensus — 26-indicator second opinion
+        tv_data = await self._tv_signal.get_recommendation(pair)
+        tv_context = self._tv_signal.format_for_prompt(tv_data)
+        if tv_data:
+            # If TV strongly disagrees with our only allowed direction (BUY), skip
+            if self._config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
+                logger.warning(
+                    "tradingview_conflict_skip",
+                    pair=pair,
+                    tv_recommendation=tv_data.get("recommendation", ""),
+                )
+                if self._events:
+                    self._events.publish(
+                        "SCANNER", "TV_CONFLICT",
+                        f"Skipping {pair} — TradingView says {tv_data['recommendation']} (conflicts with BUY)",
+                        pair=pair, severity="WARNING",
+                    )
+                return None
+            boost_context.append(tv_context)
 
         # 2. Get analyst briefing (SA-01) and attach to snapshot
         analyst_briefing = ""
