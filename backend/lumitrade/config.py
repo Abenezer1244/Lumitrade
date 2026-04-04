@@ -57,7 +57,7 @@ class LumitradeConfig(BaseSettings):
     # AUD_USD: 50% WR, +$409 | NZD_USD: 40% WR, -$23
     # Removed: GBP_USD (7.1% WR), EUR_USD (30.8% WR), USD_CHF (36.4% WR), XAU_USD (not tradeable)
     pairs: list[str] = ["USD_JPY", "USD_CAD", "AUD_USD", "NZD_USD"]
-    buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=True)
+    buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)  # Re-enabled SELL — protected by trend enforcement + TV consensus + alignment check
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
