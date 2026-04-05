@@ -228,8 +228,23 @@ class ExecutionEngine:
                     open_time = _dt.fromisoformat(opened_at.replace("Z", "+00:00"))
                     age_hours = (datetime.now(timezone.utc) - open_time).total_seconds() / 3600
                     if age_hours >= 6:
+                        # Only attempt close during market hours (Sun 22:00 - Fri 22:00 UTC)
+                        now = datetime.now(timezone.utc)
+                        weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+                        hour = now.hour
+                        market_open = not (
+                            (weekday == 5) or  # All Saturday
+                            (weekday == 6 and hour < 22) or  # Sunday before 22:00
+                            (weekday == 4 and hour >= 22)  # Friday after 22:00
+                        )
+                        if not market_open:
+                            # Log once per hour instead of every 60 seconds
+                            if age_hours % 1 < 0.02:  # roughly once per hour
+                                logger.info("max_hold_market_closed", pair=trade.get("pair", ""), broker_id=broker_id)
+                            continue
+
                         logger.warning(
-                            "max_hold_time_exceeded",
+                            "max_hold_closing",
                             pair=trade.get("pair", ""),
                             broker_id=broker_id,
                             age_hours=round(age_hours, 1),
@@ -322,13 +337,13 @@ class ExecutionEngine:
     # Trail: once activated, move SL to lock in (current_price - trail_distance).
     # Never move SL backwards — only forward in the direction of profit.
     TRAIL_ACTIVATION_PIPS: dict[str, Decimal] = {
-        # Forex majors — standard 20 pip activation
-        "EUR_USD": Decimal("20"),
+        # Tuned from trade data — tighter for pairs with smaller moves
+        "EUR_USD": Decimal("18"),
         "GBP_USD": Decimal("25"),     # GBP is more volatile
-        "AUD_USD": Decimal("20"),
-        "NZD_USD": Decimal("20"),
-        "USD_CAD": Decimal("20"),
-        "USD_CHF": Decimal("20"),
+        "AUD_USD": Decimal("15"),     # AUD moves less — activate earlier
+        "NZD_USD": Decimal("15"),     # NZD similar to AUD
+        "USD_CAD": Decimal("18"),
+        "USD_CHF": Decimal("18"),
         # JPY pairs — same pip count but pips are 0.01 not 0.0001
         "USD_JPY": Decimal("20"),
         # Gold — much larger price, needs bigger activation

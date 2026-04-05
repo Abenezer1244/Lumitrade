@@ -147,6 +147,22 @@ class SignalScanner:
                 )
             return None
 
+        # 1a-ii. Early spread check — skip before burning AI tokens
+        from decimal import Decimal as _Dec
+        max_spread = _Dec("200") if "XAU" in pair else _Dec("5")
+        if snapshot.spread_pips > max_spread:
+            logger.info("early_spread_skip", pair=pair, spread=str(snapshot.spread_pips), max=str(max_spread))
+            return None
+
+        # 1a-iii. Already-in-position check (FIFO) — skip if we already hold this pair
+        try:
+            open_trades = await self._db.select("trades", {"status": "OPEN", "pair": pair})
+            if open_trades:
+                logger.info("already_in_position_skip", pair=pair, open_count=len(open_trades))
+                return None
+        except Exception:
+            pass  # Non-critical — risk engine will catch it later
+
         # 1b. Lesson filter — check BLOCK/BOOST rules before spending AI tokens
         #     Determine session from snapshot, check both directions.
         #     If BOTH BUY and SELL are blocked, skip the pair entirely.

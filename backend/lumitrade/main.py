@@ -328,20 +328,31 @@ class OrchestratorService:
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
-                # Session time filter — only trade Asian + London sessions
-                # Data: Asian 66.7% WR (+$6,524), London 53.3% (+$2,865)
-                #        NY 34.8% (-$3,279), NY Late 12.5% (-$6,637)
+                # Session time filter — only trade during profitable hours
                 current_hour = datetime.now(timezone.utc).hour
                 if current_hour >= 13 or current_hour < 0:
-                    logger.info("session_filter_skip", hour=current_hour, reason="Outside Asian+London (00-13 UTC)")
+                    logger.info("session_filter_skip", hour=current_hour, reason="Outside 00-13 UTC")
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
+
+                # Per-pair optimal session windows (from data analysis)
+                _pair_hours = {
+                    "USD_JPY": (0, 8),    # Asian only — 80% WR
+                    "USD_CAD": (8, 13),   # London only — 100% WR
+                    "AUD_USD": (0, 8),    # Asian only — best in early session
+                    "NZD_USD": (0, 8),    # Asian only — best in early session
+                }
 
                 for pair in self.config.pairs:
                     # Kill switch check — skip all scanning if halted
                     if self.state and self.state.kill_switch_active:
                         logger.info("kill_switch_active_skipping_scan")
                         break
+
+                    # Per-pair session window check
+                    pair_window = _pair_hours.get(pair, (0, 13))
+                    if not (pair_window[0] <= current_hour < pair_window[1]):
+                        continue
 
                     try:
                         # 1. Scan for signal
