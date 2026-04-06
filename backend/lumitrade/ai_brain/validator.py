@@ -103,24 +103,25 @@ class AIOutputValidator:
             )
 
         # Step 5: Price logic consistency (only for BUY/SELL)
+        # TP of 0 is valid — means "no fixed TP, trailing stop manages exit"
         action = data["action"]
         if action == "BUY":
             if sl >= entry:
                 return ValidationResult(
                     False, reason="BUY: SL must be below entry"
                 )
-            if tp <= entry:
+            if tp != Decimal("0") and tp <= entry:
                 return ValidationResult(
-                    False, reason="BUY: TP must be above entry"
+                    False, reason="BUY: TP must be above entry (or 0 for no TP)"
                 )
         elif action == "SELL":
             if sl <= entry:
                 return ValidationResult(
                     False, reason="SELL: SL must be above entry"
                 )
-            if tp >= entry:
+            if tp != Decimal("0") and tp >= entry:
                 return ValidationResult(
-                    False, reason="SELL: TP must be below entry"
+                    False, reason="SELL: TP must be below entry (or 0 for no TP)"
                 )
 
         # Step 6: Price sanity (entry vs live price)
@@ -135,8 +136,8 @@ class AIOutputValidator:
                     ),
                 )
 
-        # Step 7: Risk/reward ratio
-        if action != "HOLD":
+        # Step 7: Risk/reward ratio (skip if TP=0, trailing stop mode)
+        if action != "HOLD" and tp != Decimal("0"):
             risk = abs(entry - sl)
             reward = abs(tp - entry)
             rr = reward / risk if risk > 0 else Decimal("0")
@@ -161,7 +162,7 @@ class AIOutputValidator:
             except Exception:
                 min_tp_pips = 10.0 if "XAU" in pair else 15.0
                 min_sl_pips = 10.0 if "XAU" in pair else 15.0
-            if tp_pips < min_tp_pips:
+            if tp != Decimal("0") and tp_pips < min_tp_pips:
                 return ValidationResult(
                     False,
                     reason=f"TP too close to entry ({tp_pips:.1f} pips, min {min_tp_pips})",

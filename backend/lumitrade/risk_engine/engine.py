@@ -419,12 +419,22 @@ class RiskEngine:
         )
 
     def _check_rr_ratio(self, proposal: SignalProposal) -> CheckResult:
-        """Check 7: Minimum risk/reward ratio."""
+        """Check 7: Minimum risk/reward ratio. Skip if TP=0 (trailing stop mode)."""
         min_rr = self._config.min_rr_ratio
 
         entry = proposal.entry_price
         sl = proposal.stop_loss
         tp = proposal.take_profit
+
+        # TP=0 means no fixed TP — trailing stop manages exit (Turtle strategy)
+        if tp == Decimal("0"):
+            return (
+                "RR_RATIO",
+                True,
+                "OK — trailing stop mode (no fixed TP)",
+                "N/A",
+                str(min_rr),
+            )
 
         risk_distance = abs(entry - sl)
         reward_distance = abs(tp - entry)

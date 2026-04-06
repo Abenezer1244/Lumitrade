@@ -184,16 +184,17 @@ class OandaTradingClient(OandaClient):
             fmt_sl, fmt_tp = f"{float(sl):.2f}", f"{float(tp):.2f}"
         else:
             fmt_sl, fmt_tp = f"{float(sl):.5f}", f"{float(tp):.5f}"
-        body = {
-            "order": {
-                "type": "MARKET",
-                "instrument": pair,
-                "units": str(units),
-                "stopLossOnFill": {"price": fmt_sl},
-                "takeProfitOnFill": {"price": fmt_tp},
-                "clientExtensions": {"id": client_request_id},
-            }
+        order = {
+            "type": "MARKET",
+            "instrument": pair,
+            "units": str(units),
+            "stopLossOnFill": {"price": fmt_sl},
+            "clientExtensions": {"id": client_request_id},
         }
+        # Only attach TP if provided — no TP lets trailing stop manage exit
+        if tp and float(tp) > 0:
+            order["takeProfitOnFill"] = {"price": fmt_tp}
+        body = {"order": order}
         resp = await self._trading_client.post(url, json=body)
         if resp.status_code >= 400:
             error_body = resp.text
