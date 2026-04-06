@@ -265,14 +265,30 @@ class HealthServer:
 
     # User-adjustable settings (stored in Supabase system_state id='settings')
     SETTINGS_ROW_ID = "settings"
-    SETTINGS_DEFAULTS = {
-        "riskPct": 1.0,         # max_risk_pct as percentage (1.0 = 1%)
-        "maxPositions": 100,     # max_open_trades
-        "maxPerPair": 1,         # max_positions_per_pair
-        "confidence": 65,        # min_confidence as integer (65 = 0.65)
-        "scanInterval": 15,      # signal_interval_minutes
-        "mode": "PAPER",
-    }
+
+    @staticmethod
+    def _get_settings_defaults() -> dict:
+        """Derive defaults from config — always in sync, never hardcoded."""
+        try:
+            from ..config import LumitradeConfig
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            return {
+                "riskPct": float(config.max_risk_pct) * 100,
+                "maxPositions": config.max_open_trades,
+                "maxPerPair": config.max_positions_per_pair,
+                "confidence": int(config.min_confidence * 100),
+                "scanInterval": config.signal_interval_minutes,
+                "mode": config.trading_mode,
+            }
+        except Exception:
+            return {
+                "riskPct": 1.5, "maxPositions": 100, "maxPerPair": 1,
+                "confidence": 70, "scanInterval": 15, "mode": "PAPER",
+            }
+
+    @property
+    def SETTINGS_DEFAULTS(self) -> dict:
+        return self._get_settings_defaults()
     # Guardrails — read-only, set via env vars only
     GUARDRAILS = {
         "maxPositionUnits": 500_000,
