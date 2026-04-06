@@ -207,7 +207,7 @@ class SignalScanner:
         tv_context = self._tv_signal.format_for_prompt(tv_data)
         if tv_data:
             # If TV strongly disagrees with our only allowed direction (BUY), skip
-            if self._config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
+            if self.config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
                 logger.warning(
                     "tradingview_conflict_skip",
                     pair=pair,
@@ -472,7 +472,7 @@ class SignalScanner:
             return None
 
         # BUY_ONLY_MODE: block all SELL signals (configurable via env)
-        if action == "SELL" and self._config.buy_only_mode:
+        if action == "SELL" and self.config.buy_only_mode:
             return "BUY_ONLY_MODE active — SELL signals blocked"
 
         ind = snapshot.indicators
