@@ -227,7 +227,7 @@ class ExecutionEngine:
                     from datetime import datetime as _dt
                     open_time = _dt.fromisoformat(opened_at.replace("Z", "+00:00"))
                     age_hours = (datetime.now(timezone.utc) - open_time).total_seconds() / 3600
-                    if age_hours >= 6:
+                    if age_hours >= self.config.max_hold_hours:
                         # Only attempt close during market hours (Sun 22:00 - Fri 22:00 UTC)
                         now = datetime.now(timezone.utc)
                         weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun

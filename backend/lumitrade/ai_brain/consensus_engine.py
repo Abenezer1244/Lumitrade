@@ -92,7 +92,7 @@ class ConsensusEngine:
         if agrees:
             new_confidence = min(
                 CONFIDENCE_MAX,
-                proposal.confidence_adjusted + CONFIDENCE_BOOST,
+                proposal.confidence_adjusted + self._config.confidence_boost,
             )
             logger.info(
                 "consensus_agreement",
@@ -106,7 +106,7 @@ class ConsensusEngine:
         else:
             new_confidence = max(
                 CONFIDENCE_MIN,
-                proposal.confidence_adjusted - CONFIDENCE_PENALTY,
+                proposal.confidence_adjusted - self._config.confidence_penalty,
             )
             logger.warning(
                 "consensus_disagreement",
@@ -123,7 +123,7 @@ class ConsensusEngine:
         updated_log["consensus"] = {
             "second_opinion": second_opinion.value,
             "agrees": agrees,
-            "adjustment": str(CONFIDENCE_BOOST if agrees else -CONFIDENCE_PENALTY),
+            "adjustment": str(self._config.confidence_boost if agrees else -self._config.confidence_penalty),
         }
 
         return replace(

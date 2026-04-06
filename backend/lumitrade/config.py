@@ -71,6 +71,17 @@ class LumitradeConfig(BaseSettings):
     news_blackout_after_min: int = 15
     trade_cooldown_minutes: int = 5
     min_rr_ratio: Decimal = Decimal("1.5")
+    min_sl_pips: Decimal = Decimal("15.0")
+    min_tp_pips: Decimal = Decimal("15.0")
+    max_hold_hours: int = 6
+    price_deviation_max: Decimal = Decimal("0.005")
+    stale_tick_seconds: int = 5
+    position_monitor_interval: int = 60
+    circuit_breaker_reset_sec: int = 30
+    confidence_boost: Decimal = Decimal("0.05")
+    confidence_penalty: Decimal = Decimal("0.05")
+    lesson_block_threshold: Decimal = Decimal("0.35")
+    lesson_boost_threshold: Decimal = Decimal("0.65")
 
     @cached_property
     def account_uuid(self) -> str:

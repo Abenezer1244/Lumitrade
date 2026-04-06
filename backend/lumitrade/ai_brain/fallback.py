@@ -51,14 +51,14 @@ class RuleBasedFallback:
 
         if ind.ema_50 > ind.ema_200 and ind.rsi_14 < Decimal("30"):
             action = Action.BUY
-            confidence = Decimal("0.65")
+            confidence = Decimal("0.70")
             atr = ind.atr_14 if ind.atr_14 > 0 else Decimal("0.0010")
             sl = entry - atr * Decimal("1.5")
             tp = entry + atr * Decimal("2.5")
 
         elif ind.ema_50 < ind.ema_200 and ind.rsi_14 > Decimal("70"):
             action = Action.SELL
-            confidence = Decimal("0.65")
+            confidence = Decimal("0.70")
             atr = ind.atr_14 if ind.atr_14 > 0 else Decimal("0.0010")
             sl = entry + atr * Decimal("1.5")
             tp = entry - atr * Decimal("2.5")

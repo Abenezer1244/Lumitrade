@@ -295,9 +295,11 @@ class LessonAnalyzer:
                     pass
 
         # Determine rule type
-        if win_rate < BLOCK_WIN_RATE and sample_size >= MIN_SAMPLE_SIZE:
+        block_threshold = self._config.lesson_block_threshold if hasattr(self._config, 'lesson_block_threshold') else BLOCK_WIN_RATE
+        boost_threshold = self._config.lesson_boost_threshold if hasattr(self._config, 'lesson_boost_threshold') else BOOST_WIN_RATE
+        if win_rate < block_threshold and sample_size >= MIN_SAMPLE_SIZE:
             rule_type = "BLOCK"
-        elif win_rate > BOOST_WIN_RATE and sample_size >= MIN_SAMPLE_SIZE:
+        elif win_rate > boost_threshold and sample_size >= MIN_SAMPLE_SIZE:
             rule_type = "BOOST"
         else:
             rule_type = "NEUTRAL"

@@ -153,8 +153,14 @@ class AIOutputValidator:
             pair = data.get("pair", "")
             tp_pips = abs(float(pips_between(entry, tp, pair)))
             sl_pips = abs(float(pips_between(entry, sl, pair)))
-            min_tp_pips = 10.0 if "XAU" in pair else 15.0
-            min_sl_pips = 10.0 if "XAU" in pair else 15.0
+            try:
+                from ..config import LumitradeConfig
+                _cfg = LumitradeConfig()  # type: ignore[call-arg]
+                min_tp_pips = 10.0 if "XAU" in pair else float(_cfg.min_tp_pips)
+                min_sl_pips = 10.0 if "XAU" in pair else float(_cfg.min_sl_pips)
+            except Exception:
+                min_tp_pips = 10.0 if "XAU" in pair else 15.0
+                min_sl_pips = 10.0 if "XAU" in pair else 15.0
             if tp_pips < min_tp_pips:
                 return ValidationResult(
                     False,
