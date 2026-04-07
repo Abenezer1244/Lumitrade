@@ -56,11 +56,30 @@ class IntelligenceSubagent(BaseSubagent):
         Returns:
             {"report": str, "generated_at": str} on success, {} on error.
         """
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        account_id = context.get("account_id", "default")
+
+        # Check DB for a cached report from today
+        try:
+            cached = await self.db.select(
+                "intelligence_reports",
+                {"account_id": account_id, "report_date": today_str},
+                limit=1,
+            )
+            if cached:
+                logger.info("intelligence_report_cache_hit", report_date=today_str)
+                return {
+                    "report": cached[0]["report"],
+                    "generated_at": cached[0]["generated_at"],
+                }
+        except Exception as e:
+            logger.warning("intelligence_cache_read_error", error=str(e))
+
         recent_trades = context.get("recent_trades", [])
         account_summary = context.get("account_summary", {})
         pairs = context.get("pairs", ["EUR_USD", "GBP_USD", "USD_JPY"])
 
-        user_prompt = self._build_user_prompt(recent_trades, account_summary, pairs)
+        user_prompt = await self._build_user_prompt(recent_trades, account_summary, pairs)
 
         try:
             response_text = await self._call_claude(
@@ -73,6 +92,20 @@ class IntelligenceSubagent(BaseSubagent):
                 return {}
 
             generated_at = datetime.now(timezone.utc).isoformat()
+
+            # Persist report to DB for caching and historical access
+            try:
+                await self.db.upsert(
+                    "intelligence_reports",
+                    {
+                        "account_id": account_id,
+                        "report_date": today_str,
+                        "report": response_text,
+                        "generated_at": generated_at,
+                    },
+                )
+            except Exception as e:
+                logger.warning("intelligence_report_save_error", error=str(e))
 
             logger.info(
                 "intelligence_report_generated",
@@ -90,13 +123,13 @@ class IntelligenceSubagent(BaseSubagent):
             logger.error("intelligence_subagent_error", error=str(e))
             return {}
 
-    def _build_user_prompt(
+    async def _build_user_prompt(
         self,
         recent_trades: list,
         account_summary: dict,
         pairs: list,
     ) -> str:
-        """Build the user prompt with trade data and account context."""
+        """Build the user prompt with trade data, account context, and calendar events."""
         sections = []
 
         sections.append(f"Active pairs: {', '.join(pairs)}")
@@ -120,6 +153,18 @@ class IntelligenceSubagent(BaseSubagent):
             sections.append("Recent trades:\n" + "\n".join(trade_lines))
         else:
             sections.append("Recent trades: No closed trades yet.")
+
+        # Fetch upcoming economic calendar events
+        try:
+            events = await self.db.select("economic_calendar", {}, order="event_time", limit=10)
+            if events:
+                event_lines = [
+                    f"  {e.get('event_time', '')} — {e.get('currency', '')} {e.get('event_name', '')}"
+                    for e in events
+                ]
+                sections.append("Upcoming economic events:\n" + "\n".join(event_lines))
+        except Exception:
+            pass  # Calendar table may not exist yet
 
         sections.append(
             "Generate the weekly intelligence report now. "

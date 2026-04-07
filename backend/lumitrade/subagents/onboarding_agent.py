@@ -60,6 +60,20 @@ class OnboardingAgent(BaseSubagent):
             On error: {"response": "I'm having trouble right now. Please try again.", "completed": False}
         """
         user_message = context.get("user_message", "")
+
+        # Load persisted onboarding state from DB if not provided in context
+        if not context.get("onboarding_state"):
+            try:
+                rows = await self.db.select(
+                    "onboarding_state",
+                    {"account_id": context.get("account_id", "default")},
+                    limit=1,
+                )
+                if rows:
+                    context["onboarding_state"] = rows[0].get("current_step", "step_1_oanda")
+            except Exception:
+                pass
+
         onboarding_state = context.get("onboarding_state", "step_1_oanda")
 
         if onboarding_state == "completed":
@@ -94,6 +108,27 @@ class OnboardingAgent(BaseSubagent):
                 }
 
             completed = onboarding_state == "step_3_dashboard" and self._detect_step_complete(response_text)
+
+            # Advance step if AI indicates completion and persist to DB
+            if self._detect_step_complete(response_text) and onboarding_state in ONBOARDING_STEPS:
+                current_idx = ONBOARDING_STEPS.index(onboarding_state)
+                if current_idx < len(ONBOARDING_STEPS) - 1:
+                    next_step = ONBOARDING_STEPS[current_idx + 1]
+                    try:
+                        await self.db.upsert(
+                            "onboarding_state",
+                            {
+                                "account_id": context.get("account_id", "default"),
+                                "current_step": next_step,
+                            },
+                        )
+                        logger.info(
+                            "onboarding_step_advanced",
+                            from_step=onboarding_state,
+                            to_step=next_step,
+                        )
+                    except Exception as e:
+                        logger.warning("onboarding_state_save_error", error=str(e))
 
             logger.info(
                 "onboarding_response_generated",

@@ -851,35 +851,334 @@ class PerformanceAnalyzer:
             )
 
     # ------------------------------------------------------------------
-    # Phase 3 stubs (silent no-ops)
+    # Phase 3: Self-optimisation methods
     # ------------------------------------------------------------------
 
     async def _evolve_prompt_instructions(
         self, account_id: str, trades: list[dict]
     ) -> None:
         """
-        TODO Phase 3: Generate updated prompt instructions from performance
-        patterns. Will analyze which reasoning patterns in AI responses
-        correlate with winning trades and evolve the system prompt accordingly.
+        Analyse which pair+direction combos correlate with wins vs losses.
+        Combos with <30% win rate and >5 trades generate a warning insight.
+        Combos with >60% win rate and >5 trades generate a positive insight.
+        Insights are written to performance_insights with
+        insight_type="prompt_evolution".
         """
-        logger.debug("evolve_prompt_instructions_skipped_phase_3")
+        MIN_COMBO_TRADES = 5
+        LOW_WIN_RATE_THRESHOLD = Decimal("0.30")
+        HIGH_WIN_RATE_THRESHOLD = Decimal("0.60")
+
+        try:
+            combo_stats: dict[str, dict[str, Any]] = defaultdict(
+                lambda: {"wins": 0, "losses": 0, "total": 0}
+            )
+
+            for trade in trades:
+                pair = trade.get("pair")
+                direction = trade.get("direction")
+                if not pair or not direction:
+                    continue
+                key = f"{pair}_{direction}"
+                combo_stats[key]["total"] += 1
+                outcome = trade.get("outcome", "")
+                if outcome == "WIN":
+                    combo_stats[key]["wins"] += 1
+                elif outcome == "LOSS":
+                    combo_stats[key]["losses"] += 1
+
+            if not combo_stats:
+                logger.debug("evolve_prompt_instructions_no_data", account_id=account_id)
+                return
+
+            period_start, period_end = self._date_range(trades)
+            insights_saved = 0
+
+            for key, stats in combo_stats.items():
+                total = stats["total"]
+                if total <= MIN_COMBO_TRADES:
+                    continue
+
+                win_rate = Decimal(str(stats["wins"])) / Decimal(str(total))
+                win_rate_q = win_rate.quantize(Decimal("0.0001"))
+                pair_dir = key.replace("_", " ")
+
+                if win_rate < LOW_WIN_RATE_THRESHOLD:
+                    recommendation = (
+                        f"{pair_dir}: only {win_rate_q} win rate over {total} trades. "
+                        f"Consider filtering out this pair/direction combination in the prompt."
+                    )
+                    is_actionable = True
+                elif win_rate > HIGH_WIN_RATE_THRESHOLD:
+                    recommendation = (
+                        f"{pair_dir}: strong {win_rate_q} win rate over {total} trades. "
+                        f"Emphasise this pair/direction combination in the prompt."
+                    )
+                    is_actionable = False
+                else:
+                    continue  # neutral — no insight needed
+
+                try:
+                    await self._store_insight(
+                        account_id=account_id,
+                        insight_type="prompt_evolution",
+                        metric_name=f"combo_{key}_win_rate",
+                        metric_value=win_rate_q,
+                        sample_size=total,
+                        period_start=period_start,
+                        period_end=period_end,
+                        pair=key.split("_")[0],
+                        is_actionable=is_actionable,
+                        recommendation=recommendation,
+                        detail={
+                            "pair": key.split("_")[0],
+                            "direction": key.split("_", 1)[1] if "_" in key else "",
+                            "wins": stats["wins"],
+                            "losses": stats["losses"],
+                            "total": total,
+                            "win_rate": str(win_rate_q),
+                        },
+                    )
+                    insights_saved += 1
+                except Exception as exc:
+                    logger.warning(
+                        "evolve_prompt_instructions_store_failed",
+                        account_id=account_id,
+                        combo=key,
+                        error=str(exc),
+                    )
+
+            logger.info(
+                "evolve_prompt_instructions_completed",
+                account_id=account_id,
+                combos_evaluated=len(combo_stats),
+                insights_saved=insights_saved,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "evolve_prompt_instructions_failed",
+                account_id=account_id,
+                error=str(exc),
+            )
 
     async def _update_session_filters(
         self, account_id: str, trades: list[dict]
     ) -> None:
         """
-        TODO Phase 3: Recommend session blackouts based on performance.
-        Will analyze session_performance insights and automatically suggest
-        or apply trading hour restrictions for consistently poor sessions.
+        Analyse trading hour (UTC) performance.
+        Any hour with >5 trades and <25% win rate gets an insight recommending
+        it be blocked.
+        Insights written to performance_insights with
+        insight_type="session_filter".
         """
-        logger.debug("update_session_filters_skipped_phase_3")
+        MIN_HOUR_TRADES = 5
+        BLOCK_THRESHOLD = Decimal("0.25")
+
+        try:
+            hour_stats: dict[int, dict[str, int]] = defaultdict(
+                lambda: {"wins": 0, "losses": 0, "total": 0}
+            )
+
+            for trade in trades:
+                opened_at = trade.get("opened_at")
+                if not opened_at:
+                    continue
+                if isinstance(opened_at, str):
+                    try:
+                        dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
+                    except ValueError:
+                        continue
+                elif isinstance(opened_at, datetime):
+                    dt = opened_at
+                else:
+                    continue
+
+                hour = dt.hour
+                hour_stats[hour]["total"] += 1
+                outcome = trade.get("outcome", "")
+                if outcome == "WIN":
+                    hour_stats[hour]["wins"] += 1
+                elif outcome == "LOSS":
+                    hour_stats[hour]["losses"] += 1
+
+            if not hour_stats:
+                logger.debug("update_session_filters_no_data", account_id=account_id)
+                return
+
+            period_start, period_end = self._date_range(trades)
+            insights_saved = 0
+
+            for hour, stats in sorted(hour_stats.items()):
+                total = stats["total"]
+                if total <= MIN_HOUR_TRADES:
+                    continue
+
+                win_rate = Decimal(str(stats["wins"])) / Decimal(str(total))
+                win_rate_q = win_rate.quantize(Decimal("0.0001"))
+
+                if win_rate >= BLOCK_THRESHOLD:
+                    continue  # acceptable performance — no insight
+
+                recommendation = (
+                    f"Hour {hour:02d}:00 UTC has only {win_rate_q} win rate over "
+                    f"{total} trades. Recommend blocking this hour in session filters."
+                )
+
+                try:
+                    await self._store_insight(
+                        account_id=account_id,
+                        insight_type="session_filter",
+                        metric_name=f"hour_{hour}_win_rate",
+                        metric_value=win_rate_q,
+                        sample_size=total,
+                        period_start=period_start,
+                        period_end=period_end,
+                        session=f"{hour:02d}:00",
+                        is_actionable=True,
+                        recommendation=recommendation,
+                        detail={
+                            "hour_utc": hour,
+                            "wins": stats["wins"],
+                            "losses": stats["losses"],
+                            "total": total,
+                            "win_rate": str(win_rate_q),
+                        },
+                    )
+                    insights_saved += 1
+                except Exception as exc:
+                    logger.warning(
+                        "update_session_filters_store_failed",
+                        account_id=account_id,
+                        hour=hour,
+                        error=str(exc),
+                    )
+
+            logger.info(
+                "update_session_filters_completed",
+                account_id=account_id,
+                hours_evaluated=len(hour_stats),
+                insights_saved=insights_saved,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "update_session_filters_failed",
+                account_id=account_id,
+                error=str(exc),
+            )
 
     async def _update_confidence_thresholds(
         self, account_id: str, trades: list[dict]
     ) -> None:
         """
-        TODO Phase 3: Recommend confidence threshold changes based on
-        calibration data. Will use confidence_calibration insights to
-        suggest raising or lowering the minimum confidence threshold.
+        Bucket trades into confidence ranges: 60-70, 70-80, 80-90, 90-100.
+        For each bucket with >5 trades, compute win rate and net P&L.
+        If a bucket has <30% win rate, save an insight recommending that range
+        be avoided.
+        Insights written to performance_insights with
+        insight_type="confidence_calibration".
         """
-        logger.debug("update_confidence_thresholds_skipped_phase_3")
+        MIN_BUCKET_TRADES = 5
+        LOW_WIN_RATE_THRESHOLD = Decimal("0.30")
+
+        # Buckets defined as (label, low_inclusive, high_exclusive) in 0-100 scale
+        THRESHOLD_BUCKETS: list[tuple[str, Decimal, Decimal]] = [
+            ("60-70", Decimal("60"), Decimal("70")),
+            ("70-80", Decimal("70"), Decimal("80")),
+            ("80-90", Decimal("80"), Decimal("90")),
+            ("90-100", Decimal("90"), Decimal("101")),
+        ]
+
+        try:
+            bucket_stats: dict[str, dict[str, Any]] = {
+                label: {"wins": 0, "losses": 0, "total": 0, "net_pnl_usd": Decimal("0")}
+                for label, _, _ in THRESHOLD_BUCKETS
+            }
+
+            for trade in trades:
+                # Accept both "confidence" (0-100) and "confidence_score" (0-1)
+                raw_conf = trade.get("confidence") or trade.get("confidence_score")
+                confidence = self._to_decimal(raw_conf)
+                if confidence is None:
+                    continue
+
+                # Normalise: if stored as 0-1 fraction, scale to 0-100
+                if confidence <= Decimal("1"):
+                    confidence = confidence * Decimal("100")
+
+                outcome = trade.get("outcome", "")
+                pnl_usd = self._to_decimal(trade.get("pnl_usd")) or Decimal("0")
+
+                for label, low, high in THRESHOLD_BUCKETS:
+                    if low <= confidence < high:
+                        bucket_stats[label]["total"] += 1
+                        bucket_stats[label]["net_pnl_usd"] += pnl_usd
+                        if outcome == "WIN":
+                            bucket_stats[label]["wins"] += 1
+                        elif outcome == "LOSS":
+                            bucket_stats[label]["losses"] += 1
+                        break
+
+            period_start, period_end = self._date_range(trades)
+            insights_saved = 0
+
+            for label, low, high in THRESHOLD_BUCKETS:
+                stats = bucket_stats[label]
+                total = stats["total"]
+                if total <= MIN_BUCKET_TRADES:
+                    continue
+
+                win_rate = Decimal(str(stats["wins"])) / Decimal(str(total))
+                win_rate_q = win_rate.quantize(Decimal("0.0001"))
+                net_pnl_usd_q = stats["net_pnl_usd"].quantize(Decimal("0.01"))
+
+                if win_rate >= LOW_WIN_RATE_THRESHOLD:
+                    continue  # performing adequately — no insight needed
+
+                recommendation = (
+                    f"Confidence range {label} has only {win_rate_q} win rate over "
+                    f"{total} trades (net P&L: ${net_pnl_usd_q}). "
+                    f"Recommend avoiding trades in this confidence bracket."
+                )
+
+                try:
+                    await self._store_insight(
+                        account_id=account_id,
+                        insight_type="confidence_calibration",
+                        metric_name=f"confidence_bucket_{label}_win_rate",
+                        metric_value=win_rate_q,
+                        sample_size=total,
+                        period_start=period_start,
+                        period_end=period_end,
+                        is_actionable=True,
+                        recommendation=recommendation,
+                        detail={
+                            "confidence_range": label,
+                            "wins": stats["wins"],
+                            "losses": stats["losses"],
+                            "total": total,
+                            "win_rate": str(win_rate_q),
+                            "net_pnl_usd": str(net_pnl_usd_q),
+                        },
+                    )
+                    insights_saved += 1
+                except Exception as exc:
+                    logger.warning(
+                        "update_confidence_thresholds_store_failed",
+                        account_id=account_id,
+                        bucket=label,
+                        error=str(exc),
+                    )
+
+            logger.info(
+                "update_confidence_thresholds_completed",
+                account_id=account_id,
+                insights_saved=insights_saved,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "update_confidence_thresholds_failed",
+                account_id=account_id,
+                error=str(exc),
+            )

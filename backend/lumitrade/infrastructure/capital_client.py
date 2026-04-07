@@ -9,6 +9,7 @@ Session tokens auto-refresh every 9 minutes (expire at 10).
 """
 
 import asyncio
+import json
 import ssl
 import time
 from datetime import datetime, timezone
@@ -354,13 +355,18 @@ class CapitalComClient(BrokerInterface):
         }
 
     async def stream_prices(self, pairs: list[str]):
-        """Price streaming not implemented — uses REST polling instead."""
-        # Capital.com uses WebSocket for streaming which requires
-        # a different connection model. For now, the REST fallback
-        # in data_engine handles pricing via get_pricing().
+        """REST polling fallback — Capital.com WebSocket streaming not available in this client.
+        Polls get_pricing() at regular intervals to provide price updates."""
         while True:
-            await asyncio.sleep(3600)
-            yield ""
+            try:
+                for pair in pairs:
+                    pricing = await self.get_pricing([pair])
+                    prices = pricing.get("prices", [])
+                    if prices:
+                        yield json.dumps({"pair": pair, **prices[0]})
+            except Exception as e:
+                logger.warning("capital_price_poll_error", error=str(e))
+            await asyncio.sleep(5)
 
     async def search_markets(self, term: str) -> list[dict]:
         """Search for market instruments by name."""
