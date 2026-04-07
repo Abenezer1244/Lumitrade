@@ -143,12 +143,12 @@ function WeekCard({ week, index }: { week: WeekSummary; index: number }) {
             </div>
           </div>
 
-          {/* AI Recommendation */}
+          {/* Weekly Performance Summary */}
           <div className="p-4 rounded-lg" style={{ backgroundColor: "var(--color-surface-elevated)", border: "1px solid var(--color-border)" }}>
             <div className="flex items-center gap-2 mb-2">
               <NotebookPen size={14} style={{ color: "var(--color-accent)" }} />
               <p className="text-xs font-semibold" style={{ color: "var(--color-accent)" }}>
-                AI Weekly Review
+                Weekly Performance Summary
               </p>
             </div>
             <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>

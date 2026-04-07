@@ -10,11 +10,8 @@ interface Endpoint {
 }
 
 const ENDPOINTS: Endpoint[] = [
-  { method: "GET", path: "/v1/signals/latest", description: "Get most recent trading signals" },
-  { method: "GET", path: "/v1/trades/recent", description: "Recent trades with P&L" },
-  { method: "GET", path: "/v1/analytics", description: "Account analytics and performance" },
-  { method: "WSS", path: "/v1/signals/stream", description: "Real-time signal WebSocket stream" },
-  { method: "POST", path: "/v1/webhooks", description: "Register webhook endpoint" },
+  { method: "GET", path: "/api/v1/trades", description: "Closed trades with P&L, pair, direction, and exit reason" },
+  { method: "GET", path: "/api/v1/signals", description: "Generated trading signals with confidence scores" },
 ];
 
 function MethodBadge({ method }: { method: string }) {
@@ -210,7 +207,7 @@ export default function ApiAccessPage() {
             style={{ color: "var(--color-text-primary)", fontFamily: "'JetBrains Mono', monospace" }}
           >
             <code>{`curl -H "Authorization: Bearer sk_live_..." \\
-  https://api.lumitrade.com/v1/signals/latest`}</code>
+  https://api.lumitrade.com/api/v1/trades`}</code>
           </pre>
         </div>
         <p className="text-xs mt-3" style={{ color: "var(--color-text-tertiary)" }}>
