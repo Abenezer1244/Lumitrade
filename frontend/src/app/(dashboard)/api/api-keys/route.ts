@@ -3,7 +3,7 @@ import { randomBytes, createHash } from "crypto";
 
 export const dynamic = "force-dynamic";
 
-const ACCOUNT_ID = "7a281498-2f2e-5ecc-8583-70118edeff28";
+const ACCOUNT_ID = process.env.LUMITRADE_ACCOUNT_ID || "";
 
 function hashKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");

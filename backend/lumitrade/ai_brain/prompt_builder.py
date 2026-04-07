@@ -182,10 +182,10 @@ class PromptBuilder:
             perf_insights,
             "",
             "=== CURRENCY SENTIMENT ===",
-            sentiment_context if sentiment_context else "No sentiment data available.",
+            self._sanitize_db_text(sentiment_context, max_len=400) if sentiment_context else "No sentiment data available.",
             "",
             "=== ANALYST BRIEFING (SA-01) ===",
-            analyst_briefing if analyst_briefing else "No briefing available.",
+            self._sanitize_db_text(analyst_briefing, max_len=400) if analyst_briefing else "No briefing available.",
             "",
             "",
             "=== TREND DETERMINATION (DO THIS FIRST) ===",
@@ -314,11 +314,28 @@ class PromptBuilder:
             metric = insight.get("metric_name", "unknown")
             value = insight.get("metric_value", "")
             insight_type = insight.get("insight_type", "")
-            recommendation = insight.get("recommendation", "")
+            recommendation = self._sanitize_db_text(insight.get("recommendation", ""))
             lines.append(f"  - [{insight_type}] {metric}: {value}")
             if recommendation:
                 lines.append(f"    Action: {recommendation}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _sanitize_db_text(text: str, max_len: int = 200) -> str:
+        """Sanitize DB-sourced text before prompt injection. Prevents indirect prompt injection."""
+        if not text or not isinstance(text, str):
+            return ""
+        # Strip potential prompt injection patterns
+        injection_patterns = re.compile(
+            r"^(you are|ignore|system:|important:|forget|disregard|override)",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        cleaned = injection_patterns.sub("", text)
+        # Allow only safe characters
+        cleaned = re.sub(r"[^a-zA-Z0-9\s.,;:!?\-+%/()']+", " ", cleaned)
+        # Truncate
+        cleaned = cleaned[:max_len].strip()
+        return f"[DATA] {cleaned}" if cleaned else ""
 
     def _format_performance_context(self, ctx: PerformanceContext) -> str:
         """Format recent performance context for the AI. Per Addition Set 2C."""

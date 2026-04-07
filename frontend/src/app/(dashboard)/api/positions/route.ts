@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export async function GET() {
     try {
       const [priceRes, oandaTradesRes] = await Promise.all([
         fetch(`${backendUrl}/prices?pairs=${pairs.join(",")}`, { cache: "no-store" }),
-        fetch(`${backendUrl}/oanda-trades`, { cache: "no-store" }),
+        fetch(`${backendUrl}/oanda-trades`, { headers: backendAuthHeaders(), cache: "no-store" }),
       ]);
       if (priceRes.ok) {
         prices = (await priceRes.json()).prices || {};

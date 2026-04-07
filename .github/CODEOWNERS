@@ -1,0 +1,5 @@
+# Protect sensitive paths — require review before merge
+/.github/                                    @abenegirma
+/backend/lumitrade/infrastructure/           @abenegirma
+/backend/lumitrade/config.py                 @abenegirma
+/backend/lumitrade/execution_engine/         @abenegirma

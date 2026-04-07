@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export async function GET() {
 
   try {
     const res = await fetch(`${backendUrl}/settings`, {
-      headers: { "Content-Type": "application/json" },
+      headers: backendAuthHeaders({ "Content-Type": "application/json" }),
       cache: "no-store",
     });
     if (res.ok) {
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   try {
     const res = await fetch(`${backendUrl}/settings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: backendAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     if (res.ok) {

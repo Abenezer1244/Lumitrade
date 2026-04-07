@@ -61,3 +61,4 @@ docker-compose.override.yml
 
 # Supabase local
 supabase/.temp/
+.claude/skills/gstack/

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export async function GET() {
     //    This calls OANDA directly — balance, equity, margin, unrealized P&L
     try {
       const acctRes = await fetch(`${backendUrl}/account`, {
+        headers: backendAuthHeaders(),
         signal: AbortSignal.timeout(5000),
         cache: "no-store",
       });

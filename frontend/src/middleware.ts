@@ -5,9 +5,12 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase is not configured, allow through (dev mode)
+  // Fail closed: if Supabase is not configured, block all protected routes
   if (!supabaseUrl || !supabaseKey) {
-    return NextResponse.next();
+    return new NextResponse(
+      JSON.stringify({ error: "Authentication service unavailable" }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   const response = NextResponse.next({ request });

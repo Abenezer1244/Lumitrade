@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendAuthHeaders } from "@/lib/backend-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const res = await fetch(`${backendUrl}/onboarding`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: backendAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ message, account_id: account_id || "default" }),
     });
 

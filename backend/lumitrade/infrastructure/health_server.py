@@ -32,6 +32,7 @@ Response JSON:
   }
 """
 
+import hmac
 import os
 from datetime import datetime, timezone
 
@@ -45,6 +46,63 @@ logger = get_logger(__name__)
 HEALTH_PORT = int(os.environ.get("PORT", 8000))
 STATE_STALENESS_THRESHOLD_SECONDS = 120
 STATE_ROW_ID = "singleton"
+
+# Read at module load — empty string means ALL requests are rejected (fail closed)
+INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "")
+
+# Endpoints that do NOT require authentication (read-only monitoring)
+_PUBLIC_ROUTES: set[tuple[str, str]] = {
+    ("GET", "/health"),
+    ("GET", "/"),
+    ("GET", "/prices"),
+    ("GET", "/candles"),
+    ("GET", "/calendar"),
+    ("GET", "/ws/prices"),
+}
+
+
+@web.middleware
+async def _auth_middleware(request: web.Request, handler):
+    """
+    Bearer-token auth middleware.
+    Public read-only monitoring routes are allowed without credentials.
+    All other routes require:  Authorization: Bearer <INTERNAL_API_SECRET>
+    Fail closed: if INTERNAL_API_SECRET is not set, every request is rejected.
+    """
+    # request.path strips query strings, so /ws/prices?pair=X matches correctly
+    path_only = request.path
+
+    is_public = (request.method, path_only) in _PUBLIC_ROUTES
+
+    if not is_public:
+        if not INTERNAL_API_SECRET:
+            logger.warning(
+                "auth_rejected_no_secret_configured",
+                method=request.method,
+                path=path_only,
+                remote=request.remote,
+            )
+            return web.json_response(
+                {"error": "Unauthorized"},
+                status=401,
+            )
+
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+
+        if not hmac.compare_digest(token, INTERNAL_API_SECRET):
+            logger.warning(
+                "auth_rejected_invalid_token",
+                method=request.method,
+                path=path_only,
+                remote=request.remote,
+            )
+            return web.json_response(
+                {"error": "Unauthorized"},
+                status=401,
+            )
+
+    return await handler(request)
 
 
 class HealthServer:
@@ -63,7 +121,7 @@ class HealthServer:
 
     async def start(self) -> None:
         """Start the health check HTTP server on HEALTH_PORT."""
-        self._app = web.Application()
+        self._app = web.Application(middlewares=[_auth_middleware])
         self._app.router.add_get("/health", self._handle_health)
         self._app.router.add_get("/prices", self._handle_prices)
         self._app.router.add_get("/settings", self._handle_get_settings)
@@ -417,7 +475,7 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("account_endpoint_error", error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_get_trade(self, request: web.Request) -> web.Response:
         """GET /trade/{trade_id} — fetch a specific trade from OANDA."""
@@ -437,7 +495,7 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("trade_lookup_error", trade_id=trade_id, error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_oanda_trades(self, request: web.Request) -> web.Response:
         """GET /oanda-trades — return all open trades from OANDA with per-trade P&L."""
@@ -474,7 +532,7 @@ class HealthServer:
                 await client.close()
         except Exception as e:
             logger.error("trade_close_error", trade_id=trade_id, error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_reconcile(self, request: web.Request) -> web.Response:
         """POST /reconcile — trigger position reconciliation on demand."""
@@ -511,7 +569,7 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("reconcile_endpoint_error", error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_fix_breakeven(self, request: web.Request) -> web.Response:
         """POST /fix-breakeven — retroactively fix BREAKEVEN trades with real OANDA P&L."""
@@ -588,7 +646,8 @@ class HealthServer:
                             "pnl_usd": str(realized_pnl),
                         })
                     except Exception as e:
-                        errors.append({"broker_id": broker_id, "error": str(e)})
+                        logger.error("fix_breakeven_trade_error", broker_id=broker_id, error=str(e))
+                        errors.append({"broker_id": broker_id, "error": "Processing failed"})
             finally:
                 await oanda.close()
 
@@ -601,7 +660,7 @@ class HealthServer:
             })
         except Exception as e:
             logger.error("fix_breakeven_error", error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_purge_ghosts(self, request: web.Request) -> web.Response:
         """POST /purge-ghosts — remove BREAKEVEN trades with no broker_trade_id (never executed)."""
@@ -644,7 +703,7 @@ class HealthServer:
             })
         except Exception as e:
             logger.error("purge_ghosts_error", error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_fix_timestamps(self, request: web.Request) -> web.Response:
         """POST /fix-timestamps — correct closed_at on all closed trades using OANDA closeTime."""
@@ -679,7 +738,8 @@ class HealthServer:
                                 "new_closed_at": close_time,
                             })
                     except Exception as e:
-                        errors.append({"broker_id": broker_id, "error": str(e)})
+                        logger.error("fix_timestamps_trade_error", broker_id=broker_id, error=str(e))
+                        errors.append({"broker_id": broker_id, "error": "Processing failed"})
             finally:
                 await oanda.close()
 
@@ -691,7 +751,7 @@ class HealthServer:
             })
         except Exception as e:
             logger.error("fix_timestamps_error", error=str(e))
-            return web.json_response({"error": str(e)}, status=500)
+            return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_ws_prices(self, request: web.Request) -> web.WebSocketResponse:
         """
@@ -838,7 +898,7 @@ class HealthServer:
 
         except Exception as e:
             logger.error("calendar_endpoint_error", error=str(e))
-            return web.json_response({"events": [], "error": str(e)})
+            return web.json_response({"events": [], "error": "Internal server error"})
 
     async def _handle_candles(self, request: web.Request) -> web.Response:
         """GET /candles?pair=EUR_USD&granularity=H1&count=100 — fetch OANDA candles."""
@@ -909,7 +969,7 @@ class HealthServer:
                 await client.close()
         except Exception as e:
             logger.error("prices_endpoint_error", error=str(e))
-            return web.json_response({"prices": {}, "error": str(e)}, status=500)
+            return web.json_response({"prices": {}, "error": "Internal server error"}, status=500)
 
 
 async def _run_standalone() -> None:
