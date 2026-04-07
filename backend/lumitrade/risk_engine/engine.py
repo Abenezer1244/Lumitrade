@@ -95,8 +95,20 @@ class RiskEngine:
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
 
-        # ── Check 4: Confidence ──────────────────────────────────
+        # ── Check 4: Confidence (floor) ──────────────────────────
         result = self._check_confidence(proposal, risk_state)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
+        # ── Check 4b: Confidence Ceiling ─────────────────────────
+        result = self._check_confidence_ceiling(proposal)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
+        # ── Check 4c: No-Trade Hours ────────────────────────────
+        result = self._check_no_trade_hours(now)
         checks.append(result)
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
@@ -383,6 +395,37 @@ class RiskEngine:
             else f"Confidence {proposal.confidence_adjusted} < {threshold}",
             str(proposal.confidence_adjusted),
             str(threshold),
+        )
+
+    def _check_confidence_ceiling(
+        self, proposal: SignalProposal
+    ) -> CheckResult:
+        """Check 4b: Reject overconfident signals — 85-trade analysis shows 80%+ has 14% WR."""
+        max_conf = self._config.max_confidence
+        passed = proposal.confidence_adjusted <= max_conf
+        return (
+            "CONFIDENCE_CEILING",
+            passed,
+            "OK"
+            if passed
+            else f"Confidence {proposal.confidence_adjusted} > {max_conf} ceiling — overconfident signals underperform",
+            str(proposal.confidence_adjusted),
+            str(max_conf),
+        )
+
+    def _check_no_trade_hours(self, now: datetime) -> CheckResult:
+        """Check 4c: Block trading during historically unprofitable hours (UTC)."""
+        current_hour = now.hour
+        blocked = self._config.no_trade_hours_utc
+        passed = current_hour not in blocked
+        return (
+            "NO_TRADE_HOURS",
+            passed,
+            "OK"
+            if passed
+            else f"Hour {current_hour}:00 UTC is in no-trade window {blocked} — 0% win rate historically",
+            str(current_hour),
+            str(blocked),
         )
 
     # Per-instrument max spread for risk check (in pips)
