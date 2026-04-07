@@ -9,8 +9,10 @@ compute rolling correlations from live candle data.
 Per BDS Section 13.4.
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
+from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
@@ -54,19 +56,75 @@ def _normalize_key(pair_a: str, pair_b: str) -> tuple[str, str]:
 class CorrelationMatrix:
     """
     Provides forex pair correlations and position size multipliers
-    based on known historical correlations.
+    based on historical correlations.
 
-    Phase 0/1: Uses static correlation values for the 3 traded pairs.
-
-    TODO Phase 2: Compute rolling correlations from stored candle data,
-    update correlations on a configurable schedule (e.g., daily),
-    persist computed correlations to the database, and support
-    dynamic pair expansion beyond the initial 3.
+    Prefers live computed correlations from stored candle data; falls
+    back to the static table when live data is unavailable or stale.
     """
+
+    def __init__(self, db: DatabaseClient | None = None):
+        self._db = db
+        self._computed: dict[tuple[str, str], Decimal] = {}
+        self._last_refresh: datetime | None = None
+
+    async def refresh(self, pairs: list[str]) -> None:
+        """Compute rolling correlations from stored candle close prices.
+        Fetches last 90 daily candles per pair from the candles table."""
+        if not self._db:
+            return
+        try:
+            pair_closes: dict[str, list[Decimal]] = {}
+            for pair in pairs:
+                rows = await self._db.select(
+                    "candles",
+                    {"pair": pair, "granularity": "D"},
+                    order="time",
+                    limit=90,
+                )
+                if rows and len(rows) >= 30:
+                    pair_closes[pair] = [Decimal(str(r["close"])) for r in rows]
+
+            # Compute Pearson correlation for each pair combo
+            for i, pair_a in enumerate(pairs):
+                for pair_b in pairs[i + 1:]:
+                    if pair_a in pair_closes and pair_b in pair_closes:
+                        corr = self._pearson(pair_closes[pair_a], pair_closes[pair_b])
+                        key = _normalize_key(pair_a, pair_b)
+                        self._computed[key] = corr
+
+            self._last_refresh = datetime.now(timezone.utc)
+            logger.info(
+                "correlation_matrix_refreshed",
+                pairs=len(pairs),
+                computed=len(self._computed),
+            )
+        except Exception as e:
+            logger.warning("correlation_refresh_failed", error=str(e))
+
+    @staticmethod
+    def _pearson(x: list[Decimal], y: list[Decimal]) -> Decimal:
+        """Compute Pearson correlation coefficient between two price series."""
+        n = min(len(x), len(y))
+        if n < 10:
+            return Decimal("0.0")
+        x, y = x[-n:], y[-n:]
+        mean_x = sum(x) / n
+        mean_y = sum(y) / n
+        dx = [xi - mean_x for xi in x]
+        dy = [yi - mean_y for yi in y]
+        cov = sum(a * b for a, b in zip(dx, dy))
+        std_x = (sum(d * d for d in dx)) ** Decimal("0.5")
+        std_y = (sum(d * d for d in dy)) ** Decimal("0.5")
+        if std_x == 0 or std_y == 0:
+            return Decimal("0.0")
+        corr = cov / (std_x * std_y)
+        return corr.quantize(Decimal("0.01"))
 
     def get_correlation(self, pair_a: str, pair_b: str) -> Decimal:
         """
         Return the correlation coefficient between two currency pairs.
+
+        Prefers live computed values; falls back to static table.
 
         Args:
             pair_a: First currency pair (e.g. "EUR_USD").
@@ -78,10 +136,11 @@ class CorrelationMatrix:
         """
         if pair_a == pair_b:
             return Decimal("1.0")
-
         key = _normalize_key(pair_a, pair_b)
-        correlation = _CORRELATION_TABLE.get(key, Decimal("0.0"))
-        return correlation
+        # Prefer computed (live data) over static
+        if key in self._computed:
+            return self._computed[key]
+        return _CORRELATION_TABLE.get(key, Decimal("0.0"))
 
     def get_position_size_multiplier(
         self,

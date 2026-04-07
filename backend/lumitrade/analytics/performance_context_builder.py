@@ -24,17 +24,17 @@ class PerformanceContextBuilder:
         self.db = db
 
     async def build(
-        self, account_id: str, pair: str, current_atr: Decimal
+        self, account_id: str, pair: str, current_atr: Decimal, indicators=None
     ) -> PerformanceContext:
         """Build context. Returns empty defaults if insufficient data."""
         try:
-            return await self._build_context(account_id, pair, current_atr)
+            return await self._build_context(account_id, pair, current_atr, indicators)
         except Exception as e:
             logger.warning("performance_context_build_failed", error=str(e))
             return self._empty_context()
 
     async def _build_context(
-        self, account_id: str, pair: str, current_atr: Decimal
+        self, account_id: str, pair: str, current_atr: Decimal, indicators=None
     ) -> PerformanceContext:
         """Build full context from trade history."""
         recent_trades = await self.db.select(
@@ -82,14 +82,24 @@ class PerformanceContextBuilder:
         else:
             volatility = "NORMAL"
 
-        # Derive trend_strength from ATR as a proxy.
-        # TODO Phase 2: Use ADX or EMA slope from indicator data for true trend strength.
-        if current_atr > Decimal("0.0020"):
-            trend_strength = "STRONG"
-        elif current_atr < Decimal("0.0008"):
-            trend_strength = "WEAK"
+        # Derive trend_strength from EMA alignment (20/50/200)
+        if indicators and indicators.ema_20 and indicators.ema_50 and indicators.ema_200:
+            if indicators.ema_20 > indicators.ema_50 > indicators.ema_200:
+                trend_strength = "STRONG"  # All EMAs aligned bullish
+            elif indicators.ema_20 < indicators.ema_50 < indicators.ema_200:
+                trend_strength = "STRONG"  # All EMAs aligned bearish
+            elif indicators.ema_20 > indicators.ema_200:
+                trend_strength = "MODERATE"  # Short-term above long-term
+            else:
+                trend_strength = "WEAK"  # EMAs not aligned
         else:
-            trend_strength = "MODERATE"
+            # Fallback to ATR-based estimate when EMA data unavailable
+            if current_atr > Decimal("0.0020"):
+                trend_strength = "STRONG"
+            elif current_atr < Decimal("0.0008"):
+                trend_strength = "WEAK"
+            else:
+                trend_strength = "MODERATE"
 
         # Calculate drawdown and weekly growth from system_state
         current_drawdown = Decimal("0")

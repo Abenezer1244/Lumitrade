@@ -34,10 +34,10 @@ const ThreeScene = dynamic(
 // ── Stats data ──────────────────────────────────────────────
 
 const STATS = [
-  { value: 6, suffix: "", label: "Pairs Scanned" },
+  { value: 4, suffix: "", label: "Currency Pairs" },
   { value: 3, suffix: "", label: "Timeframes (H4, H1, M15)" },
-  { value: 8, suffix: "", label: "Risk Checks Per Trade" },
-  { value: 10, suffix: "s", label: "Kill Switch (Emergency Halt)" },
+  { value: 9, suffix: "", label: "Risk Checks Per Trade" },
+  { value: 60, suffix: "s", label: "Kill Switch Response" },
 ];
 
 // ── Pain points data ────────────────────────────────────────
