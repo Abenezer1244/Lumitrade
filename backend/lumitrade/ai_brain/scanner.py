@@ -203,67 +203,9 @@ class SignalScanner:
         # Collect boost messages for prompt injection
         boost_context = buy_boosts + sell_boosts
 
-        # 1c. TradingView consensus — 26-indicator second opinion
-        tv_data = await self._tv_signal.get_recommendation(pair)
-        tv_context = self._tv_signal.format_for_prompt(tv_data)
-        if tv_data:
-            # If TV strongly disagrees with our only allowed direction (BUY), skip
-            if self.config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
-                logger.warning(
-                    "tradingview_conflict_skip",
-                    pair=pair,
-                    tv_recommendation=tv_data.get("recommendation", ""),
-                )
-                if self._events:
-                    self._events.publish(
-                        "SCANNER", "TV_CONFLICT",
-                        f"Skipping {pair} — TradingView says {tv_data['recommendation']} (conflicts with BUY)",
-                        pair=pair, severity="WARNING",
-                    )
-                return None
-            boost_context.append(tv_context)
-
-        # 2. Get analyst briefing (SA-01) and attach to snapshot
-        analyst_briefing = ""
-        if self._subagents:
-            try:
-                briefing_result = await self._subagents.get_analyst_briefing(
-                    snapshot,
-                )
-                analyst_briefing = briefing_result.get("briefing", "")
-                if self._events and analyst_briefing:
-                    self._events.publish(
-                        "SA-01", "BRIEFING",
-                        f"Market briefing for {pair}",
-                        detail=analyst_briefing[:500], pair=pair,
-                    )
-            except Exception as e:
-                logger.warning(
-                    "analyst_briefing_failed", error=str(e),
-                )
-
-        # 2b. Run sentiment analysis on pair currencies
-        sentiment_context = ""
-        try:
-            sentiment = await self._sentiment.analyze(
-                pairs=[pair],
-                calendar_events=snapshot.news_events,
-            )
-            if sentiment:
-                lines = [f"{c}: {s.value if hasattr(s, 'value') else str(s)}" for c, s in sentiment.items()]
-                sentiment_context = "Currency sentiment: " + " | ".join(lines)
-                if self._events:
-                    self._events.publish(
-                        "SENTIMENT", "ANALYSIS",
-                        f"Sentiment for {pair}: {sentiment_context}",
-                        pair=pair,
-                    )
-        except Exception as e:
-            logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
-
-        # 3. Generate chart image for visual analysis
-        # Try TradingView screenshot first (professional charts Claude recognizes better),
-        # fall back to matplotlib if Playwright unavailable or screenshot fails
+        # ── STEP 2: CHART FIRST — primary input for Claude's visual analysis ──
+        # TradingView chart already shows EMAs, RSI, BBands, candlesticks, volume,
+        # support/resistance — everything Claude needs in one image.
         chart_b64 = ""
         try:
             chart_bytes = await generate_tv_chart(pair)
@@ -291,6 +233,63 @@ class SignalScanner:
                                 size_kb=len(chart_bytes) // 1024)
             except Exception as e:
                 logger.warning("chart_generation_skipped", pair=pair, error=str(e))
+
+        # ── STEP 3: TradingView consensus — cheap 26-indicator second opinion ──
+        tv_data = await self._tv_signal.get_recommendation(pair)
+        tv_context = self._tv_signal.format_for_prompt(tv_data)
+        if tv_data:
+            # If TV strongly disagrees with our only allowed direction (BUY), skip
+            if self.config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
+                logger.warning(
+                    "tradingview_conflict_skip",
+                    pair=pair,
+                    tv_recommendation=tv_data.get("recommendation", ""),
+                )
+                if self._events:
+                    self._events.publish(
+                        "SCANNER", "TV_CONFLICT",
+                        f"Skipping {pair} — TradingView says {tv_data['recommendation']} (conflicts with BUY)",
+                        pair=pair, severity="WARNING",
+                    )
+                return None
+            boost_context.append(tv_context)
+
+        # ── STEP 4: Supplementary context (analyst briefing + sentiment) ──
+        analyst_briefing = ""
+        if self._subagents:
+            try:
+                briefing_result = await self._subagents.get_analyst_briefing(
+                    snapshot,
+                )
+                analyst_briefing = briefing_result.get("briefing", "")
+                if self._events and analyst_briefing:
+                    self._events.publish(
+                        "SA-01", "BRIEFING",
+                        f"Market briefing for {pair}",
+                        detail=analyst_briefing[:500], pair=pair,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "analyst_briefing_failed", error=str(e),
+                )
+
+        sentiment_context = ""
+        try:
+            sentiment = await self._sentiment.analyze(
+                pairs=[pair],
+                calendar_events=snapshot.news_events,
+            )
+            if sentiment:
+                lines = [f"{c}: {s.value if hasattr(s, 'value') else str(s)}" for c, s in sentiment.items()]
+                sentiment_context = "Currency sentiment: " + " | ".join(lines)
+                if self._events:
+                    self._events.publish(
+                        "SENTIMENT", "ANALYSIS",
+                        f"Sentiment for {pair}: {sentiment_context}",
+                        pair=pair,
+                    )
+        except Exception as e:
+            logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
 
         has_chart = bool(chart_b64)
 
