@@ -32,8 +32,17 @@ class ConfidenceAdjuster:
         adjusted = raw_confidence
 
         # Factor 1: Indicator alignment
+        # alignment is 0.0-1.0 (fraction of indicators confirming direction)
+        # 0.6+ (3/5 indicators) = no penalty — moderate confirmation is fine
+        # 0.4-0.6 = small penalty (mixed signals)
+        # <0.4 = larger penalty (indicators disagree with AI)
         alignment = self._indicator_alignment(snapshot, action)
-        multiplier = Decimal("0.5") + Decimal(str(alignment)) * Decimal("0.5")
+        if alignment >= 0.6:
+            multiplier = Decimal("1.0")  # No penalty — majority confirms
+        elif alignment >= 0.4:
+            multiplier = Decimal("0.90")  # Small penalty — mixed signals
+        else:
+            multiplier = Decimal("0.75")  # Larger penalty — indicators disagree
         factor = adjusted * multiplier - adjusted
         adjustments["indicator_alignment"] = float(factor)
         adjusted = adjusted * multiplier
