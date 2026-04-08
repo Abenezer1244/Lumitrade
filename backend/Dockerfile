@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor curl \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-    libcairo2 libasound2 libxshmfence1 libx11-xcb1 fonts-liberation \
+    libcairo2 libasound2 libxshmfence1 libx11-xcb1 libxfixes3 fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /opt/pw-browsers \
     && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers playwright install chromium \
