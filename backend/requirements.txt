@@ -251,4 +251,3 @@ zstandard==0.25.0
 
 # TradingView chart screenshots for Claude Vision
 playwright==1.52.0
-Pillow==11.2.1
