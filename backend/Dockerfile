@@ -8,10 +8,17 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # Stage 2: Runtime
 FROM python:3.12-slim AS runtime
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends supervisor curl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /install /usr/local
-# Install Playwright's Chromium browser + system deps for TradingView chart screenshots
-RUN playwright install chromium && playwright install-deps chromium 2>/dev/null || true
+# Install system deps: supervisor, curl, and Playwright Chromium dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    supervisor curl \
+    # Playwright Chromium system dependencies
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
+    libcairo2 libasound2 libxshmfence1 libx11-xcb1 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+# Install Playwright's Chromium browser
+RUN playwright install chromium
 COPY backend/lumitrade/ /app/lumitrade/
 COPY backend/supervisord.conf /etc/supervisor/conf.d/lumitrade.conf
 RUN useradd --no-create-home --shell /bin/false lumitrade && \
