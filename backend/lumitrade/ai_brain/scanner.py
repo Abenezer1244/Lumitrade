@@ -20,6 +20,7 @@ from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
 from .chart_generator import ChartGenerator, encode_chart_base64
+from .tv_chart_screenshotter import generate_tv_chart
 from .claude_client import ClaudeClient
 from .confidence import ConfidenceAdjuster
 from .fallback import RuleBasedFallback
@@ -261,21 +262,35 @@ class SignalScanner:
             logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
 
         # 3. Generate chart image for visual analysis
+        # Try TradingView screenshot first (professional charts Claude recognizes better),
+        # fall back to matplotlib if Playwright unavailable or screenshot fails
         chart_b64 = ""
         try:
-            chart_bytes = await self._chart_gen.generate_chart(
-                pair=pair,
-                candles_h4=snapshot.candles_h4,
-                candles_h1=snapshot.candles_h1,
-                candles_m15=snapshot.candles_m15,
-                indicators=snapshot.indicators,
-            )
-            chart_b64 = encode_chart_base64(chart_bytes)
-            if chart_b64:
-                logger.info("chart_ready_for_claude", pair=pair,
-                            size_kb=len(chart_bytes) // 1024)
+            chart_bytes = await generate_tv_chart(pair)
+            if chart_bytes:
+                chart_b64 = encode_chart_base64(chart_bytes)
+                if chart_b64:
+                    logger.info("tv_chart_ready_for_claude", pair=pair,
+                                size_kb=len(chart_bytes) // 1024)
         except Exception as e:
-            logger.warning("chart_generation_skipped", pair=pair, error=str(e))
+            logger.debug("tv_chart_fallback", pair=pair, error=str(e))
+
+        # Fallback to matplotlib chart if TradingView failed
+        if not chart_b64:
+            try:
+                chart_bytes = await self._chart_gen.generate_chart(
+                    pair=pair,
+                    candles_h4=snapshot.candles_h4,
+                    candles_h1=snapshot.candles_h1,
+                    candles_m15=snapshot.candles_m15,
+                    indicators=snapshot.indicators,
+                )
+                chart_b64 = encode_chart_base64(chart_bytes)
+                if chart_b64:
+                    logger.info("matplotlib_chart_ready_for_claude", pair=pair,
+                                size_kb=len(chart_bytes) // 1024)
+            except Exception as e:
+                logger.warning("chart_generation_skipped", pair=pair, error=str(e))
 
         has_chart = bool(chart_b64)
 

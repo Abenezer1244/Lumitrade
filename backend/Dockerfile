@@ -10,6 +10,8 @@ FROM python:3.12-slim AS runtime
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends supervisor curl && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /install /usr/local
+# Install Playwright's Chromium browser + system deps for TradingView chart screenshots
+RUN playwright install chromium && playwright install-deps chromium 2>/dev/null || true
 COPY backend/lumitrade/ /app/lumitrade/
 COPY backend/supervisord.conf /etc/supervisor/conf.d/lumitrade.conf
 RUN useradd --no-create-home --shell /bin/false lumitrade && \

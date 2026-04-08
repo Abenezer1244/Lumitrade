@@ -248,3 +248,7 @@ yarl==1.23.0
     #   supabase-functions
 zstandard==0.25.0
     # via pyiceberg
+
+# TradingView chart screenshots for Claude Vision
+playwright==1.52.0
+Pillow==11.2.1
