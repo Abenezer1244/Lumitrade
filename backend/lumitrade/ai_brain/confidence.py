@@ -23,41 +23,47 @@ class ConfidenceAdjuster:
         snapshot: MarketSnapshot,
         action: str,
         consecutive_losses: int = 0,
+        has_chart: bool = False,
     ) -> tuple[Decimal, dict]:
         """
-        Apply all 6 adjustment factors.
+        Apply adjustment factors to raw confidence.
+        When has_chart=True (Claude analyzed a TradingView chart),
+        skip indicator alignment penalty — Claude's visual analysis
+        replaces numeric indicator confirmation.
         Returns (adjusted_confidence, adjustment_log dict).
         """
         adjustments: dict[str, float] = {}
         adjusted = raw_confidence
 
         # Factor 1: Indicator alignment
-        # alignment is 0.0-1.0 (fraction of indicators confirming direction)
-        # 0.6+ (3/5 indicators) = no penalty — moderate confirmation is fine
-        # 0.4-0.6 = small penalty (mixed signals)
-        # <0.4 = larger penalty (indicators disagree with AI)
-        alignment = self._indicator_alignment(snapshot, action)
-        if alignment >= 0.6:
-            multiplier = Decimal("1.0")  # No penalty — majority confirms
-        elif alignment >= 0.4:
-            multiplier = Decimal("0.90")  # Small penalty — mixed signals
+        # With chart: Claude SAW the indicators on the TradingView chart —
+        # no penalty for numeric disagreement (chart is the truth)
+        # Without chart: apply alignment penalty as before
+        if has_chart:
+            adjustments["indicator_alignment"] = 0.0
         else:
-            multiplier = Decimal("0.75")  # Larger penalty — indicators disagree
-        factor = adjusted * multiplier - adjusted
-        adjustments["indicator_alignment"] = float(factor)
-        adjusted = adjusted * multiplier
+            alignment = self._indicator_alignment(snapshot, action)
+            if alignment >= 0.6:
+                multiplier = Decimal("1.0")
+            elif alignment >= 0.4:
+                multiplier = Decimal("0.90")
+            else:
+                multiplier = Decimal("0.75")
+            factor = adjusted * multiplier - adjusted
+            adjustments["indicator_alignment"] = float(factor)
+            adjusted = adjusted * multiplier
 
-        # Factor 2: News proximity
+        # Factor 2: News proximity — always apply (chart doesn't show news)
         news_adj = self._news_proximity(snapshot)
         adjustments["news_proximity"] = float(news_adj)
         adjusted += news_adj
 
-        # Factor 3: Session quality (pair-aware)
+        # Factor 3: Session quality (pair-aware) — always apply
         session_adj = self._session_quality(snapshot.session, snapshot.pair)
         adjustments["session_quality"] = float(session_adj)
         adjusted += session_adj
 
-        # Factor 4: Spread penalty
+        # Factor 4: Spread penalty — always apply (execution cost)
         spread_adj = self._spread_penalty(snapshot.spread_pips, snapshot.pair)
         adjustments["spread_penalty"] = float(spread_adj)
         adjusted += spread_adj
@@ -65,11 +71,12 @@ class ConfidenceAdjuster:
         # Factor 5: Consecutive losses (threshold shift)
         loss_adj = self._consecutive_loss_adjustment(consecutive_losses)
         adjustments["consecutive_losses"] = float(loss_adj)
-        # This adjusts the threshold, not the confidence directly
-        # Store for risk engine to use
 
         # Factor 6: Recent pair performance
+        # With chart: halve the penalty — chart gives fresh context
         pair_adj = self._recent_pair_performance(snapshot)
+        if has_chart:
+            pair_adj = pair_adj / 2
         adjustments["recent_pair_performance"] = float(pair_adj)
         adjusted += pair_adj
 

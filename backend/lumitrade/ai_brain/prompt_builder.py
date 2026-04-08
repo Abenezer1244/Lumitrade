@@ -188,25 +188,46 @@ class PromptBuilder:
             self._sanitize_db_text(analyst_briefing, max_len=400) if analyst_briefing else "No briefing available.",
             "",
             "",
-            "=== TREND DETERMINATION (DO THIS FIRST) ===",
-            "Step 1: Determine H4 trend direction from EMA alignment:",
-            "  - BULLISH: EMA20 > EMA50 > EMA200 (or price > EMA50 > EMA200)",
-            "  - BEARISH: EMA20 < EMA50 < EMA200 (or price < EMA50 < EMA200)",
-            "  - NEUTRAL: EMAs tangled or flat — no clear direction",
-            "",
-            "Step 2: MANDATORY RULE — Trade WITH the H4 trend, NEVER against it:",
-            "  - H4 BULLISH → You may only BUY or HOLD. SELL is FORBIDDEN.",
-            "  - H4 BEARISH → You may only SELL or HOLD. BUY is FORBIDDEN.",
-            "  - H4 NEUTRAL → HOLD only. No trades in directionless markets.",
-            "  Violating this rule causes consistent losses. This is non-negotiable.",
-            "",
-            "Step 3: Use H1 for structure (is price at support/resistance?)",
-            "Step 4: Use M15 for precise entry timing only.",
+            "=== TREND & STRUCTURE ANALYSIS ===",
+        ]
+
+        if has_chart:
+            # Chart mode: Claude decides based on what it SEES
+            sections.extend([
+                "You have the TradingView chart. Analyze it visually:",
+                "Step 1: Look at H4 panel — what is the trend? Is it turning?",
+                "Step 2: Look at H1 panel — is price at support/resistance?",
+                "Step 3: Look at M15 panel — is there an entry pattern?",
+                "",
+                "You may BUY or SELL in any trend direction if the chart shows:",
+                "  - A clear reversal pattern (double bottom, head & shoulders, etc.)",
+                "  - A support/resistance bounce with confirmation",
+                "  - A breakout with volume",
+                "Trading WITH the trend is preferred but NOT mandatory.",
+                "If you see a high-probability counter-trend setup, take it.",
+            ])
+        else:
+            # Text-only mode: enforce H4 trend rule (no chart to verify reversals)
+            sections.extend([
+                "Step 1: Determine H4 trend direction from EMA alignment:",
+                "  - BULLISH: EMA20 > EMA50 > EMA200 (or price > EMA50 > EMA200)",
+                "  - BEARISH: EMA20 < EMA50 < EMA200 (or price < EMA50 < EMA200)",
+                "  - NEUTRAL: EMAs tangled or flat — no clear direction",
+                "",
+                "Step 2: MANDATORY RULE — Trade WITH the H4 trend, NEVER against it:",
+                "  - H4 BULLISH → You may only BUY or HOLD. SELL is FORBIDDEN.",
+                "  - H4 BEARISH → You may only SELL or HOLD. BUY is FORBIDDEN.",
+                "  - H4 NEUTRAL → HOLD only. No trades in directionless markets.",
+                "  Violating this rule causes consistent losses. This is non-negotiable.",
+                "",
+                "Step 3: Use H1 for structure (is price at support/resistance?)",
+                "Step 4: Use M15 for precise entry timing only.",
+            ])
+
+        sections.extend([
             "",
             "=== YOUR TASK ===",
             f"Analyze {snapshot.pair} and return your trading decision as JSON.",
-            "Follow the trend determination steps above BEFORE making any decision.",
-            "Only recommend BUY or SELL if the H4 trend supports the direction.",
             "Minimum risk/reward ratio: 1.5:1. If not achievable — return HOLD.",
             "",
             "=== POSITION SIZING GUIDANCE ===",
@@ -233,7 +254,7 @@ class PromptBuilder:
                 "  - If you cannot find TP ≥ 1.5x SL distance, return HOLD.\n"
                 "  - NEVER set TP closer to entry than SL — this guarantees RR < 1.0."
             ) if snapshot.pair == "XAU_USD" else "",
-        ]
+        ])
 
         # ── Trading Memory: BOOST lessons (historically profitable) ──
         if boost_lessons:

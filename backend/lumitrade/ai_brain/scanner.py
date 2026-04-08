@@ -313,10 +313,20 @@ class SignalScanner:
             pair, system, prompt, prompt_hash, snapshot, chart_b64=chart_b64,
         )
 
-        # 5b. Signal alignment check — at least 3 indicators must confirm direction
+        # 5b. Signal alignment check — skip when Claude has a TradingView chart
+        # With chart: Claude's visual analysis IS the alignment check
+        # Without chart: require 3/5 numeric indicators to confirm
         if proposal and (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) != "HOLD":
             alignment = self._check_signal_alignment(proposal, snapshot)
-            if alignment < 3:
+            if has_chart:
+                logger.info(
+                    "signal_alignment_chart_mode",
+                    pair=pair,
+                    action=(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
+                    alignment_score=alignment,
+                    note="chart_present_alignment_advisory_only",
+                )
+            elif alignment < 3:
                 logger.warning(
                     "signal_alignment_insufficient",
                     pair=pair,
@@ -387,7 +397,21 @@ class SignalScanner:
                 # Validate output
                 result = self._validator.validate(raw_response, live_price)
                 if result.passed and result.data:
-                    # Server-side H4 trend enforcement — AI cannot override
+                    # H4 trend enforcement — skip when Claude has chart
+                    # With chart: Claude sees the trend and decides
+                    # Without chart: server enforces H4 trend rule
+                    if chart_b64:
+                        logger.info(
+                            "h4_trend_chart_mode",
+                            pair=pair,
+                            ai_action=result.data.get("action", "HOLD"),
+                            note="chart_present_trend_check_skipped",
+                        )
+                        return self._build_proposal(
+                            result.data, snapshot, prompt_hash,
+                            has_chart=True,
+                        )
+
                     trend_block = self._check_h4_trend_alignment(
                         result.data.get("action", "HOLD"), snapshot
                     )
@@ -520,14 +544,15 @@ class SignalScanner:
         return None
 
     def _build_proposal(
-        self, data: dict, snapshot, prompt_hash: str
+        self, data: dict, snapshot, prompt_hash: str,
+        has_chart: bool = False,
     ) -> SignalProposal:
         """Build SignalProposal from validated AI output."""
         raw_conf = Decimal(str(data["confidence"]))
 
-        # Adjust confidence
+        # Adjust confidence — reduced penalties when chart is present
         adjusted_conf, adj_log = self._adjuster.adjust(
-            raw_conf, snapshot, data["action"]
+            raw_conf, snapshot, data["action"], has_chart=has_chart,
         )
 
         return SignalProposal(
