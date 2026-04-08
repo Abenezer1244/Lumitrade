@@ -253,28 +253,32 @@ class PromptBuilder:
         # ── Visual Analysis Instructions (only when chart is sent) ──
         if has_chart:
             sections.append("")
-            sections.append("=== VISUAL ANALYSIS INSTRUCTIONS ===")
+            sections.append("=== VISUAL CHART ANALYSIS (PRIMARY INPUT) ===")
             sections.append(
-                "You are receiving a multi-timeframe candlestick chart. "
-                "Analyze it like a professional trader:"
+                "You are receiving a TradingView chart screenshot — the same "
+                "professional charting platform used by institutional traders. "
+                "THIS CHART IS YOUR PRIMARY DECISION INPUT. Analyze it like "
+                "a professional trader:"
             )
             sections.append(
-                "1. H4 (top): Identify the dominant trend. "
-                "Look for trend continuation or reversal patterns."
+                "1. H4 (top panel): Identify the dominant trend direction. "
+                "Look at EMA alignment (20/50/200), Bollinger Band position, "
+                "and trend continuation or reversal patterns."
             )
             sections.append(
-                "2. H1 (middle): Identify key support/resistance levels. "
-                "Is price at a decision point?"
+                "2. H1 (middle panel): Identify key support/resistance levels. "
+                "Is price at a decision point? Look for breakout/rejection setups."
             )
             sections.append(
-                "3. M15 (bottom): Look for entry timing patterns — "
-                "pin bars, engulfing candles, breakouts."
+                "3. M15 (bottom panel): Look for entry timing patterns — "
+                "pin bars, engulfing candles, breakouts, RSI divergence."
             )
             sections.append(
-                "Combine what you SEE in the chart with the indicator "
-                "data above. If the chart shows a clear pattern that "
-                "contradicts the indicators, trust the chart — price "
-                "action is king."
+                "The chart is your primary evidence. The numeric indicators "
+                "above are supplementary confirmation. If the chart shows a "
+                "clear pattern that contradicts the indicators, TRUST THE "
+                "CHART — price action is king. Base your BUY/SELL/HOLD "
+                "decision primarily on what you see in the chart."
             )
 
         return "\n".join(sections)

@@ -6,6 +6,9 @@ Produces PNG images that Claude Vision can analyze — TradingView's professiona
 chart rendering is what Claude was trained on, yielding better pattern recognition
 than matplotlib-generated charts.
 
+The widgetembed endpoint is a public embed URL with no anti-bot protections
+(designed for third-party iframe embedding). No login required.
+
 Fallback: returns empty bytes if Playwright or PIL is unavailable. Never crashes.
 """
 
@@ -24,13 +27,13 @@ try:
     from playwright.async_api import async_playwright
     _HAS_PLAYWRIGHT = True
 except ImportError:
-    pass
+    logger.warning("playwright_import_failed", reason="playwright package not installed")
 
 try:
     from PIL import Image
     _HAS_PIL = True
 except ImportError:
-    pass
+    logger.info("pil_not_available", fallback="single_panel_only")
 
 
 # TradingView widget URL template — public, no login required
@@ -62,6 +65,13 @@ _INTERVAL_MAP = {
     "15": "15",
 }
 
+# Realistic user agent — avoids detection as headless
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
 
 def _oanda_to_tv(pair: str) -> str:
     """Convert OANDA pair format to TradingView: USD_JPY → USDJPY."""
@@ -85,12 +95,22 @@ class TVChartScreenshotter:
         return cls._instance
 
     async def _launch(self) -> None:
-        """Start headless Chromium with a reusable context."""
+        """Start headless Chromium with stealth settings and reusable context."""
         try:
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(headless=True)
+            self._browser = await self._pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--no-first-run",
+                    "--no-sandbox",
+                ],
+            )
             self._context = await self._browser.new_context(
                 viewport={"width": 1200, "height": 800},
+                user_agent=_USER_AGENT,
+                locale="en-US",
             )
             logger.info("tv_screenshotter_launched")
         except Exception as e:
@@ -109,6 +129,11 @@ class TVChartScreenshotter:
             PNG bytes. Empty bytes on any failure.
         """
         if not _HAS_PLAYWRIGHT or self._browser is None:
+            logger.warning(
+                "tv_screenshot_unavailable",
+                has_playwright=_HAS_PLAYWRIGHT,
+                has_browser=self._browser is not None,
+            )
             return b""
 
         tv_interval = _INTERVAL_MAP.get(interval, interval)
@@ -119,12 +144,23 @@ class TVChartScreenshotter:
         try:
             page = await self._context.new_page()
 
-            await page.goto(url, wait_until="networkidle", timeout=15000)
+            # Navigate with generous timeout for Docker environments
+            await page.goto(url, wait_until="networkidle", timeout=25000)
 
             # Wait for the chart canvas to render
-            await page.wait_for_selector("canvas", timeout=10000)
-            # Extra settle time for indicators to draw
-            await asyncio.sleep(2)
+            await page.wait_for_selector("canvas", timeout=15000)
+
+            # Wait for loading spinner to disappear (chart data loaded)
+            try:
+                await page.wait_for_function(
+                    "() => !document.querySelector('.tv-spinner')",
+                    timeout=10000,
+                )
+            except Exception:
+                pass  # Spinner may not exist — continue
+
+            # Extra settle time for indicators to finish drawing
+            await asyncio.sleep(3)
 
             png_bytes = await page.screenshot(type="png", full_page=False)
 
@@ -185,7 +221,7 @@ async def generate_tv_chart(
         Combined PNG bytes (vertically stacked). Empty bytes on failure.
     """
     if not _HAS_PLAYWRIGHT:
-        logger.debug("tv_chart_skipped", reason="playwright_not_installed")
+        logger.warning("tv_chart_skipped", reason="playwright_not_installed")
         return b""
 
     if intervals is None:
@@ -194,14 +230,21 @@ async def generate_tv_chart(
     try:
         screenshotter = await TVChartScreenshotter.get_instance()
 
+        if screenshotter._browser is None:
+            logger.warning("tv_chart_skipped", reason="browser_launch_failed")
+            return b""
+
         # Screenshot all timeframes
         screenshots: list[bytes] = []
         for interval in intervals:
             png = await screenshotter.screenshot(pair, interval)
             if png:
                 screenshots.append(png)
+            else:
+                logger.info("tv_chart_panel_empty", pair=pair, interval=interval)
 
         if not screenshots:
+            logger.warning("tv_chart_all_panels_empty", pair=pair)
             return b""
 
         # If only one screenshot or PIL unavailable, return the first one

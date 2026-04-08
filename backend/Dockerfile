@@ -17,13 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
     libcairo2 libasound2 libxshmfence1 libx11-xcb1 fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
-# Install Playwright's Chromium browser
-RUN playwright install chromium
+# Install Playwright Chromium to a shared path accessible by non-root user
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+RUN mkdir -p /opt/pw-browsers && playwright install chromium
 COPY backend/lumitrade/ /app/lumitrade/
 COPY backend/supervisord.conf /etc/supervisor/conf.d/lumitrade.conf
 RUN useradd --no-create-home --shell /bin/false lumitrade && \
     mkdir -p /var/log/lumitrade && \
-    chown -R lumitrade:lumitrade /app /var/log/lumitrade
+    chown -R lumitrade:lumitrade /app /var/log/lumitrade && \
+    chmod -R o+rX /opt/pw-browsers
 USER lumitrade
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

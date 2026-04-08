@@ -214,8 +214,10 @@ class SignalScanner:
                 if chart_b64:
                     logger.info("tv_chart_ready_for_claude", pair=pair,
                                 size_kb=len(chart_bytes) // 1024)
+            else:
+                logger.info("tv_chart_returned_empty", pair=pair)
         except Exception as e:
-            logger.debug("tv_chart_fallback", pair=pair, error=str(e))
+            logger.warning("tv_chart_fallback", pair=pair, error=str(e))
 
         # Fallback to matplotlib chart if TradingView failed
         if not chart_b64:
