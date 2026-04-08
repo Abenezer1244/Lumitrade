@@ -64,8 +64,9 @@ class LumitradeConfig(BaseSettings):
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
     # 85-trade analysis: 80-90% confidence has 14% WR (-$6,921). Cap execution.
     max_confidence: Decimal = Decimal("0.80")
-    # 85-trade analysis: 18:00-20:00 UTC has 0% WR (-$6,477). Block trading.
-    no_trade_hours_utc: list[int] = [18, 19, 20]
+    # 17-23 UTC blocked: late NY session + dead zone. 85-trade data + industry research confirm
+    # low volume, wide spreads, choppy moves. Main session filter in main.py blocks >=17 UTC.
+    no_trade_hours_utc: list[int] = [17, 18, 19, 20, 21, 22, 23]
     max_open_trades: int = 100
     max_positions_per_pair: int = 10
     max_position_units: int = 500_000

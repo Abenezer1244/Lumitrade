@@ -328,17 +328,21 @@ class OrchestratorService:
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
-                # Session time filter — only trade during profitable hours
+                # Session time filter — trade Asian + London + London/NY overlap
+                # 00-05 UTC: Asian session (100% WR in 85-trade data)
+                # 05-13 UTC: London session (strong)
+                # 13-17 UTC: London/NY overlap (peak liquidity, tightest spreads per BIS data)
+                # 17-24 UTC: late NY + dead zone (0% WR 18-20 UTC, confirmed by industry research)
                 current_hour = datetime.now(timezone.utc).hour
-                if current_hour >= 13 or current_hour < 0:
-                    logger.info("session_filter_skip", hour=current_hour, reason="Outside 00-13 UTC")
+                if current_hour >= 17:
+                    logger.info("session_filter_skip", hour=current_hour, reason="Outside 00-17 UTC")
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
-                # Per-pair optimal session windows (from data analysis)
+                # Per-pair optimal session windows (from data + research)
                 _pair_hours = {
-                    "USD_JPY": (0, 8),    # Asian only — 80% WR
-                    "USD_CAD": (8, 13),   # London only — 100% WR
+                    "USD_JPY": (0, 17),   # Asian + London/NY overlap — JPY active both sessions
+                    "USD_CAD": (8, 17),   # London + NY overlap — CAD most liquid during NY
                     "AUD_USD": (0, 8),    # Asian only — best in early session
                     "NZD_USD": (0, 8),    # Asian only — best in early session
                 }
