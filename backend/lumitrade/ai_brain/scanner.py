@@ -236,24 +236,26 @@ class SignalScanner:
             except Exception as e:
                 logger.warning("chart_generation_skipped", pair=pair, error=str(e))
 
-        # ── STEP 3: TradingView consensus — cheap 26-indicator second opinion ──
+        # ── STEP 3: TradingView consensus — advisory context for Claude ──
+        # TV consensus is passed to Claude as context, NOT as a hard blocker.
+        # Claude sees the chart + TV data and makes its own decision.
         tv_data = await self._tv_signal.get_recommendation(pair)
         tv_context = self._tv_signal.format_for_prompt(tv_data)
         if tv_data:
-            # If TV strongly disagrees with our only allowed direction (BUY), skip
+            tv_rec = tv_data.get("recommendation", "")
             if self.config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
-                logger.warning(
-                    "tradingview_conflict_skip",
+                logger.info(
+                    "tradingview_conflict_advisory",
                     pair=pair,
-                    tv_recommendation=tv_data.get("recommendation", ""),
+                    tv_recommendation=tv_rec,
+                    note="passed_to_claude_as_context",
                 )
-                if self._events:
-                    self._events.publish(
-                        "SCANNER", "TV_CONFLICT",
-                        f"Skipping {pair} — TradingView says {tv_data['recommendation']} (conflicts with BUY)",
-                        pair=pair, severity="WARNING",
-                    )
-                return None
+                # Add conflict warning to context — Claude decides
+                boost_context.append(
+                    f"WARNING: TradingView 26-indicator consensus says {tv_rec}. "
+                    f"This conflicts with a BUY. Only recommend BUY if the chart "
+                    f"shows a clear reversal pattern or strong support bounce."
+                )
             boost_context.append(tv_context)
 
         # ── STEP 4: Supplementary context (analyst briefing + sentiment) ──
