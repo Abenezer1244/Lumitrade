@@ -130,6 +130,7 @@ class PromptBuilder:
         sentiment_context: str = "",
         boost_lessons: list[str] | None = None,
         has_chart: bool = False,
+        quant_signal=None,
     ) -> str:
         """Assemble the full user prompt from a MarketSnapshot."""
         ind = snapshot.indicators
@@ -236,6 +237,32 @@ class PromptBuilder:
                 "",
                 "Step 3: Use H1 for structure (is price at support/resistance?)",
                 "Step 4: Use M15 for precise entry timing only.",
+            ])
+
+        # Inject quant signal context if available
+        if quant_signal and quant_signal.action != "HOLD":
+            sections.extend([
+                "",
+                "=== QUANTITATIVE ENGINE SIGNAL (MATH-BASED) ===",
+                f"The quant engine recommends: {quant_signal.action} {snapshot.pair}",
+                f"Score: {quant_signal.score:.2f}/1.00",
+                f"Strategies that agree: {', '.join(quant_signal.strategies_fired)}",
+                f"Reasoning: {quant_signal.reasoning}",
+                f"Proposed SL: {quant_signal.stop_loss}",
+                "",
+                "YOUR ROLE: You are the FILTER. The quant engine made the math decision.",
+                "You review the chart and context to APPROVE or REJECT this trade.",
+                "- If the chart CONFIRMS the quant signal → APPROVE (return same action)",
+                "- If the chart shows danger the math missed → REJECT (return HOLD)",
+                "- You may ADJUST the entry/SL if the chart shows a better level",
+                "- Check your trade history — if this direction keeps losing, REJECT",
+                "",
+                "Reasons to REJECT (return HOLD):",
+                "  - Chart shows price at major resistance/support against the trade",
+                "  - Your past trades in this direction consistently lost money",
+                "  - News event within 30 minutes could cause volatility",
+                "  - RSI divergence warns of reversal against the trade",
+                "  - The breakout the math detected looks like a false breakout on chart",
             ])
 
         sections.extend([

@@ -26,6 +26,7 @@ from .confidence import ConfidenceAdjuster
 from .fallback import RuleBasedFallback
 from .lesson_filter import LessonFilter
 from .prompt_builder import PromptBuilder
+from .quant_engine import QuantEngine
 from .sentiment_analyzer import SentimentAnalyzer
 from .tradingview_signal import TradingViewSignal
 from .validator import AIOutputValidator, ValidationResult
@@ -72,6 +73,7 @@ class SignalScanner:
         self._lesson_filter = LessonFilter(db, config)
         self._chart_gen = ChartGenerator()
         self._tv_signal = TradingViewSignal()
+        self._quant = QuantEngine()
         self._pair_locks: dict[str, asyncio.Lock] = {}
 
     async def scan_loop(self) -> None:
@@ -203,9 +205,37 @@ class SignalScanner:
         # Collect boost messages for prompt injection
         boost_context = buy_boosts + sell_boosts
 
-        # ── STEP 2: CHART FIRST — primary input for Claude's visual analysis ──
-        # TradingView chart already shows EMAs, RSI, BBands, candlesticks, volume,
-        # support/resistance — everything Claude needs in one image.
+        # ── STEP 2: QUANTITATIVE ENGINE — math decides, not vibes ──
+        # 3 strategies vote: EMA trend, Bollinger reversion, Momentum breakout
+        # Requires 2+ strategies to agree before we spend money on Claude
+        quant_signal = self._quant.evaluate(snapshot)
+
+        if self._events:
+            self._events.publish(
+                "QUANT", "SIGNAL",
+                f"Quant: {quant_signal.action} {pair} (score={quant_signal.score:.2f}, "
+                f"strategies={quant_signal.strategies_fired})",
+                pair=pair,
+            )
+
+        if quant_signal.action == "HOLD":
+            logger.info(
+                "quant_hold_skip",
+                pair=pair,
+                score=f"{quant_signal.score:.2f}",
+                reason=quant_signal.reasoning,
+            )
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} — quant engine says HOLD ({quant_signal.reasoning})",
+                    pair=pair, severity="WARNING",
+                )
+            # Still save as HOLD signal for tracking
+            await self._save_hold_signal(pair, quant_signal)
+            return None
+
+        # ── STEP 3: CHART SCREENSHOT — visual context for Claude's review ──
         chart_b64 = ""
         try:
             chart_bytes = await generate_tv_chart(pair)
@@ -236,111 +266,56 @@ class SignalScanner:
             except Exception as e:
                 logger.warning("chart_generation_skipped", pair=pair, error=str(e))
 
-        # ── STEP 3: TradingView consensus — advisory context for Claude ──
-        # TV consensus is passed to Claude as context, NOT as a hard blocker.
-        # Claude sees the chart + TV data and makes its own decision.
+        # ── STEP 4: TradingView consensus + supplementary context ──
         tv_data = await self._tv_signal.get_recommendation(pair)
         tv_context = self._tv_signal.format_for_prompt(tv_data)
         if tv_data:
-            tv_rec = tv_data.get("recommendation", "")
-            if self.config.buy_only_mode and self._tv_signal.conflicts_with_action(tv_data, "BUY"):
-                logger.info(
-                    "tradingview_conflict_advisory",
-                    pair=pair,
-                    tv_recommendation=tv_rec,
-                    note="passed_to_claude_as_context",
-                )
-                # Add conflict warning to context — Claude decides
-                boost_context.append(
-                    f"WARNING: TradingView 26-indicator consensus says {tv_rec}. "
-                    f"This conflicts with a BUY. Only recommend BUY if the chart "
-                    f"shows a clear reversal pattern or strong support bounce."
-                )
             boost_context.append(tv_context)
 
-        # ── STEP 4: Supplementary context (analyst briefing + sentiment) ──
         analyst_briefing = ""
         if self._subagents:
             try:
-                briefing_result = await self._subagents.get_analyst_briefing(
-                    snapshot,
-                )
+                briefing_result = await self._subagents.get_analyst_briefing(snapshot)
                 analyst_briefing = briefing_result.get("briefing", "")
-                if self._events and analyst_briefing:
-                    self._events.publish(
-                        "SA-01", "BRIEFING",
-                        f"Market briefing for {pair}",
-                        detail=analyst_briefing[:500], pair=pair,
-                    )
             except Exception as e:
-                logger.warning(
-                    "analyst_briefing_failed", error=str(e),
-                )
+                logger.warning("analyst_briefing_failed", error=str(e))
 
         sentiment_context = ""
         try:
             sentiment = await self._sentiment.analyze(
-                pairs=[pair],
-                calendar_events=snapshot.news_events,
+                pairs=[pair], calendar_events=snapshot.news_events,
             )
             if sentiment:
                 lines = [f"{c}: {s.value if hasattr(s, 'value') else str(s)}" for c, s in sentiment.items()]
                 sentiment_context = "Currency sentiment: " + " | ".join(lines)
-                if self._events:
-                    self._events.publish(
-                        "SENTIMENT", "ANALYSIS",
-                        f"Sentiment for {pair}: {sentiment_context}",
-                        pair=pair,
-                    )
         except Exception as e:
             logger.warning("sentiment_analysis_failed", pair=pair, error=str(e))
 
         has_chart = bool(chart_b64)
 
-        # 4. Build prompt (includes analyst briefing + sentiment + lesson boosts + chart flag)
+        # Inject quant signal into boost context so Claude knows what math says
+        boost_context.append(
+            f"QUANT ENGINE SIGNAL: {quant_signal.action} (score={quant_signal.score:.2f}). "
+            f"Strategies: {', '.join(quant_signal.strategies_fired)}. "
+            f"Reasoning: {quant_signal.reasoning}. "
+            f"Proposed SL: {quant_signal.stop_loss}."
+        )
+
+        # ── STEP 5: CLAUDE AS FILTER — approve or reject the quant signal ──
         prompt = await self._prompt_builder.build_prompt(
             snapshot,
             analyst_briefing=analyst_briefing,
             sentiment_context=sentiment_context,
             boost_lessons=boost_context if boost_context else None,
             has_chart=has_chart,
+            quant_signal=quant_signal,
         )
         system = self._prompt_builder.get_system_prompt()
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
 
-        # 5. Call Claude (with retry + fallback; use multimodal if chart available)
         proposal = await self._call_ai_with_retry(
             pair, system, prompt, prompt_hash, snapshot, chart_b64=chart_b64,
         )
-
-        # 5b. Signal alignment check — skip when Claude has a TradingView chart
-        # With chart: Claude's visual analysis IS the alignment check
-        # Without chart: require 3/5 numeric indicators to confirm
-        if proposal and (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) != "HOLD":
-            alignment = self._check_signal_alignment(proposal, snapshot)
-            if has_chart:
-                logger.info(
-                    "signal_alignment_chart_mode",
-                    pair=pair,
-                    action=(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
-                    alignment_score=alignment,
-                    note="chart_present_alignment_advisory_only",
-                )
-            elif alignment < 3:
-                logger.warning(
-                    "signal_alignment_insufficient",
-                    pair=pair,
-                    action=(proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)),
-                    alignment_score=alignment,
-                    required=3,
-                )
-                if self._events:
-                    self._events.publish(
-                        "SCANNER", "ALIGNMENT_FAIL",
-                        f"Rejected {pair} — only {alignment}/3 indicators align",
-                        pair=pair, severity="WARNING",
-                    )
-                proposal = None
 
         # 6. Publish signal result
         if proposal and self._events:
@@ -618,6 +593,35 @@ class SignalScanner:
             })
         except Exception as e:
             logger.error("signal_save_failed", error=str(e))
+
+    async def _save_hold_signal(self, pair: str, quant_signal) -> None:
+        """Save a HOLD signal from the quant engine for tracking."""
+        try:
+            await self._db.insert("signals", {
+                "id": str(uuid4()),
+                "account_id": self.config.account_uuid,
+                "pair": pair,
+                "action": "HOLD",
+                "confidence_raw": "0",
+                "confidence_adjusted": "0",
+                "confidence_adjustment_log": {},
+                "entry_price": str(quant_signal.entry_price),
+                "stop_loss": "0",
+                "take_profit": "0",
+                "summary": f"Quant HOLD: {quant_signal.reasoning}",
+                "reasoning": quant_signal.reasoning,
+                "indicators_snapshot": {},
+                "timeframe_scores": {},
+                "key_levels": [],
+                "session": "",
+                "spread_pips": "0",
+                "executed": False,
+                "generation_method": "QUANT",
+                "ai_prompt_hash": "",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass  # Non-critical
 
     async def _log_ai_interaction(
         self, prompt_hash: str, response: str, attempt: int
