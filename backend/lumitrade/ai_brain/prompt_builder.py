@@ -18,15 +18,37 @@ MAX_NEWS_TITLE_LEN = 100
 ALLOWED_CHARS = re.compile(r"[^a-zA-Z0-9 .,\-()%/]")
 
 SYSTEM_PROMPT = """You are Lumitrade's professional forex trading analyst.
-Your role: analyze multi-timeframe market data and generate high-probability
-trading signals with disciplined risk management.
+Your role: analyze TradingView charts and market data to generate
+high-probability trading signals with disciplined risk management.
+
+PROFESSIONAL TRADING PRINCIPLES (from institutional best practices):
+- Trade what you SEE on the chart, not what you THINK should happen.
+- A breakout that fails is a reversal signal — respect it.
+- High confidence is earned by MULTIPLE confirmations, not one strong signal.
+- If your past trades in this direction lost money, demand extra confirmation.
+- The best trade is often NO trade. HOLD preserves capital for better setups.
+- Support/resistance levels that have been tested 3+ times are strongest.
+- False breakouts are more common than real ones — wait for the retest.
+- Divergence between price and RSI is one of the strongest reversal signals.
+- Trade with the higher timeframe trend unless M15 shows a CLEAR reversal.
+- Never chase a move that already happened. If you missed the entry, wait.
+
+LEARNING FROM YOUR HISTORY:
+You will receive your own trade history on this pair. STUDY IT CAREFULLY:
+- If your BUYs consistently lose on this pair, DO NOT BUY unless the chart
+  shows overwhelming evidence (reversal pattern + volume + key level bounce).
+- If your SELLs consistently win, the market has a directional bias — respect it.
+- High confidence in the past did NOT mean high win rate. A 0.85 confidence
+  BUY that loses is WORSE than a 0.70 HOLD that preserves capital.
+- Your track record is data. Use it. Adjust your aggression based on results.
 
 CRITICAL RULES:
 1. Respond ONLY with valid JSON matching the exact schema below.
 2. No text outside the JSON object. No markdown. No code fences.
 3. If conditions are unclear or conflicting — return action: HOLD.
 4. Never force a trade. Capital preservation over opportunity.
-5. confidence must reflect genuine conviction — never inflate it.
+5. confidence must reflect genuine conviction weighted by your track record.
+6. If your history shows losses in this direction, lower your confidence by 0.10-0.20.
 
 REQUIRED JSON SCHEMA:
 {
@@ -38,7 +60,7 @@ REQUIRED JSON SCHEMA:
   "recommended_risk_pct": 0.0025-0.02,
   "risk_reasoning": "1-2 sentences explaining position size recommendation",
   "summary": "2-4 plain English sentences. No jargon.",
-  "reasoning": "Full technical analysis. Min 100 words. Cite values.",
+  "reasoning": "Full technical analysis. Min 100 words. Cite values. MUST reference your trade history on this pair.",
   "timeframe_h4_score": 0.0-1.0,
   "timeframe_h1_score": 0.0-1.0,
   "timeframe_m15_score": 0.0-1.0,
@@ -49,22 +71,11 @@ REQUIRED JSON SCHEMA:
   "signal_alignment_count": 0-5
 }
 
-SIGNAL ALIGNMENT RULE:
-Before recommending BUY or SELL, count how many of these 5 indicators
-confirm your direction:
-1. EMA20 vs EMA50 alignment
-2. RSI in favorable zone (not overbought for BUY, not oversold for SELL)
-3. MACD histogram confirms direction
-4. Price above/below Bollinger mid
-5. Price above/below EMA200
-Set signal_alignment_count to the number that confirm. If fewer than 3
-confirm, you MUST return HOLD. Do not force a trade with weak alignment.
-
 RISKS TO WATCH:
 Always include 2-3 specific risks in risks_to_watch. Examples:
 - "RSI approaching overbought at 68 — momentum may stall"
 - "Price near resistance at 150.20 — rejection likely"
-- "Low volume suggests move may not sustain"
+- "Past 3 BUYs on this pair lost — pattern may repeat"
 These help the system monitor and exit early if conditions change."""
 
 
@@ -127,6 +138,9 @@ class PromptBuilder:
         # Get performance insights (Addition Set 1B)
         perf_insights = await self._get_performance_insights(snapshot.pair)
 
+        # Get detailed trade history for this pair — Claude learns from past results
+        trade_history = await self._get_trade_history(snapshot.pair)
+
         # Format performance context (Addition Set 2C)
         perf_context = self._format_performance_context(
             snapshot.performance_context
@@ -175,8 +189,8 @@ class PromptBuilder:
             "=== PERFORMANCE CONTEXT ===",
             perf_context,
             "",
-            "=== RECENT TRADES ON THIS PAIR (last 3) ===",
-            _format_recent_trades(snapshot.recent_trades),
+            "=== YOUR TRADE HISTORY ON THIS PAIR ===",
+            trade_history,
             "",
             "=== PERFORMANCE INSIGHTS ===",
             perf_insights,
@@ -303,6 +317,78 @@ class PromptBuilder:
             )
 
         return "\n".join(sections)
+
+    async def _get_trade_history(self, pair: str) -> str:
+        """
+        Get detailed trade history for this pair — BUY and SELL results separately.
+        Claude sees its own track record and learns from wins/losses.
+        """
+        if not self.db:
+            return "  No trade history available."
+
+        try:
+            trades = await self.db.select(
+                "trades",
+                {"pair": pair, "status": "CLOSED"},
+                order="closed_at",
+                limit=10,
+            )
+        except Exception:
+            return "  No trade history available."
+
+        if not trades:
+            return "  No closed trades on this pair yet."
+
+        # Separate by direction
+        buy_trades = [t for t in trades if t.get("direction") == "BUY"]
+        sell_trades = [t for t in trades if t.get("direction") == "SELL"]
+
+        lines = []
+
+        for direction, dir_trades in [("BUY", buy_trades), ("SELL", sell_trades)]:
+            if not dir_trades:
+                lines.append(f"  {direction}: No history")
+                continue
+
+            wins = [t for t in dir_trades if t.get("outcome") == "WIN"]
+            losses = [t for t in dir_trades if t.get("outcome") == "LOSS"]
+            total_pnl = sum(float(t.get("pnl_usd") or 0) for t in dir_trades)
+            wr = len(wins) / len(dir_trades) * 100 if dir_trades else 0
+
+            lines.append(
+                f"  {direction}: {len(dir_trades)} trades | "
+                f"Win rate: {wr:.0f}% | "
+                f"Total P&L: ${total_pnl:+,.0f}"
+            )
+
+            # Show last 3 trades with detail
+            recent = dir_trades[-3:]
+            for t in recent:
+                pnl = float(t.get("pnl_usd") or 0)
+                conf = t.get("confidence_score") or "?"
+                outcome = t.get("outcome") or "?"
+                dt = (t.get("closed_at") or "")[:10]
+                lines.append(
+                    f"    {dt} | {outcome} | ${pnl:+,.0f} | confidence: {conf}"
+                )
+
+        # Add explicit warning if one direction is clearly losing
+        for direction, dir_trades in [("BUY", buy_trades), ("SELL", sell_trades)]:
+            if len(dir_trades) >= 3:
+                total_pnl = sum(float(t.get("pnl_usd") or 0) for t in dir_trades)
+                losses = [t for t in dir_trades if t.get("outcome") == "LOSS"]
+                wr = (len(dir_trades) - len(losses)) / len(dir_trades)
+                if wr < 0.35 and total_pnl < -200:
+                    lines.append("")
+                    lines.append(
+                        f"  *** WARNING: {direction} on {pair} has {wr:.0%} win rate "
+                        f"and ${total_pnl:+,.0f} total P&L. "
+                        f"Think twice before entering {direction}. "
+                        f"If the chart shows {direction}, demand VERY strong "
+                        f"confirmation (clear reversal, key level bounce, volume). ***"
+                    )
+
+        return "\n".join(lines)
 
     async def _get_performance_insights(self, pair: str) -> str:
         """
