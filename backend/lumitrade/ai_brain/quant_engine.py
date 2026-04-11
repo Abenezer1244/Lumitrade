@@ -41,7 +41,15 @@ class QuantEngine:
     def evaluate(self, snapshot: MarketSnapshot) -> QuantSignal:
         """
         Run all strategies against the snapshot. Return a composite signal.
-        Requires 2+ strategies to agree for a BUY/SELL signal.
+
+        Voting logic (the strategies target different market regimes):
+        - 2+ strategies agree on a direction → STRONG signal (score 0.70-1.0)
+        - 1 strategy fires with score >= 0.65 → MODERATE signal (score 0.55-0.75)
+        - No agreement OR top score < 0.65 → HOLD
+
+        EMA Trend is the primary strategy (trending markets are most common).
+        Bollinger Reversion wins when market ranges at extremes.
+        Momentum Breakout confirms strong directional moves.
         """
         ind = snapshot.indicators
         pair = snapshot.pair
@@ -54,33 +62,54 @@ class QuantEngine:
 
         signals = [ema_signal, bb_signal, mom_signal]
 
-        # Count BUY and SELL votes
+        # Count BUY and SELL votes (non-HOLD only)
         buy_votes = [s for s in signals if s["action"] == "BUY"]
         sell_votes = [s for s in signals if s["action"] == "SELL"]
 
         buy_score = sum(s["score"] for s in buy_votes)
         sell_score = sum(s["score"] for s in sell_votes)
 
-        # Require 2+ strategies to agree
+        # Decision tree: 2+ agreement > single strong > HOLD
+        action = "HOLD"
+        score = 0.0
+        fired: list[str] = []
+        sl = Decimal("0")
+        reasoning = ""
+
+        # Tier 1: Multi-strategy agreement (strongest signal)
         if len(buy_votes) >= 2 and buy_score > sell_score:
             action = "BUY"
-            score = min(buy_score / 3, 1.0)  # Normalize to 0-1
+            score = min(0.70 + (buy_score / 3) * 0.30, 1.0)
             fired = [s["name"] for s in buy_votes]
             sl = self._calculate_sl(ind, price, pair, "BUY")
-            reasoning = " | ".join(s["reason"] for s in buy_votes)
+            reasoning = "MULTI: " + " | ".join(s["reason"] for s in buy_votes)
         elif len(sell_votes) >= 2 and sell_score > buy_score:
             action = "SELL"
-            score = min(sell_score / 3, 1.0)
+            score = min(0.70 + (sell_score / 3) * 0.30, 1.0)
             fired = [s["name"] for s in sell_votes]
             sl = self._calculate_sl(ind, price, pair, "SELL")
-            reasoning = " | ".join(s["reason"] for s in sell_votes)
-        else:
-            action = "HOLD"
-            score = 0.0
-            fired = []
-            sl = Decimal("0")
+            reasoning = "MULTI: " + " | ".join(s["reason"] for s in sell_votes)
+        # Tier 2: Single strong strategy (score >= 0.65) with no opposition
+        elif buy_votes and len(sell_votes) == 0:
+            best = max(buy_votes, key=lambda s: s["score"])
+            if best["score"] >= 0.65:
+                action = "BUY"
+                score = 0.55 + (best["score"] - 0.65) * 0.5
+                fired = [best["name"]]
+                sl = self._calculate_sl(ind, price, pair, "BUY")
+                reasoning = f"SOLO({best['name']}): {best['reason']}"
+        elif sell_votes and len(buy_votes) == 0:
+            best = max(sell_votes, key=lambda s: s["score"])
+            if best["score"] >= 0.65:
+                action = "SELL"
+                score = 0.55 + (best["score"] - 0.65) * 0.5
+                fired = [best["name"]]
+                sl = self._calculate_sl(ind, price, pair, "SELL")
+                reasoning = f"SOLO({best['name']}): {best['reason']}"
+
+        if action == "HOLD":
             reasons = [f"{s['name']}={s['action']}({s['score']:.2f})" for s in signals]
-            reasoning = f"No consensus: {', '.join(reasons)}"
+            reasoning = f"No signal: {', '.join(reasons)}"
 
         result = QuantSignal(
             action=action,
