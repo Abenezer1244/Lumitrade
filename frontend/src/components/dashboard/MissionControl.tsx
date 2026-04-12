@@ -247,13 +247,19 @@ export default function MissionControl() {
           <span className="text-xs font-bold" style={{ color: "var(--color-text-primary)", fontFamily: "'PT Serif', serif" }}>
             Mission Control
           </span>
+          <span
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold tracking-widest"
+            style={{ background: "rgba(59,130,246,0.15)", color: "#3D8EFF" }}
+          >
+            PAPER
+          </span>
           {marketOpen ? (
             <span
               className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-bold tracking-widest"
               style={{ background: "var(--color-profit-dim)", color: "var(--color-profit)" }}
             >
-              <span className="w-1 h-1 rounded-full" style={{ backgroundColor: "var(--color-profit)" }} />
-              LIVE
+              <span className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-profit)" }} />
+              MARKET OPEN
             </span>
           ) : (
             <span
@@ -261,7 +267,7 @@ export default function MissionControl() {
               style={{ background: "var(--color-loss-dim)", color: "var(--color-loss)" }}
             >
               <span className="w-1 h-1 rounded-full" style={{ backgroundColor: "var(--color-loss)" }} />
-              CLOSED
+              MARKET CLOSED
             </span>
           )}
         </div>
