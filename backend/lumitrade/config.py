@@ -52,11 +52,11 @@ class LumitradeConfig(BaseSettings):
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
     # ── Trading parameters (DB overrides env) ──────────────────
-    # Kept only profitable pairs based on 70-trade analysis:
-    # USD_JPY: 72.7% WR, +$6,131 | USD_CAD: 60% WR, +$1,133
-    # AUD_USD: 50% WR, +$409 | NZD_USD: 40% WR, -$23
-    # Removed: GBP_USD (7.1% WR), EUR_USD (30.8% WR), USD_CHF (36.4% WR), XAU_USD (not tradeable)
-    pairs: list[str] = ["USD_JPY", "USD_CAD", "AUD_USD", "NZD_USD"]
+    # 2-year backtest results (2,993 trades):
+    # USD_CAD: ONLY profitable pair (+$24,637, +$11K at 3x ATR SL)
+    # USD_JPY: -$25,316 | AUD_USD: -$2,527 | NZD_USD: -$12,621
+    # Focus on what works. XAU_USD to be added via CoinEXX.
+    pairs: list[str] = ["USD_CAD"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)

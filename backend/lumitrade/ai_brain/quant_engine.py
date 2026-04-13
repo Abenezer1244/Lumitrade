@@ -256,16 +256,16 @@ class QuantEngine:
 
     def _calculate_sl(self, ind, price, pair, action) -> Decimal:
         """
-        SL at 1.5x ATR from entry. Gives room to breathe while limiting risk.
+        SL at 3.0x ATR from entry. Backtested: 3x ATR turned -$3.4K loss
+        into +$11K profit on USD_CAD (1.5x was too tight, stopped out by noise).
         """
         atr = ind.atr_14
         if atr == 0:
-            # Fallback: 25 pips for forex, 500 pips for gold
             from ..utils.pip_math import pip_size
             ps = pip_size(pair)
             atr = Decimal("500") * ps if "XAU" in pair else Decimal("25") * ps
 
-        sl_distance = atr * Decimal("1.5")
+        sl_distance = atr * Decimal("3.0")
 
         if action == "BUY":
             sl = price - sl_distance

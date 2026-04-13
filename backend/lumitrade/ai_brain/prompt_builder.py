@@ -281,7 +281,7 @@ class PromptBuilder:
             "  - This means some trades run for 50, 100, even 200+ pips.",
             "  - Our edge is NOT win rate — it's making winners 3-5x bigger than losers.",
             f"  Current ATR(14): {ind.atr_14} — this is the average range per candle.",
-            "  - Set SL at 1.5x ATR from entry (gives room to breathe).",
+            "  - Set SL at 3.0x ATR from entry (backtested: wider SL = higher profit).",
             "  - A wider SL means fewer stop-outs from normal volatility.",
             "  - Only trade setups where you believe a sustained move is likely.",
             "",
