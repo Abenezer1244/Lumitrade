@@ -80,6 +80,8 @@ class IndicatorSet:
     bb_mid: Decimal
     bb_lower: Decimal
     computed_at: datetime
+    # ADX for trend strength: <25 = ranging, >25 = trending
+    adx_14: Decimal = Decimal("0")
 
     def to_dict(self) -> dict:
         return {k: str(v) for k, v in self.__dict__.items()}

@@ -101,6 +101,15 @@ def compute_indicators(candles: list[Candle]) -> IndicatorSet:
     else:
         bb_lower = bb_mid = bb_upper = None
 
+    # ADX(14) — trend strength: <25 = ranging, >25 = trending
+    adx = ta.adx(high, low, close, length=14)
+    adx_val = None
+    if adx is not None and len(adx) > 0:
+        # pandas-ta returns DataFrame with columns: ADX_14, DMP_14, DMN_14
+        adx_col = [c for c in adx.columns if "ADX" in c]
+        if adx_col:
+            adx_val = adx[adx_col[0]].iloc[-1]
+
     return IndicatorSet(
         rsi_14=_to_decimal(rsi_val),
         macd_line=_to_decimal(macd_line),
@@ -114,6 +123,7 @@ def compute_indicators(candles: list[Candle]) -> IndicatorSet:
         bb_mid=_to_decimal(bb_mid),
         bb_lower=_to_decimal(bb_lower),
         computed_at=datetime.now(timezone.utc),
+        adx_14=_to_decimal(adx_val),
     )
 
 
