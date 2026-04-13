@@ -45,6 +45,13 @@ class LumitradeConfig(BaseSettings):
     sendgrid_api_key: str = Field(validation_alias="SENDGRID_API_KEY")
     alert_email_to: str = Field(validation_alias="ALERT_EMAIL_TO")
 
+    # ── IG Markets / tastyfx (gold trading) ──────────────────
+    ig_api_key: str = Field(validation_alias="IG_API_KEY", default="")
+    ig_username: str = Field(validation_alias="IG_USERNAME", default="")
+    ig_password: str = Field(validation_alias="IG_PASSWORD", default="")
+    ig_is_demo: bool = Field(validation_alias="IG_IS_DEMO", default=True)
+    ig_pairs: list[str] = ["XAU_USD"]
+
     # ── Instance ───────────────────────────────────────────────
     instance_id: str = Field(validation_alias="INSTANCE_ID")
     trading_mode: str = Field(validation_alias="TRADING_MODE", default="PAPER")
