@@ -30,3 +30,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/lumitrade.conf"]
+# Cache bust 2026-04-21T08:11:13Z
