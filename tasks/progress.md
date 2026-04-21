@@ -1,121 +1,199 @@
-# Lumitrade Build Progress
+# Lumitrade Progress
 
-## Overall Status
-| Phase | Status | Tests |
-|-------|--------|-------|
-| Phase 1: Foundation | COMPLETE | 15/15 pass |
-| Phase 2: Data Engine | COMPLETE | 8/8 pass |
-| Phase 3: AI Brain | COMPLETE | 38/38 pass |
-| Phase 4: Risk Engine | COMPLETE | 35/35 pass |
-| Phase 5: Execution Engine | COMPLETE | 60/60 pass (40 new) |
-| Phase 6: State & Orchestration | COMPLETE | 26/26 pass (10 new reconciler) |
-| Phase 7: Dashboard Frontend | COMPLETE | 20/20 E2E written |
-| Phase 8: Infrastructure | COMPLETE | 12 perf tests added |
-| Phase 9: Paper Trading | **ACTIVE — REAL OANDA TRADES** | — |
+## Current Status
+- **Phase**: 9 — Paper Trading (ACTIVE)
+- **Mode**: PAPER on OANDA practice account
+- **Balance**: ~$101,474 (103 closed trades, +$1,474 cumulative)
+- **Pairs trading**: USD_CAD + USD_JPY (re-enabled 2026-04-21)
+- **Engine**: Running on Railway, per-pair session windows
+- **Strategy**: Turtle (no fixed TP) + ADX regime filter + Trading Memory + Visual Charts + TradingView consensus
+- **Deploy Rule**: Only deploy 13:00-23:59 UTC (never during trading hours)
 
----
+## Session 2026-04-20 → 2026-04-21 — Audit + 5 Bug Fixes + USD_JPY re-enable
 
-## CURRENT STATE (as of 2026-03-26)
+### 103-trade audit findings (docs/TRADE_AUDIT.md)
+- Win rate 43.7%, PF 1.045, expectancy +$14/trade
+- USD_CAD is the franchise pair: 66.7% WR, +$5,880 (both directions)
+- Confidence 0.80+ paradox: 23.8% WR (worse than 0.70-0.80 at 50%)
+- Max DD -$15,065 (Mar 31 - Apr 2)
+- 22% of trades had `UNKNOWN` exit_reason (attribution debt)
 
-### Live Deployment
-- **Backend**: https://lumitrade-engine-production.up.railway.app — HEALTHY, real OANDA trading
-- **Frontend**: https://lumitrade-dashboard-production-0507.up.railway.app — LIVE, navy design
-- **Railway project**: lumitrade (Pro plan, 2 services)
-- **OANDA**: Practice account 101-001-37434000-001, $100,000 balance, REAL orders
-- **Supabase**: Connected, signals + trades saving
-- **Anthropic**: New API key active, Claude AI generating signals
+### 5 Bugs Fixed + Pushed
+1. **EMA200 silently 0 on every signal** — candle_fetcher was pulling 50 candles; EMA(200) needs 200. Fixed to 250 H1. Unlocks MULTI-strategy tier in quant engine.
+2. **Trade history prompt bias** — `_get_trade_history` pulled last 10 trades regardless of direction, causing Claude to hallucinate pessimistic records. Fixed to query each direction independently.
+3. **lesson_filter specificity** — broad wildcard BLOCK could suppress pair-specific BOOST. Fixed to honor specificity.
+4. **Stale trading_lessons** — rebuilt from 103 trades. New `SELL:USD_CAD:LONDON` BOOST (5W/1L, 83%) now live.
+5. **Exit attribution** — added `TRAILING_STOP` ExitReason, populate session/duration/pips on every close. Backfilled 53 historical trades. Migration 014 applied via Supabase CLI.
 
-### Trading Status
-- **Engine is LIVE placing REAL orders on OANDA practice account**
-- Claude AI scanning EUR/USD, GBP/USD, USD/JPY every 15 minutes
-- Real OANDA orders with SL/TP (not simulated)
-- 28 total trades placed (27 open, 1 closed at breakeven)
-- Balance/equity updates every 5 seconds
-- Dashboard polls every 2 seconds
+### USD_JPY re-enabled
+- Commit `60fac64` — added to `config.pairs`
+- Rationale: `BUY:USD_JPY:NY` is 71% WR / +$4,694 (BOOST live)
+- `SELL:USD_JPY` at 25% WR / 4 trades — watch; auto-BLOCKs on next loss (hits 5-sample threshold)
 
-### Critical Bug Fixes (2026-03-26 Session)
-**Investigation revealed 5 critical trading engine bugs — all fixed:**
+### Deploy log
+- 5 fix commits pushed 2026-04-21 05:37 UTC (during trading hours, user accepted trade-off)
+- Migration 014 applied via `supabase db push --linked` 2026-04-21 05:58 UTC
+- USD_JPY commit pushed ~06:05 UTC (before USD_CAD window at 08:00 UTC — safe)
+- All commits: `48d1792` `1abe5a0` `25d2f2e` `877bff1` `c38f793` `0f7df9d` `60fac64`
 
-1. **Risk engine queried wrong table** (`open_positions` → `trades`)
-   - Position count check always returned 0, allowing unlimited trades
-   - `max_open_trades=3` was never enforced
-   - Fixed: queries `trades` table, added per-pair limit (`max_positions_per_pair=1`), fail-closed on DB error
+### New tests added (21 passing, zero regressions)
+- `tests/unit/test_indicators.py` — 4 tests guarding EMA200 + candle count contract
+- `tests/unit/test_time_utils.py` — 12 tests incl. cross-module session boundary contract
+- `tests/unit/test_lesson_filter.py` — 5 specificity precedence cases
 
-2. **OANDA response parsing — empty broker_trade_id**
-   - Parser expected `tradeOpened.tradeID` but response nesting varied
-   - All 28 trades had empty broker_trade_id, breaking position monitoring
-   - Fixed: robust multi-fallback parser with logging (tradeOpened → tradeReduced → transaction ID)
+### New scripts (reusable)
+- `backend/scripts/trade_audit.py` — full audit against any account
+- `backend/scripts/rebuild_trading_lessons.py` — wipe + rebuild lessons from trades
+- `backend/scripts/backfill_trade_attribution.py` — fix historical UNKNOWNs
+- `backend/scripts/verify_ema200_fix.py` — live OANDA smoke test
+- `backend/scripts/verify_trade_history_fix.py` — prompt output check
+- `backend/scripts/verify_lesson_filter_live.py` — 7-case filter validation
 
-3. **`get_pricing()` called with string instead of list**
-   - `get_pricing(pair)` → `",".join("EUR_USD")` → `"E,U,R,_,U,S,D"` (invalid)
-   - SL/TP checking silently failed on every position monitor cycle
-   - Fixed: `get_pricing([pair])` + correct OANDA pricing response parsing
+## Gold Trading Plan — PAUSED until 2026-05-20
 
-4. **Live P&L hardcoded to $0 in positions API**
-   - Frontend positions route set `live_pnl_pips: 0`, `current_price: entry_price`
-   - No current market prices were fetched
-   - Fixed: added `/prices` endpoint to backend health server, positions API now calculates real unrealized P&L
+### IBKR account approved
+- Account number: **U25411010** (IBKR Pro, Live)
+- Regulator: SEC + FINRA + CFTC + NFA (US entity)
+- SIPC protection: $500K + $30M excess Lloyd's
 
-5. **Position monitor skipped empty broker_trade_id trades**
-   - Trades without broker_trade_id were neither "PAPER-" nor had valid IDs
-   - They fell through all checks — never monitored, never closed
-   - Fixed: empty broker_trade_id trades now checked via SL/TP price comparison
+### Current permissions (2026-04-21)
+- ✅ Stocks, Forex, Event Contracts — Enabled
+- 🟡 Bonds, Mutual Funds, Crypto — can Request
+- 🔴 Futures, Futures Options, Options, Metals, Warrants, SSF — **30-day cooldown** (auto-declined on initial application)
+- ❌ Complex/Leveraged ETPs — Unavailable (Incompatible Objectives)
 
-**Additional safeguards added:**
-- `max_positions_per_pair: 1` — prevents stacking same pair
-- `max_position_units: 500,000` — hard cap on position size
-- Fail-closed on DB errors (was fail-open, defaulting to 0 positions)
+### Why cooldown — initial financial profile too weak
+Need to update in IBKR → Settings → Account Settings → Financial Information:
+- Investment Objective: add **Speculation** and **Active Trading**
+- Risk Tolerance: **High**
+- Futures experience: 1-2 years (if any backtesting/simulation done)
+- Accurate liquid net worth + annual income
 
-### Files Changed
-- `backend/lumitrade/config.py` — Added `max_positions_per_pair`, `max_position_units`
-- `backend/lumitrade/risk_engine/engine.py` — Fixed table name, added per-pair check, max size cap, fail-closed
-- `backend/lumitrade/execution_engine/oanda_executor.py` — Robust trade ID parsing with logging
-- `backend/lumitrade/execution_engine/engine.py` — Fixed get_pricing() args, pricing response parsing, empty broker_id handling
-- `backend/lumitrade/infrastructure/health_server.py` — Added `/prices` endpoint for live OANDA pricing
-- `frontend/src/app/(dashboard)/api/positions/route.ts` — Real P&L calculation using backend pricing
+### Next steps (in order)
+1. **2026-04-21 (today):** User updates financial profile (5 min). No deposit needed.
+2. **2026-04-21:** User enables Paper Trading Account (free, instant). Gets `DU…` paper account number.
+3. **2026-04-21+:** Claude builds `backend/lumitrade/infrastructure/ibkr_client.py` against paper account, wires GLD as a test. Has MGC-ready code waiting.
+4. **2026-05-20 (Day 30):** Re-request Futures permission in IBKR. Profile should now qualify.
+5. **2026-05-20+:** Fund account ($2,000-5,000 recommended for MGC margin + buffer). Swap GLD → MGC in config.
+6. **2026-05-21+:** Paper-trade `/MGC` micro gold for 1 week minimum before any live allocation.
 
----
+### Rejected alternatives (documented for future)
+- **Capital.com** — not available to US retail
+- **tastyfx** — forex-only, no metals; US citizenship required for tastytrade futures
+- **Plus500 US** — only .NET/FIX APIs (no Python); 2-week integration cost
+- **Eightcap** — US retail via SCB offshore = KYC/FATCA risk; no retail REST API
 
-### Previous Session Accomplishments (2026-03-24 to 2026-03-25)
-- Full 8-agent audit (PM, UI/UX, Architect, Frontend, Backend, QA, DevOps, Security)
-- Fixed 20+ critical bugs including RiskRejection type check, kill switch, auth
-- Added 62 new tests (40 execution engine + 10 reconciler + 12 performance)
-- Restored FDS navy design system, removed light mode
-- Implemented SWR data fetching, toast notifications, signal filters
-- Fixed Railway deployment (root directory + Dockerfile paths)
-- Switched from simulated paper trades to REAL OANDA practice orders
-- Added live unrealized P&L and daily P&L display
-- Health server returns real latency/timing data
-- Auth middleware with Supabase session validation
+### Gold instrument plan (when unlocked)
+- **Primary:** `/MGC` (Micro Gold Futures, COMEX) — 10 oz, $1/tick = $10/contract, 23h trading
+- **Margin:** ~$300-400 per MGC contract
+- **Stop-loss:** 3x ATR ($/oz) — same logic as USD_CAD
+- **API:** TWS socket via `ib-async` Python library
+- **Deployment:** IB Gateway (headless Docker sidecar) on Railway, ~$5/mo extra
 
----
+## Previous Sessions
 
-## Key URLs
-| Resource | URL |
-|----------|-----|
-| Frontend | https://lumitrade-dashboard-production-0507.up.railway.app |
-| Backend Health | https://lumitrade-engine-production.up.railway.app/health |
-| Backend Prices | https://lumitrade-engine-production.up.railway.app/prices |
-| Railway Project | https://railway.com/project/6a13a79e-54c8-48ef-9d7c-161ca4951b3c |
-| Supabase | https://skrqpsubnenmreyjidyn.supabase.co |
-| GitHub | https://github.com/Abenezer1244/Lumitrade |
+## Session 2026-04-03 — New Strategy: Adaptive Trading Memory + Visual Charts
 
-## Key Credentials Location
-- Backend env vars: Railway service vars (lumitrade-engine)
-- Frontend env vars: Railway service vars (lumitrade-dashboard)
-- OANDA Practice: account 101-001-37434000-001
-- OANDA Live: account 001-001-19434175-002
-- Anthropic API: New key set on Railway 2026-03-25
+### Major Strategy Overhaul
+Two AI learning systems deployed:
 
----
+**System 1: Trading Memory** — learns from every trade
+- `trading_lessons` table stores hard rules (BLOCK/BOOST)
+- After every trade close: extracts pattern, queries history, creates rules
+- BLOCK (< 35% WR over 5+ trades): hard filter BEFORE AI sees the setup
+- BOOST (> 65% WR over 5+ trades): injected into AI prompt as preferred setups
+- 9 rules active (5 seed + 4 auto-learned):
+  - BLOCK: All SELL (0% WR), GBP_USD (7% WR), EUR_USD (31% WR)
+  - BOOST: BUY USD_JPY (85% WR, 13 trades), BUY USD_CAD (70% WR, 10 trades)
+  - NEUTRAL: BUY USD_JPY:LONDON (50% WR, 4 trades), BUY USD_CAD:ASIAN (1 trade)
+
+**System 2: Visual Chart Analysis** — Claude sees charts like a trader
+- Generates 3-panel candlestick PNG (H4/H1/M15) with EMAs, Bollinger, S/R, RSI
+- Sent to Claude as base64 image alongside text data (multimodal)
+- Dark theme matching Lumitrade design (confirmed 80-88KB charts generating)
+- Falls back to text-only if chart fails
+
+### Other Fixes (Apr 1-3)
+- FIFO violation fix: single order with scaled size instead of multiple orders
+- Daily P&L reset at midnight UTC (was blocking trading with stale -$10K)
+- Session time filter: only trade 00-13 UTC (Asian + London)
+- Removed GBP_USD, EUR_USD, USD_CHF from pairs (data-driven)
+- Removed confidence size multiplier (80%+ conf had worst WR at 16.7%)
+- Daily loss circuit breaker at -$2,000
+- Tighter TP guidance (1x-1.5x ATR instead of 3x)
+- OANDA per-trade unrealizedPL for accurate dashboard P&L
+- `/trade/{id}/close` and `/oanda-trades` endpoints added
+
+### New Features Built (Apr 2-3)
+- **Trade Journal** — weekly AI summaries with pair analysis (real data)
+- **AI Coach** — chat with Claude about your trades (real Claude API)
+- **Intel Report** — weekly intelligence with session heatmaps (real data)
+- **API Access** — real API key generation, /v1/signals and /v1/trades endpoints
+- **Marketplace** — rich preview UI (Phase 3)
+- **Copy Trading** — rich preview UI (Phase 3)
+- **Backtesting** — rich preview UI (Phase 3)
+
+### 72-Trade Deep Analysis (basis for strategy changes)
+| Direction | Trades | WR | P&L |
+|-----------|--------|-----|-----|
+| BUY | 57 | 49.1% | +$6,483 |
+| SELL | 13 | 0% | -$8,203 |
+
+| Session | WR | P&L |
+|---------|-----|-----|
+| Asian (00-08) | 73.9% | +$9,592 |
+| London (08-13) | 50.0% | +$2,342 |
+| NY (13-17) | 34.8% | -$3,279 |
+| NY Late (17-21) | 12.5% | -$6,637 |
+
+| Pair | WR | P&L |
+|------|-----|-----|
+| USD_JPY | 73.3% | +$7,604 |
+| USD_CAD | 71.4% | +$3,398 |
+| AUD_USD | 50.0% | +$409 |
+| NZD_USD | 40.0% | -$23 |
+| USD_CHF | 36.4% | -$1,219 |
+| EUR_USD | 30.8% | -$2,398 |
+| GBP_USD | 7.1% | -$5,753 |
+
+### New System Early Results (2 trades — need 20+ for conclusions)
+| Metric | Old System | New System |
+|--------|-----------|-----------|
+| Win Rate | 44.9% | 50.0% |
+| Avg Win | +$817 | +$446 |
+| Avg Loss | -$665 | -$315 |
+| Win/Loss Ratio | 1.23 | 1.42 |
+| Losses smaller | | Yes |
+
+### Concerns to Monitor (revisit after 20 trades)
+1. SL too tight on loss (10p for JPY — should be 15-20p minimum)
+2. Only London session tested — need Asian session data
+3. USD_JPY:LONDON at 50% WR could auto-BLOCK if it drops — would block best pair during London
+4. TP hit rate still 0% — both exits via trailing stop
+5. Need to verify chart analysis is actually improving signal quality vs text-only
+
+## Previous Sessions
+
+### Session 2026-03-30
+- Light theme overhaul, brand audit, 20+ icon swaps
+- Reconciler P&L fix, trade counter fix
+
+### Session 2026-03-27
+- Ghost trade elimination, real OANDA P&L
+- 8 pairs + gold, trailing stops, confidence multiplier
+
+### Session 2026-03-26
+- 20+ commits, 5 bug fixes, all 14 stubs eliminated, Mission Control
+
+### Session 2026-03-25
+- Full 8-agent audit, 30+ fixes, 50 tests, real OANDA trading live
 
 ## What's Next
-- [ ] Deploy fixes to Railway (backend + frontend)
-- [ ] Close the 27 stale open positions on OANDA (manual or via script)
-- [ ] Verify position monitor closes trades on SL/TP hit after deploy
-- [ ] Verify live P&L displays correctly on dashboard
-- [ ] Re-enable auth middleware (currently bypassed due to email rate limit)
-- [ ] Set up custom SMTP for branded login emails (Lumitrade instead of Supabase Auth)
-- [ ] Accumulate 50+ real trades for go/no-go gate
-- [ ] Three.js background visibility on landing page sections
-- [ ] Frontend design polish per user feedback
+- [ ] Let new system run 20+ trades, then re-analyze
+- [ ] Monitor Trading Memory for false BLOCK rules on good pairs
+- [ ] Consider raising minimum SL to 15p (forex) / 20p (JPY)
+- [ ] Re-enable auth middleware (bypassed due to email rate limit)
+- [ ] Set up custom SMTP for branded login emails
+- [ ] Three.js background on all landing sections
+- [ ] Create proper logo graphic
+- [ ] When ready: switch to LIVE with $100, max_risk_pct=0.5%
