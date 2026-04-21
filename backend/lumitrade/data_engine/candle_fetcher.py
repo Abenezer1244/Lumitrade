@@ -46,10 +46,16 @@ class CandleFetcher:
             raise
 
     async def fetch_all_timeframes(self, pair: str) -> dict[str, list[Candle]]:
-        """Fetch candles for all required timeframes."""
-        result = {}
-        for tf in ["M15", "H1", "H4"]:
-            result[tf] = await self.fetch(pair, tf, count=50)
+        """Fetch candles for all required timeframes.
+
+        Counts sized so EMA(200) is always meaningful on the primary
+        timeframe (H1 — fed to indicator compute) while keeping payloads
+        reasonable on slower/faster frames.
+        """
+        counts = {"M15": 120, "H1": 250, "H4": 120}
+        result: dict[str, list[Candle]] = {}
+        for tf, n in counts.items():
+            result[tf] = await self.fetch(pair, tf, count=n)
         return result
 
     def _parse_candle(self, raw: dict, granularity: str) -> Candle:
