@@ -349,48 +349,69 @@ class PromptBuilder:
         """
         Get detailed trade history for this pair — BUY and SELL results separately.
         Claude sees its own track record and learns from wins/losses.
+
+        Previously pulled 10 most-recent trades regardless of direction, which
+        produced "BUY: No history" whenever one direction dominated the recent
+        window. Claude then hallucinated pessimistic records for the unseen
+        direction. Now queries each direction independently so both are
+        represented, and surfaces the lifetime aggregate for each direction.
         """
         if not self.db:
             return "  No trade history available."
 
         try:
-            trades = await self.db.select(
+            buy_recent = await self.db.select(
+                "trades",
+                {"pair": pair, "status": "CLOSED", "direction": "BUY"},
+                order="closed_at",
+                limit=10,
+            )
+            sell_recent = await self.db.select(
+                "trades",
+                {"pair": pair, "status": "CLOSED", "direction": "SELL"},
+                order="closed_at",
+                limit=10,
+            )
+            # Lifetime aggregate — per-direction WR/P&L over ALL closed trades.
+            # Small pull (limit=500) keeps this cheap; most pairs have <100 trades.
+            all_trades = await self.db.select(
                 "trades",
                 {"pair": pair, "status": "CLOSED"},
                 order="closed_at",
-                limit=10,
+                limit=500,
             )
         except Exception:
             return "  No trade history available."
 
-        if not trades:
+        if not all_trades:
             return "  No closed trades on this pair yet."
 
-        # Separate by direction
-        buy_trades = [t for t in trades if t.get("direction") == "BUY"]
-        sell_trades = [t for t in trades if t.get("direction") == "SELL"]
+        lines: list[str] = []
 
-        lines = []
+        for direction, recent in [("BUY", buy_recent), ("SELL", sell_recent)]:
+            lifetime = [t for t in all_trades if t.get("direction") == direction]
 
-        for direction, dir_trades in [("BUY", buy_trades), ("SELL", sell_trades)]:
-            if not dir_trades:
-                lines.append(f"  {direction}: No history")
+            if not lifetime:
+                # Explicit: no data, do not infer. Blocks hallucination.
+                lines.append(
+                    f"  {direction}: No closed trades on this pair in {direction} direction. "
+                    f"Do NOT assume a historical win rate — there is no data either way."
+                )
                 continue
 
-            wins = [t for t in dir_trades if t.get("outcome") == "WIN"]
-            losses = [t for t in dir_trades if t.get("outcome") == "LOSS"]
-            total_pnl = sum(float(t.get("pnl_usd") or 0) for t in dir_trades)
-            wr = len(wins) / len(dir_trades) * 100 if dir_trades else 0
+            wins = [t for t in lifetime if t.get("outcome") == "WIN"]
+            losses = [t for t in lifetime if t.get("outcome") == "LOSS"]
+            total_pnl = sum(float(t.get("pnl_usd") or 0) for t in lifetime)
+            wr = len(wins) / len(lifetime) * 100 if lifetime else 0
 
             lines.append(
-                f"  {direction}: {len(dir_trades)} trades | "
-                f"Win rate: {wr:.0f}% | "
-                f"Total P&L: ${total_pnl:+,.0f}"
+                f"  {direction} (lifetime): {len(lifetime)} trades | "
+                f"Win rate: {wr:.0f}% | Total P&L: ${total_pnl:+,.0f}"
             )
 
-            # Show last 3 trades with detail
-            recent = dir_trades[-3:]
-            for t in recent:
+            # Show up to last 5 trades in this direction
+            recent_pool = recent if recent else lifetime[-5:]
+            for t in recent_pool[-5:]:
                 pnl = float(t.get("pnl_usd") or 0)
                 conf = t.get("confidence_score") or "?"
                 outcome = t.get("outcome") or "?"
@@ -399,20 +420,28 @@ class PromptBuilder:
                     f"    {dt} | {outcome} | ${pnl:+,.0f} | confidence: {conf}"
                 )
 
-        # Add explicit warning if one direction is clearly losing
-        for direction, dir_trades in [("BUY", buy_trades), ("SELL", sell_trades)]:
-            if len(dir_trades) >= 3:
-                total_pnl = sum(float(t.get("pnl_usd") or 0) for t in dir_trades)
-                losses = [t for t in dir_trades if t.get("outcome") == "LOSS"]
-                wr = (len(dir_trades) - len(losses)) / len(dir_trades)
+        # Warning block — only on lifetime data with meaningful sample size.
+        for direction in ("BUY", "SELL"):
+            lifetime = [t for t in all_trades if t.get("direction") == direction]
+            if len(lifetime) >= 5:
+                total_pnl = sum(float(t.get("pnl_usd") or 0) for t in lifetime)
+                losses = [t for t in lifetime if t.get("outcome") == "LOSS"]
+                wr = (len(lifetime) - len(losses)) / len(lifetime)
                 if wr < 0.35 and total_pnl < -200:
                     lines.append("")
                     lines.append(
                         f"  *** WARNING: {direction} on {pair} has {wr:.0%} win rate "
-                        f"and ${total_pnl:+,.0f} total P&L. "
+                        f"and ${total_pnl:+,.0f} total P&L across {len(lifetime)} trades. "
                         f"Think twice before entering {direction}. "
                         f"If the chart shows {direction}, demand VERY strong "
                         f"confirmation (clear reversal, key level bounce, volume). ***"
+                    )
+                elif wr >= 0.60 and total_pnl > 200 and len(lifetime) >= 10:
+                    lines.append("")
+                    lines.append(
+                        f"  *** PROVEN PATTERN: {direction} on {pair} has {wr:.0%} win rate "
+                        f"and ${total_pnl:+,.0f} total P&L across {len(lifetime)} trades. "
+                        f"This direction has a real edge on this pair. ***"
                     )
 
         return "\n".join(lines)
