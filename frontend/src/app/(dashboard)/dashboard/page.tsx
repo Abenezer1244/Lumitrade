@@ -4,13 +4,10 @@ import { motion } from "motion/react";
 import { Target } from "lucide-react";
 import AccountPanel from "@/components/dashboard/AccountPanel";
 import TodayPanel from "@/components/dashboard/TodayPanel";
-import SystemStatusPanel from "@/components/dashboard/SystemStatusPanel";
 import OpenPositionsTable from "@/components/dashboard/OpenPositionsTable";
-import MissionControl from "@/components/dashboard/MissionControl";
 import RiskUtilization from "@/components/analytics/RiskUtilization";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
-import InsightCards from "@/components/dashboard/InsightCards";
 import NewsFeed from "@/components/dashboard/NewsFeed";
 import { useAccount } from "@/hooks/useAccount";
 import { useTradeHistory } from "@/hooks/useTradeHistory";
@@ -50,14 +47,25 @@ function formatDate(): string {
   });
 }
 
-/* ── Trade milestone progress ───────────────────────────── */
+/* ── Trade milestone progress ─────────────────────────────
+   Displays progress toward the 50-trade go/no-go gate — the paper-trading
+   sample size at which the engine is considered statistically validated
+   for live trading. Full detail on hover via `title`.
+   ───────────────────────────────────────────────────────── */
 function TradeProgress({ count }: { count: number }) {
   const goal = 50;
   const pct = Math.min((count / goal) * 100, 100);
   const done = count >= goal;
+  const tooltip = done
+    ? `Go/No-Go gate reached: ${count} paper trades completed. You may now consider switching to Live mode in Settings.`
+    : `${count} of ${goal} paper trades complete. Live mode is recommended only after reaching the 50-trade sample-size gate.`;
 
   return (
-    <div className="flex items-center gap-3">
+    <div
+      className="flex items-center gap-3"
+      title={tooltip}
+      aria-label={tooltip}
+    >
       <div className="flex items-center gap-1.5">
         <Target size={14} style={{ color: done ? "var(--color-profit)" : "var(--color-accent)" }} />
         <span className="text-xs font-mono" style={{ color: "var(--color-text-secondary)" }}>
@@ -70,12 +78,16 @@ function TradeProgress({ count }: { count: number }) {
       <div
         className="w-24 h-1.5 rounded-full overflow-hidden"
         style={{ backgroundColor: "var(--color-bg-elevated)" }}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={goal}
+        aria-valuenow={count}
       >
         <motion.div
-          className="h-full rounded-full"
+          className="h-full rounded-full origin-left"
           style={{ backgroundColor: done ? "var(--color-profit)" : "var(--color-accent)" }}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
+          initial={{ transform: "scaleX(0)" }}
+          animate={{ transform: `scaleX(${pct / 100})` }}
           transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
         />
       </div>
@@ -92,20 +104,17 @@ export default function DashboardPage() {
 
   return (
     <motion.div
-      className="space-y-3"
+      className="space-y-4"
       variants={container}
       initial="hidden"
       animate="show"
     >
       {/* Greeting header */}
-      <motion.div
-        className="flex items-end justify-between"
-        variants={item}
-      >
+      <motion.div className="flex items-end justify-between" variants={item}>
         <div>
           <h1
-            className="text-2xl font-bold mb-1"
-            style={{ fontFamily: "'PT Serif', serif", color: "var(--color-text-primary)" }}
+            className="text-2xl font-bold mb-1 tracking-tight"
+            style={{ color: "var(--color-text-primary)" }}
           >
             {getGreeting()}, Trader
           </h1>
@@ -116,37 +125,37 @@ export default function DashboardPage() {
         <TradeProgress count={totalTrades} />
       </motion.div>
 
-      {/* Main grid — left content + right sidebar column */}
+      {/* HERO — account balance dominates, today's P&L beside it */}
+      <motion.div
+        className="grid grid-cols-1 md:grid-cols-12 gap-4"
+        variants={heroItem}
+      >
+        <div className="md:col-span-8">
+          <AccountPanel />
+        </div>
+        <div className="md:col-span-4">
+          <TodayPanel />
+        </div>
+      </motion.div>
+
+      {/* PRIMARY FOCAL — open positions, full-width */}
+      <motion.div variants={item}>
+        <OpenPositionsTable />
+      </motion.div>
+
+      {/* SECONDARY — signal feed dominates; right rail holds risk + news + halt */}
       <motion.div
         className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
         variants={item}
       >
-        {/* Left column (8 cols) — stacks vertically */}
-        <motion.div className="lg:col-span-8 space-y-4" variants={item}>
-          {/* Top cards: Account + Today/Calendar stacked */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
-            <motion.div className="md:col-span-7 flex flex-col gap-3" variants={heroItem}>
-              <AccountPanel />
-              <InsightCards />
-            </motion.div>
-            <motion.div className="md:col-span-5 flex flex-col gap-3" variants={item}>
-              <TodayPanel />
-              <NewsFeed />
-            </motion.div>
-          </div>
-
-          {/* Positions + Signals */}
-          <OpenPositionsTable />
-          <SignalFeed limit={8} compact />
-        </motion.div>
-
-        {/* Right column (4 cols) — stacks tightly, no interruption */}
-        <motion.div className="lg:col-span-4 space-y-4" variants={item}>
-          <SystemStatusPanel />
-          <MissionControl />
+        <div className="lg:col-span-8">
+          <SignalFeed limit={6} compact />
+        </div>
+        <div className="lg:col-span-4 space-y-4">
           <RiskUtilization />
+          <NewsFeed />
           <KillSwitchButton />
-        </motion.div>
+        </div>
       </motion.div>
     </motion.div>
   );

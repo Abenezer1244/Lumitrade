@@ -55,11 +55,15 @@ export default function KillSwitchButton() {
         <p className="text-xs text-secondary mt-2">
           All open positions preserved. System will not open new trades.
         </p>
+        <p className="text-[11px] text-tertiary mt-2">
+          To resume trading, re-arm Live mode in Settings. Dismissing this card
+          does <span className="font-bold">not</span> resume trading.
+        </p>
         <button
           onClick={() => { setState("idle"); setInput(""); }}
           className="mt-3 text-xs text-accent hover:underline"
         >
-          Reset
+          Dismiss
         </button>
       </div>
     );

@@ -29,6 +29,8 @@ interface SliderConfig {
   key: keyof TradingSettingsData;
   label: string;
   description: string;
+  recommended: string;
+  tradeoff: string;
   min: number;
   max: number;
   step: number;
@@ -39,7 +41,9 @@ const SLIDERS: SliderConfig[] = [
   {
     key: "riskPct",
     label: "Max Risk Per Trade",
-    description: "Percentage of account balance risked on each trade",
+    description: "Percent of account equity risked if the stop-loss is hit.",
+    recommended: "0.5–1%",
+    tradeoff: "Above 2%, a 5-trade losing streak can wipe ~10% of the account.",
     min: 0.25,
     max: 2,
     step: 0.25,
@@ -48,7 +52,9 @@ const SLIDERS: SliderConfig[] = [
   {
     key: "maxPositions",
     label: "Max Open Positions",
-    description: "Total number of trades open at once across all pairs",
+    description: "Total trades open at once across all currency pairs.",
+    recommended: "3–5",
+    tradeoff: "Higher = more simultaneous exposure during news shocks.",
     min: 1,
     max: 100,
     step: 1,
@@ -57,7 +63,9 @@ const SLIDERS: SliderConfig[] = [
   {
     key: "maxPerPair",
     label: "Max Positions Per Pair",
-    description: "Maximum trades on a single currency pair",
+    description: "How many trades the AI can stack on the same pair.",
+    recommended: "1",
+    tradeoff: "Stacking multiplies your loss if the pair moves against you.",
     min: 1,
     max: 10,
     step: 1,
@@ -66,7 +74,9 @@ const SLIDERS: SliderConfig[] = [
   {
     key: "scanInterval",
     label: "Scan Interval",
-    description: "How often the AI scans each pair for signals (minutes)",
+    description: "How often the AI re-evaluates each pair for new signals.",
+    recommended: "15 min",
+    tradeoff: "Shorter = more broker API load and more false-start trades.",
     min: 5,
     max: 60,
     step: 5,
@@ -75,7 +85,9 @@ const SLIDERS: SliderConfig[] = [
   {
     key: "confidence",
     label: "Min Confidence Threshold",
-    description: "AI must be at least this confident to place a trade",
+    description: "AI confidence score (0–100) required before placing a trade.",
+    recommended: "65–70",
+    tradeoff: "Lower = more trades but weaker setups and lower win rate.",
     min: 50,
     max: 90,
     step: 5,
@@ -156,6 +168,7 @@ export default function TradingSettings({
                 onChange={(e) => handleSliderChange(slider.key, e.target.value)}
                 className="w-full cursor-pointer accent-brand"
                 aria-label={slider.label}
+                aria-describedby={`${slider.key}-guidance`}
                 aria-valuemin={slider.min}
                 aria-valuemax={slider.max}
                 aria-valuenow={settings[slider.key]}
@@ -169,6 +182,17 @@ export default function TradingSettings({
                   {slider.format(slider.max)}
                 </span>
               </div>
+              <p
+                id={`${slider.key}-guidance`}
+                className="text-[11px] mt-2 leading-snug"
+              >
+                <span className="font-semibold" style={{ color: "var(--color-brand)" }}>
+                  Recommended {slider.recommended}.
+                </span>{" "}
+                <span style={{ color: "var(--color-text-tertiary)" }}>
+                  {slider.tradeoff}
+                </span>
+              </p>
             </div>
           ))}
 

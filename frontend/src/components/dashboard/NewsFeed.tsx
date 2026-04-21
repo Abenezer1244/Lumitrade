@@ -81,7 +81,7 @@ export default function NewsFeed() {
         >
           <Newspaper size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
         </div>
-        <span className="text-sm font-semibold" style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}>
+        <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--color-text-primary)" }}>
           Economic Calendar
         </span>
         <span

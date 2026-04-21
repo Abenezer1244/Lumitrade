@@ -220,8 +220,8 @@ export default function AccountPanel() {
       {/* Hero balance — larger */}
       <motion.div className="mb-1" variants={childVariants}>
         <p
-          className="text-primary"
-          style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em" }}
+          className="text-primary font-mono font-bold"
+          style={{ fontSize: "32px", letterSpacing: "-0.02em" }}
         >
           <AnimatedNumber value={balance} prefix="$" />
         </p>
@@ -231,7 +231,7 @@ export default function AccountPanel() {
       <motion.p className="text-sm mb-4" style={{ color: "var(--color-text-secondary)" }} variants={childVariants}>
         Equity:{" "}
         <AnimatedNumber value={equity} prefix="$" className="font-mono font-medium" />
-        <span className="mx-2" style={{ opacity: 0.3 }}>|</span>
+        <span className="mx-2" aria-hidden="true" style={{ color: "var(--color-text-tertiary)" }}>·</span>
         Open: <span className="font-mono font-medium">{account.open_trade_count}</span>
       </motion.p>
 

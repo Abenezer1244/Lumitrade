@@ -111,8 +111,8 @@ export default function ApiAccessPage() {
         </div>
         <div>
           <h1
-            className="text-xl font-bold"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'Space Grotesk', sans-serif" }}
+            className="text-xl font-bold tracking-tight"
+            style={{ color: "var(--color-text-primary)" }}
           >
             Public API
           </h1>
@@ -128,7 +128,7 @@ export default function ApiAccessPage() {
           <Globe size={16} style={{ color: "var(--color-accent)" }} />
           <h2
             className="text-sm font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'DM Sans', sans-serif" }}
+            style={{ color: "var(--color-text-primary)" }}
           >
             API Endpoints
           </h2>
@@ -189,7 +189,7 @@ export default function ApiAccessPage() {
           <Lock size={16} style={{ color: "var(--color-accent)" }} />
           <h2
             className="text-sm font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'DM Sans', sans-serif" }}
+            style={{ color: "var(--color-text-primary)" }}
           >
             Authentication
           </h2>
@@ -203,8 +203,8 @@ export default function ApiAccessPage() {
           style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
         >
           <pre
-            className="text-sm leading-relaxed"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'JetBrains Mono', monospace" }}
+            className="text-sm leading-relaxed font-mono"
+            style={{ color: "var(--color-text-primary)" }}
           >
             <code>{`curl -H "Authorization: Bearer sk_live_..." \\
   https://api.lumitrade.com/api/v1/trades`}</code>
@@ -328,7 +328,7 @@ export default function ApiAccessPage() {
           <Zap size={16} style={{ color: "var(--color-warning)" }} />
           <h2
             className="text-sm font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'DM Sans', sans-serif" }}
+            style={{ color: "var(--color-text-primary)" }}
           >
             Webhooks
           </h2>
@@ -342,8 +342,8 @@ export default function ApiAccessPage() {
           style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
         >
           <pre
-            className="text-sm leading-relaxed"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'JetBrains Mono', monospace" }}
+            className="text-sm leading-relaxed font-mono"
+            style={{ color: "var(--color-text-primary)" }}
           >
             <code>{`// Verify webhook signature
 const signature = req.headers["x-lumitrade-signature"];
@@ -368,7 +368,7 @@ if (signature === expected) {
           <Shield size={16} style={{ color: "var(--color-accent)" }} />
           <h2
             className="text-sm font-bold uppercase tracking-wider"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'DM Sans', sans-serif" }}
+            style={{ color: "var(--color-text-primary)" }}
           >
             Rate Limits
           </h2>

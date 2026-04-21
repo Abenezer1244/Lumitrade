@@ -244,7 +244,7 @@ export default function MissionControl() {
           >
             <Radio size={11} style={{ color: "var(--color-accent)" }} />
           </div>
-          <span className="text-xs font-bold" style={{ color: "var(--color-text-primary)", fontFamily: "'PT Serif', serif" }}>
+          <span className="text-xs font-bold tracking-tight" style={{ color: "var(--color-text-primary)" }}>
             Mission Control
           </span>
           <span

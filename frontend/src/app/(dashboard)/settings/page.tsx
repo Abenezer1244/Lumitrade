@@ -7,7 +7,7 @@ import type { TradingSettingsData, GuardrailsData } from "@/components/settings/
 import { useToast } from "@/components/ui/Toast";
 
 const DEFAULT_SETTINGS: TradingSettingsData = {
-  riskPct: 1.0,
+  riskPct: 0.5,
   maxPositions: 3,
   maxPerPair: 1,
   confidence: 65,

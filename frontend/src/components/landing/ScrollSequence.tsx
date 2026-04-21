@@ -220,7 +220,7 @@ function drawPhase1(ctx: CanvasRenderingContext2D, progress: number, frame: numb
   // LUMITRADE logo
   const logoAlpha = easedAlpha(progress, 0.16, 0.22);
   ctx.save();
-  ctx.font = "bold 17px 'Space Grotesk', sans-serif";
+  ctx.font = "bold 17px Satoshi, system-ui, sans-serif";
   ctx.fillStyle = hexToRgba(C.gold, logoAlpha);
   ctx.fillText("LUMITRADE", 42, 56);
   ctx.font = "10px 'JetBrains Mono', monospace";
@@ -261,18 +261,18 @@ function drawPhase1(ctx: CanvasRenderingContext2D, progress: number, frame: numb
       ctx.fillStyle = hexToRgba(C.textSecondary, itemAlpha * 0.7);
     }
 
-    ctx.font = "500 13px 'DM Sans', sans-serif";
+    ctx.font = "500 13px Satoshi, system-ui, sans-serif";
     ctx.fillText(item.name, 52, iy + 22);
   });
 
   // Bottom sidebar section — system label
   const bottomAlpha = easedAlpha(progress, 0.25, 0.30);
   if (bottomAlpha > 0) {
-    ctx.font = "500 9px 'DM Sans', sans-serif";
+    ctx.font = "500 9px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, bottomAlpha);
     ctx.fillText("SYSTEM", 42, h - 70);
     ctx.fillStyle = hexToRgba(C.textSecondary, bottomAlpha * 0.6);
-    ctx.font = "11px 'DM Sans', sans-serif";
+    ctx.font = "11px Satoshi, system-ui, sans-serif";
     ctx.fillText("Kill Switch", 42, h - 52);
   }
 
@@ -301,7 +301,7 @@ function drawPhase2(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     drawPanel(ctx, p.x, 36, p.w, 100, panelAlpha);
 
     // Title label
-    ctx.font = "500 10px 'DM Sans', sans-serif";
+    ctx.font = "500 10px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, panelAlpha);
     ctx.fillText(p.title, p.x + 16, 58);
 
@@ -338,7 +338,7 @@ function drawPhase2(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     ctx.fillStyle = hexToRgba(C.profit, dotAlpha * 0.15);
     ctx.fill();
 
-    ctx.font = "11px 'DM Sans', sans-serif";
+    ctx.font = "11px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textSecondary, dotAlpha);
     ctx.fillText(s.name, dx + 12, dy + 4);
   });
@@ -354,7 +354,7 @@ function drawPhase2(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     drawPanel(ctx, chartX, chartY, chartW, chartH, chartAlpha);
 
     // Chart title
-    ctx.font = "500 10px 'DM Sans', sans-serif";
+    ctx.font = "500 10px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, chartAlpha);
     ctx.fillText("EUR/USD  H1", chartX + 16, chartY + 22);
     ctx.font = "12px 'JetBrains Mono', monospace";
@@ -419,7 +419,7 @@ function drawPhase2(ctx: CanvasRenderingContext2D, progress: number, frame: numb
 
   if (tableAlpha > 0) {
     drawPanel(ctx, tableX, tableY, tableW, tableH, tableAlpha);
-    ctx.font = "500 10px 'DM Sans', sans-serif";
+    ctx.font = "500 10px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, tableAlpha);
     ctx.fillText("RECENT SIGNALS", tableX + 16, tableY + 22);
 
@@ -427,7 +427,7 @@ function drawPhase2(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     const headers = ["Pair", "Dir", "Conf", "Time", "Status"];
     const colX = [tableX + 16, tableX + 100, tableX + 160, tableX + 240, tableX + 340];
     headers.forEach((h, i) => {
-      ctx.font = "500 9px 'DM Sans', sans-serif";
+      ctx.font = "500 9px Satoshi, system-ui, sans-serif";
       ctx.fillStyle = hexToRgba(C.textTertiary, tableAlpha * 0.7);
       ctx.fillText(h, colX[i], tableY + 44);
     });
@@ -479,7 +479,7 @@ function drawPhase3(ctx: CanvasRenderingContext2D, progress: number, frame: numb
   const buyAlpha = easedAlpha(progress, 0.52, 0.56);
   fillRoundRect(ctx, sx + 120, sy + 16, 44, 22, 4, hexToRgba(C.profit, buyAlpha * 0.15));
   strokeRoundRect(ctx, sx + 120, sy + 16, 44, 22, 4, hexToRgba(C.profit, buyAlpha * 0.3));
-  ctx.font = "600 10px 'DM Sans', sans-serif";
+  ctx.font = "600 10px Satoshi, system-ui, sans-serif";
   ctx.fillStyle = hexToRgba(C.profit, buyAlpha);
   ctx.fillText("BUY", sx + 130, sy + 31);
 
@@ -494,7 +494,7 @@ function drawPhase3(ctx: CanvasRenderingContext2D, progress: number, frame: numb
   const confBarW = 380;
   const confFill = confBarW * confAlpha * 0.82;
 
-  ctx.font = "500 10px 'DM Sans', sans-serif";
+  ctx.font = "500 10px Satoshi, system-ui, sans-serif";
   ctx.fillStyle = hexToRgba(C.textTertiary, confAlpha);
   ctx.fillText("CONFIDENCE", sx + 20, sy + 60);
 
@@ -522,7 +522,7 @@ function drawPhase3(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     fillRoundRect(ctx, bx, by, 118, 48, 6, hexToRgba(C.bg, priceAlpha * 0.6));
     strokeRoundRect(ctx, bx, by, 118, 48, 6, hexToRgba(C.border, priceAlpha * 0.4));
 
-    ctx.font = "500 9px 'DM Sans', sans-serif";
+    ctx.font = "500 9px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, priceAlpha);
     ctx.fillText(p.label, bx + 10, by + 18);
     ctx.font = "500 14px 'JetBrains Mono', monospace";
@@ -546,7 +546,7 @@ function drawPhase3(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     ctx.lineTo(sx + sw - 16, sy + 182);
     ctx.stroke();
 
-    ctx.font = "500 9px 'DM Sans', sans-serif";
+    ctx.font = "500 9px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.textTertiary, reasonAlpha);
     ctx.fillText("AI REASONING", sx + 20, sy + 200);
 
@@ -625,7 +625,7 @@ function drawPhase4(ctx: CanvasRenderingContext2D, progress: number, frame: numb
   ctx.restore();
 
   // Text
-  ctx.font = "600 12px 'DM Sans', sans-serif";
+  ctx.font = "600 12px Satoshi, system-ui, sans-serif";
   ctx.fillStyle = hexToRgba(C.profit, alpha);
   ctx.fillText("TRADE EXECUTED", ox + 52, oy + 30);
 
@@ -651,7 +651,7 @@ function drawPhase4(ctx: CanvasRenderingContext2D, progress: number, frame: numb
 
     // BUY mini-badge
     fillRoundRect(ctx, colX[1], ry, 30, 16, 3, hexToRgba(C.profit, tableAlpha * 0.15));
-    ctx.font = "600 8px 'DM Sans', sans-serif";
+    ctx.font = "600 8px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.profit, tableAlpha);
     ctx.fillText("BUY", colX[1] + 5, ry + 11);
 
@@ -669,7 +669,7 @@ function drawPhase4(ctx: CanvasRenderingContext2D, progress: number, frame: numb
 
     // Status badge
     fillRoundRect(ctx, colX[4], ry, 56, 16, 3, hexToRgba(C.profit, tableAlpha * 0.1));
-    ctx.font = "600 8px 'DM Sans', sans-serif";
+    ctx.font = "600 8px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.profit, tableAlpha);
     ctx.fillText("FILLED", colX[4] + 8, ry + 11);
   }
@@ -689,7 +689,7 @@ function drawPhase5(ctx: CanvasRenderingContext2D, progress: number, frame: numb
 
   drawPanel(ctx, ex, ey, ew, eh, alpha);
 
-  ctx.font = "500 10px 'DM Sans', sans-serif";
+  ctx.font = "500 10px Satoshi, system-ui, sans-serif";
   ctx.fillStyle = hexToRgba(C.textTertiary, alpha);
   ctx.fillText("EQUITY CURVE", ex + 16, ey + 18);
 
@@ -770,7 +770,7 @@ function drawPhase5(ctx: CanvasRenderingContext2D, progress: number, frame: numb
     ctx.fillStyle = hexToRgba(C.profit, badgeAlpha * pulse);
     ctx.fill();
 
-    ctx.font = "600 11px 'DM Sans', sans-serif";
+    ctx.font = "600 11px Satoshi, system-ui, sans-serif";
     ctx.fillStyle = hexToRgba(C.profit, badgeAlpha);
     ctx.fillText("SYSTEM ONLINE", bx + 28, by + 19);
   }

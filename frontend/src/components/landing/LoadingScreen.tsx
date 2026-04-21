@@ -73,14 +73,13 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
           backgroundColor: "rgba(255, 255, 255, 0.06)",
         }}
       >
-        {/* Progress fill */}
+        {/* Progress fill — uses transform:scaleX to avoid layout-property animation */}
         <div
-          className="absolute top-0 left-0 h-full rounded-full"
+          className="absolute top-0 left-0 h-full w-full rounded-full origin-left"
           style={{
-            width: `${progress}%`,
             backgroundColor: "#00C896",
-            boxShadow: "0 0 8px rgba(0, 232, 157, 0.5)",
-            transition: "width 0.05s linear",
+            transform: `scaleX(${progress / 100})`,
+            transition: "transform 0.05s linear",
           }}
         />
       </div>

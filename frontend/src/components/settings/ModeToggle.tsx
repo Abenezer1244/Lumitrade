@@ -1,0 +1,173 @@
+"use client";
+
+import { useState } from "react";
+import { AlertTriangle } from "lucide-react";
+
+interface ModeToggleProps {
+  mode: "PAPER" | "LIVE";
+  onToggle: (mode: "PAPER" | "LIVE") => void;
+  disabled?: boolean;
+}
+
+const ARM_PHRASE = "START LIVE TRADING";
+
+export default function ModeToggle({
+  mode,
+  onToggle,
+  disabled = false,
+}: ModeToggleProps) {
+  const [phase, setPhase] = useState<"idle" | "arming">("idle");
+  const [input, setInput] = useState("");
+  const [riskAck, setRiskAck] = useState(false);
+
+  const inputMatches = input === ARM_PHRASE;
+  const canArm = inputMatches && riskAck && !disabled;
+
+  function handlePaperSelect() {
+    // PAPER is the safe default — halting is always immediate, no ceremony.
+    if (disabled) return;
+    if (mode === "PAPER") return;
+    onToggle("PAPER");
+    setPhase("idle");
+    setInput("");
+    setRiskAck(false);
+  }
+
+  function handleLiveSelect() {
+    if (disabled || mode === "LIVE") return;
+    setPhase("arming");
+    setInput("");
+    setRiskAck(false);
+  }
+
+  function handleCancel() {
+    setPhase("idle");
+    setInput("");
+    setRiskAck(false);
+  }
+
+  function handleConfirmArm() {
+    if (!canArm) return;
+    onToggle("LIVE");
+    setPhase("idle");
+    setInput("");
+    setRiskAck(false);
+  }
+
+  return (
+    <div className="glass p-5">
+      <h2 className="text-heading text-primary mb-4">Trading Mode</h2>
+
+      <div className="flex gap-3">
+        <button
+          onClick={handlePaperSelect}
+          disabled={disabled}
+          className={`flex-1 py-3 rounded-lg border text-sm font-bold transition-colors ${
+            mode === "PAPER"
+              ? "bg-warning-dim border-warning text-warning"
+              : "bg-elevated border-border text-secondary"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          aria-pressed={mode === "PAPER"}
+        >
+          PAPER
+        </button>
+
+        <button
+          onClick={handleLiveSelect}
+          disabled={disabled || phase === "arming"}
+          className={`flex-1 py-3 rounded-lg border text-sm font-bold transition-colors ${
+            mode === "LIVE"
+              ? "bg-profit-dim border-profit text-profit"
+              : "bg-elevated border-border text-secondary"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          aria-pressed={mode === "LIVE"}
+        >
+          LIVE
+        </button>
+      </div>
+
+      {phase === "arming" && (
+        <div
+          className="mt-4 p-4 rounded-lg border"
+          style={{ borderColor: "var(--color-loss)", backgroundColor: "var(--color-loss-dim)" }}
+          role="alertdialog"
+          aria-labelledby="arm-live-title"
+        >
+          <div className="flex items-start gap-2 mb-3">
+            <AlertTriangle size={16} className="text-loss shrink-0 mt-0.5" />
+            <div>
+              <p id="arm-live-title" className="text-sm font-bold text-loss mb-1">
+                Arming Live Trading
+              </p>
+              <p className="text-xs text-secondary">
+                The engine will execute real trades with real capital on your next
+                signal scan. Halting is always available via the Kill Switch.
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2 mb-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={riskAck}
+              onChange={(e) => setRiskAck(e.target.checked)}
+              className="mt-0.5 accent-brand"
+              aria-describedby="risk-ack-copy"
+            />
+            <span id="risk-ack-copy" className="text-xs text-secondary">
+              I understand that forex trading involves risk of loss and that I may
+              lose more than my initial deposit. I have completed all go/no-go
+              checks.
+            </span>
+          </label>
+
+          <div className="mb-3">
+            <label htmlFor="arm-confirm" className="text-[10px] text-tertiary block mb-1">
+              Type <span className="font-mono font-bold text-loss">{ARM_PHRASE}</span> to confirm
+            </label>
+            <input
+              id="arm-confirm"
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm font-mono text-primary placeholder:text-tertiary focus:outline-none focus:border-loss/50"
+              placeholder={ARM_PHRASE}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleCancel}
+              className="flex-1 py-2 px-3 bg-elevated border border-border rounded-lg text-xs text-secondary hover:text-primary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmArm}
+              disabled={!canArm}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-colors ${
+                canArm
+                  ? "bg-loss text-white hover:bg-loss/80"
+                  : "bg-elevated text-tertiary border border-border cursor-not-allowed"
+              }`}
+            >
+              Arm Live Trading
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "idle" && mode === "LIVE" && (
+        <div className="flex items-start gap-2 mt-3">
+          <AlertTriangle size={14} className="text-loss shrink-0 mt-0.5" />
+          <p className="text-xs text-loss">
+            Live trading is armed. Real capital at risk. Use the Kill Switch to
+            halt immediately.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

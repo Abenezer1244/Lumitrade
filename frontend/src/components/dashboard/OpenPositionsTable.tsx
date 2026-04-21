@@ -79,57 +79,24 @@ function PnlCell({ value }: PnlCellProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Direction Badge — subtle vertical micro-animation                  */
-/* ------------------------------------------------------------------ */
-
-interface DirectionBadgeProps {
-  direction: string;
-}
-
-function DirectionBadge({ direction }: DirectionBadgeProps) {
-  const yOffset = direction === "BUY" ? -1.5 : 1.5;
-
-  return (
-    <motion.span
-      animate={{ y: [0, yOffset, 0] }}
-      transition={{
-        duration: 2,
-        repeat: Infinity,
-        ease: "easeInOut",
-      }}
-      className="inline-block"
-    >
-      <Badge action={direction} />
-    </motion.span>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Animated Radar Empty State                                         */
+/*  Empty state — static, no idle motion                               */
 /* ------------------------------------------------------------------ */
 
 function AnimatedEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center text-center min-h-[200px] py-12">
-      <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+      <Radar
+        size={40}
+        strokeWidth={1.5}
         className="mb-4"
-      >
-        <Radar
-          size={40}
-          strokeWidth={1.5}
-          style={{ color: "var(--color-text-tertiary)" }}
-        />
-      </motion.div>
-      <motion.p
+        style={{ color: "var(--color-text-tertiary)" }}
+      />
+      <p
         className="text-sm font-medium mb-1"
         style={{ color: "var(--color-text-secondary)" }}
-        animate={{ opacity: [0.6, 1, 0.6] }}
-        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
       >
-        System is scanning. No open positions right now.
-      </motion.p>
+        No open positions.
+      </p>
       <p
         className="text-xs max-w-xs"
         style={{ color: "var(--color-text-tertiary)" }}
@@ -194,8 +161,8 @@ export default function OpenPositionsTable() {
             <Layers size={12} style={{ color: "var(--color-accent)" }} aria-hidden="true" />
           </div>
           <h3
-            className="text-sm font-semibold"
-            style={{ color: "var(--color-text-primary)", fontFamily: "'PT Serif', serif" }}
+            className="text-sm font-semibold tracking-tight"
+            style={{ color: "var(--color-text-primary)" }}
           >
             Open Positions
           </h3>
@@ -293,7 +260,7 @@ export default function OpenPositionsTable() {
                         {formatPair(p.pair)}
                       </td>
                       <td className="py-2 px-2">
-                        <DirectionBadge direction={p.direction} />
+                        <Badge action={p.direction} />
                       </td>
                       <td
                         className="py-2 px-2 font-mono hidden md:table-cell"

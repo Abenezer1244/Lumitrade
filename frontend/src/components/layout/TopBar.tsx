@@ -13,13 +13,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/trades": "Trade History",
   "/analytics": "Analytics",
   "/settings": "Settings",
-  "/journal": "Trade Journal",
-  "/coach": "AI Coach",
-  "/intelligence": "Intel Report",
-  "/marketplace": "Marketplace",
-  "/copy": "Copy Trading",
-  "/backtest": "Backtest",
-  "/api-keys": "API Access",
 };
 
 function getPageTitle(pathname: string | null): string {
@@ -78,8 +71,8 @@ export default function TopBar() {
     >
       {/* Left -- Page title */}
       <h1
-        className="text-base font-bold"
-        style={{ fontFamily: "'PT Serif', serif", color: "var(--color-text-primary)" }}
+        className="text-base font-bold tracking-tight"
+        style={{ color: "var(--color-text-primary)" }}
       >
         {getPageTitle(pathname)}
       </h1>

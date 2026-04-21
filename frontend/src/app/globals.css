@@ -1,5 +1,5 @@
 @import url("https://api.fontshare.com/v2/css?f[]=satoshi@400;500;600;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&family=PT+Serif:wght@400;700&family=Nunito:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -84,20 +84,22 @@
 body {
   background-color: var(--color-bg-surface);
   color: var(--color-text-primary);
-  font-family: "Nunito", "Satoshi", sans-serif;
+  font-family: "Satoshi", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ── Typography utilities ───────────────────────────────────── */
-.text-display   { font-family: "PT Serif", serif; font-size: 28px; font-weight: 700; }
-.text-heading   { font-family: "PT Serif", serif; font-size: 18px; font-weight: 700; }
-.text-card-title { font-family: "PT Serif", serif; font-size: 14px; font-weight: 700; }
-.text-body      { font-family: "Nunito", sans-serif; font-size: 14px; font-weight: 400; }
-.text-label     { font-family: "Nunito", sans-serif; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.text-price     { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 500; }
-.text-metric    { font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 600; }
-.text-micro     { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 400; }
+/* All display/heading tiers use Satoshi with weight + size for hierarchy.
+   Numeric/metric tiers use JetBrains Mono for tabular alignment. */
+.text-display    { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; }
+.text-heading    { font-size: 18px; font-weight: 700; letter-spacing: -0.005em; }
+.text-card-title { font-size: 14px; font-weight: 600; }
+.text-body       { font-size: 14px; font-weight: 400; }
+.text-label      { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.text-price      { font-family: "JetBrains Mono", monospace; font-size: 16px; font-weight: 500; }
+.text-metric     { font-family: "JetBrains Mono", monospace; font-size: 24px; font-weight: 600; }
+.text-micro      { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 400; }
 
 /* ── Semantic color utilities ───────────────────────────────── */
 .text-profit    { color: var(--color-profit); }
@@ -123,9 +125,13 @@ body {
   border: var(--glass-border);
   border-radius: var(--card-radius);
   box-shadow: var(--glass-shadow);
+  transition: border-color 0.2s ease;
+}
+/* Hover-lift is opt-in only for interactive cards — no false affordance. */
+.glass-interactive {
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.glass:hover {
+.glass-interactive:hover {
   transform: translateY(-2px);
   border-color: var(--color-border);
 }
@@ -231,9 +237,12 @@ select {
   100% { top: 100%; opacity: 0; }
 }
 
-@keyframes bounce-subtle {
-  0%, 100% { transform: translateY(0) translateX(-50%); }
-  50% { transform: translateY(8px) translateX(-50%); }
+@keyframes pulse-fade {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.animate-pulse-fade {
+  animation: pulse-fade 2.4s ease-in-out infinite;
 }
 
 .beam-animate-1 {
@@ -278,15 +287,20 @@ select {
 .stagger-reveal.active > *:nth-child(5) { transition-delay: 480ms; opacity: 1; filter: blur(0); transform: translateY(0); }
 .stagger-reveal.active > *:nth-child(6) { transition-delay: 600ms; opacity: 1; filter: blur(0); transform: translateY(0); }
 
-/* FAQ accordion transition */
+/* FAQ accordion — uses grid-template-rows trick for layout-safe height animation */
 .faq-content {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   overflow: hidden;
-  transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), padding 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: grid-template-rows 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.faq-content > * {
+  min-height: 0;
 }
 
 .faq-content.open {
-  max-height: 300px;
+  grid-template-rows: 1fr;
 }
 
 /* ── Toast slide-up animation ──────────────────────────────── */
@@ -333,9 +347,7 @@ select {
 .animate-tilt-in { animation: tilt-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 
 /* Pulse */
-@keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(153, 246, 228, 0); } 50% { box-shadow: 0 0 12px 4px rgba(153, 246, 228, 0.15); } }
 @keyframes pulse-scale { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
-.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
 .animate-pulse-scale { animation: pulse-scale 2s ease-in-out infinite; }
 
 /* Shake */

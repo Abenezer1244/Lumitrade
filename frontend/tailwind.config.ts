@@ -20,13 +20,11 @@ const config: Config = {
         profit: "var(--color-profit)",
         loss: "var(--color-loss)",
         warning: "var(--color-warning)",
-        gold: "var(--color-brand)",
-        emerald: "var(--color-brand)",
       },
       fontFamily: {
-        sans: ["Satoshi", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
-        display: ["Space Grotesk", "sans-serif"],
+        sans: ["Satoshi", "system-ui", "-apple-system", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        display: ["Satoshi", "system-ui", "-apple-system", "sans-serif"],
       },
       borderRadius: {
         card: "var(--card-radius)",

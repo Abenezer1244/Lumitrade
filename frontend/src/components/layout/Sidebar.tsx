@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Gauge,
   Crosshair,
@@ -13,13 +13,6 @@ import {
   X,
   ChevronsLeft,
   ChevronsRight,
-  NotebookPen,
-  BotMessageSquare,
-  Newspaper,
-  ShoppingBag,
-  UserPlus,
-  FlaskConical,
-  Key,
 } from "lucide-react";
 import StatusDot from "@/components/ui/StatusDot";
 
@@ -27,7 +20,6 @@ interface NavItem {
   href: string;
   label: string;
   icon: typeof Gauge;
-  phase?: number;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -36,13 +28,6 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/trades", label: "Trades", icon: ArrowLeftRight },
   { href: "/analytics", label: "Analytics", icon: LineChart },
   { href: "/settings", label: "Settings", icon: SlidersHorizontal },
-  { href: "/journal", label: "Journal", icon: NotebookPen, phase: 2 },
-  { href: "/coach", label: "AI Coach", icon: BotMessageSquare, phase: 2 },
-  { href: "/intelligence", label: "Intel Report", icon: Newspaper, phase: 2 },
-  { href: "/marketplace", label: "Marketplace", icon: ShoppingBag, phase: 3 },
-  { href: "/copy", label: "Copy Trading", icon: UserPlus, phase: 3 },
-  { href: "/backtest", label: "Backtest", icon: FlaskConical, phase: 3 },
-  { href: "/api-access", label: "API Access", icon: Key, phase: 3 },
 ];
 
 const COLLAPSED_KEY = "lumitrade-sidebar-collapsed";
@@ -59,6 +44,20 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const navRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
+  const prefersReducedMotion = useReducedMotion();
+
+  const statusDotPulse = prefersReducedMotion
+    ? undefined
+    : {
+        boxShadow: [
+          "0 0 0px 0px var(--color-profit)",
+          "0 0 3px 1px var(--color-profit)",
+          "0 0 0px 0px var(--color-profit)",
+        ],
+      };
+  const statusDotTransition = prefersReducedMotion
+    ? undefined
+    : { duration: 2, repeat: Infinity, ease: "easeInOut" as const };
 
   // Restore collapsed state from localStorage
   useEffect(() => {
@@ -116,8 +115,8 @@ export default function Sidebar() {
           {isCollapsed ? (
             <motion.span
               key="logo-collapsed"
-              className="text-sm font-bold"
-              style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
+              className="text-sm font-bold tracking-tight"
+              style={{ color: "var(--color-brand)" }}
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
@@ -135,13 +134,13 @@ export default function Sidebar() {
             >
               <span
                 className="text-lg font-bold tracking-tight"
-                style={{ color: "var(--color-brand)", fontFamily: "'Space Grotesk', sans-serif" }}
+                style={{ color: "var(--color-brand)" }}
               >
                 LUMITRADE
               </span>
               <p
-                className="mt-0.5 text-[10px]"
-                style={{ color: "var(--color-text-tertiary)", fontFamily: "'JetBrains Mono', monospace" }}
+                className="mt-0.5 text-[10px] font-mono"
+                style={{ color: "var(--color-text-tertiary)" }}
               >
                 AI Trading Platform
               </p>
@@ -177,23 +176,10 @@ export default function Sidebar() {
           />
         )}
 
-        {NAV_ITEMS.map(({ href, label, icon: Icon, phase }, idx) => {
+        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active = pathname?.startsWith(href);
-          const isFuture = !!phase;
-          const prevItem = idx > 0 ? NAV_ITEMS[idx - 1] : null;
-          const showDivider = isFuture && prevItem && !prevItem.phase;
 
           return (
-            <React.Fragment key={href}>
-              {showDivider && !isCollapsed && (
-                <div className="my-2 mx-3 flex items-center gap-2">
-                  <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
-                  <span className="text-[8px] font-bold tracking-widest" style={{ color: "var(--color-text-tertiary)" }}>
-                    COMING SOON
-                  </span>
-                  <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
-                </div>
-              )}
             <motion.div
               key={href}
               whileHover={{
@@ -210,11 +196,7 @@ export default function Sidebar() {
                   if (el) navRefs.current.set(href, el);
                 }}
                 href={href}
-                title={
-                  isCollapsed
-                    ? `${label}${phase ? ` (Phase ${phase})` : ""}`
-                    : undefined
-                }
+                title={isCollapsed ? label : undefined}
                 className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"} ${isCollapsed ? "px-0 py-2.5" : "px-3 py-2.5"} rounded-lg text-sm`}
                 style={
                   active
@@ -223,10 +205,7 @@ export default function Sidebar() {
                         color: "var(--color-text-primary)",
                       }
                     : {
-                        color: isFuture
-                          ? "var(--color-text-tertiary)"
-                          : "var(--color-text-secondary)",
-                        opacity: isFuture ? 0.6 : 1,
+                        color: "var(--color-text-secondary)",
                       }
                 }
               >
@@ -245,28 +224,8 @@ export default function Sidebar() {
                     </motion.span>
                   )}
                 </AnimatePresence>
-                <AnimatePresence initial={false}>
-                  {!isCollapsed && phase && (
-                    <motion.span
-                      key={`phase-${href}`}
-                      className="text-[9px] font-mono px-1 py-0.5 rounded"
-                      style={{
-                        background: "var(--color-bg-elevated)",
-                        color: "var(--color-text-tertiary)",
-                      }}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      transition={{ duration: 0.12 }}
-                      aria-label={`Phase ${phase} — coming soon`}
-                    >
-                      P{phase}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
               </Link>
             </motion.div>
-            </React.Fragment>
           );
         })}
       </nav>
@@ -326,18 +285,8 @@ export default function Sidebar() {
               <motion.span
                 className="inline-block w-2 h-2 rounded-full"
                 style={{ backgroundColor: "var(--color-profit)" }}
-                animate={{
-                  boxShadow: [
-                    "0 0 0px 0px var(--color-profit)",
-                    "0 0 3px 1px var(--color-profit)",
-                    "0 0 0px 0px var(--color-profit)",
-                  ],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
+                animate={statusDotPulse}
+                transition={statusDotTransition}
               />
               <span>All systems online</span>
             </motion.div>
@@ -353,18 +302,8 @@ export default function Sidebar() {
               <motion.span
                 className="inline-block w-2 h-2 rounded-full"
                 style={{ backgroundColor: "var(--color-profit)" }}
-                animate={{
-                  boxShadow: [
-                    "0 0 0px 0px var(--color-profit)",
-                    "0 0 3px 1px var(--color-profit)",
-                    "0 0 0px 0px var(--color-profit)",
-                  ],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
+                animate={statusDotPulse}
+                transition={statusDotTransition}
               />
             </motion.div>
           )}
@@ -394,7 +333,7 @@ export default function Sidebar() {
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+            className="fixed inset-0 z-40 bg-[#0D1B2A]/70 backdrop-blur-sm lg:hidden"
             onClick={() => setMobileOpen(false)}
             aria-hidden="true"
             initial={{ opacity: 0 }}

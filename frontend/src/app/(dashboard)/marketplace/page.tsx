@@ -14,8 +14,8 @@ export default function MarketplacePage() {
 
       <div className="space-y-2">
         <h1
-          className="text-2xl font-bold"
-          style={{ color: "#E2E8F0", fontFamily: "'Space Grotesk', sans-serif" }}
+          className="text-2xl font-bold tracking-tight"
+          style={{ color: "#E2E8F0" }}
         >
           Strategy Marketplace
         </h1>

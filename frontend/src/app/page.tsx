@@ -404,8 +404,8 @@ export default function LandingPage() {
               }}
             />
             <span
-              className="font-semibold text-sm tracking-wide"
-              style={{ color: "#FFFFFF", fontFamily: "'Space Grotesk', sans-serif" }}
+              className="font-bold text-sm tracking-tight"
+              style={{ color: "#FFFFFF" }}
             >
               LUMITRADE
             </span>
@@ -495,16 +495,7 @@ export default function LandingPage() {
             >
               Trade forex with
               <br />
-              <span
-                style={{
-                  background: "linear-gradient(135deg, var(--color-brand), var(--color-accent))",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                }}
-              >
-                AI precision.
-              </span>
+              <span style={{ color: "var(--color-brand)" }}>AI precision.</span>
             </h1>
 
             {/* Subtext */}
@@ -522,25 +513,11 @@ export default function LandingPage() {
             <div className="flex flex-col sm:flex-row gap-4 pointer-events-auto">
               <Link
                 href="/auth/signup"
-                className="inline-flex items-center justify-center gap-2.5 px-8 py-4 font-semibold rounded-full text-base transition-all duration-200"
+                className="inline-flex items-center justify-center gap-2.5 px-8 py-4 font-semibold rounded-full text-base transition-colors duration-150"
                 style={{
                   backgroundColor: "var(--color-brand)",
                   color: "#0D1B2A",
                   minHeight: 52,
-                  boxShadow:
-                    "0 0 30px rgba(5, 150, 105, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3)",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.boxShadow =
-                    "0 0 40px rgba(0, 200, 150, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3)";
-                  (e.currentTarget as HTMLElement).style.transform =
-                    "translateY(-1px)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.boxShadow =
-                    "0 0 30px rgba(0, 200, 150, 0.2), 0 4px 12px rgba(0, 0, 0, 0.3)";
-                  (e.currentTarget as HTMLElement).style.transform =
-                    "translateY(0)";
                 }}
               >
                 Start Paper Trading <ArrowRight size={18} />
@@ -569,17 +546,16 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Bounce arrow at bottom */}
+        {/* Scroll hint */}
         <div
-          className="absolute bottom-12 left-1/2 -translate-x-1/2"
-          style={{ animation: "bounce-subtle 2s ease-in-out infinite" }}
+          className="absolute bottom-12 left-1/2 -translate-x-1/2 animate-pulse-fade"
         >
           <ChevronDown size={24} style={{ color: "#6B7280" }} />
         </div>
       </div>
 
       {/* ── Hero Scroll Spacer (drives 3D scene) ────────── */}
-      <div id="hero-spacer" style={{ height: "400vh" }} />
+      <div id="hero-spacer" style={{ height: "150vh" }} />
 
       {/* ── Main Content ────────────────────────────────── */}
       <div
@@ -846,32 +822,25 @@ export default function LandingPage() {
               {PRICING.map((tier) => (
                 <div
                   key={tier.name}
-                  className={`relative rounded-2xl p-8 ${tier.featured ? "md:-my-4 md:py-12" : ""}`}
+                  className="relative rounded-2xl p-8"
                   style={{
-                    background: tier.featured
-                      ? "var(--color-bg-surface)"
-                      : "var(--color-bg-surface)",
+                    background: "var(--color-bg-surface)",
                     border: tier.featured
-                      ? "1px solid rgba(0, 200, 150, 0.25)"
+                      ? "1px solid var(--color-brand)"
                       : "1px solid var(--color-border)",
                     borderRadius: 16,
-                    backdropFilter: "blur(16px)",
-                    WebkitBackdropFilter: "blur(16px)",
-                    boxShadow: tier.featured
-                      ? "0 0 60px rgba(0, 200, 150, 0.08), 0 4px 24px rgba(0, 0, 0, 0.4)"
-                      : "0 4px 24px rgba(0, 0, 0, 0.4)",
                   }}
                 >
-                  {/* Featured glow */}
                   {tier.featured && (
-                    <div
-                      className="absolute -top-px -left-px -right-px -bottom-px rounded-2xl pointer-events-none"
+                    <span
+                      className="absolute -top-2.5 left-4 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest"
                       style={{
-                        background:
-                          "linear-gradient(135deg, rgba(0, 200, 150, 0.1), transparent 50%)",
-                        borderRadius: 16,
+                        background: "var(--color-brand)",
+                        color: "var(--color-bg-primary)",
                       }}
-                    />
+                    >
+                      Recommended
+                    </span>
                   )}
                   <div className="relative">
                     <p
@@ -928,7 +897,7 @@ export default function LandingPage() {
                     </ul>
                     <Link
                       href={tier.name === "Enterprise" ? "#" : "/auth/signup"}
-                      className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 font-semibold rounded-full text-sm transition-all duration-200"
+                      className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 font-semibold rounded-full text-sm transition-colors duration-150"
                       style={{
                         backgroundColor: tier.featured ? "var(--color-brand)" : "rgba(255, 255, 255, 0.06)",
                         color: tier.featured ? "#0D1B2A" : "var(--color-text-primary)",
@@ -936,28 +905,15 @@ export default function LandingPage() {
                           ? "none"
                           : "1px solid rgba(255, 255, 255, 0.08)",
                         minHeight: 48,
-                        boxShadow: tier.featured
-                          ? "0 0 24px rgba(0, 200, 150, 0.2)"
-                          : "none",
                       }}
                       onMouseEnter={(e) => {
-                        if (tier.featured) {
-                          (e.currentTarget as HTMLElement).style.boxShadow =
-                            "0 0 36px rgba(0, 200, 150, 0.35)";
-                          (e.currentTarget as HTMLElement).style.transform =
-                            "translateY(-1px)";
-                        } else {
+                        if (!tier.featured) {
                           (e.currentTarget as HTMLElement).style.backgroundColor =
                             "rgba(255, 255, 255, 0.1)";
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (tier.featured) {
-                          (e.currentTarget as HTMLElement).style.boxShadow =
-                            "0 0 24px rgba(0, 200, 150, 0.2)";
-                          (e.currentTarget as HTMLElement).style.transform =
-                            "translateY(0)";
-                        } else {
+                        if (!tier.featured) {
                           (e.currentTarget as HTMLElement).style.backgroundColor =
                             "rgba(255, 255, 255, 0.06)";
                         }
@@ -1128,7 +1084,7 @@ export default function LandingPage() {
                   disciplined risk management, and real-time execution via
                   OANDA.
                 </p>
-                <p className="text-xs" style={{ color: "#333" }}>
+                <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
                   &copy; {new Date().getFullYear()} Lumitrade. All rights
                   reserved.
                 </p>
@@ -1165,11 +1121,11 @@ export default function LandingPage() {
               className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4"
               style={{ borderTop: "1px solid rgba(255, 255, 255, 0.04)" }}
             >
-              <p className="text-xs" style={{ color: "#333" }}>
+              <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
                 Trading forex involves risk of loss. Past performance does not
                 guarantee future results.
               </p>
-              <p className="font-mono text-xs" style={{ color: "#333" }}>
+              <p className="font-mono text-xs" style={{ color: "var(--color-text-secondary)" }}>
                 v1.0.0
               </p>
             </div>
