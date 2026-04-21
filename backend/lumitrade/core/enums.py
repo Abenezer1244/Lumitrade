@@ -60,6 +60,7 @@ class ExitReason(str, Enum):
 
     SL_HIT = "SL_HIT"
     TP_HIT = "TP_HIT"
+    TRAILING_STOP = "TRAILING_STOP"
     AI_CLOSE = "AI_CLOSE"
     MANUAL = "MANUAL"
     EMERGENCY = "EMERGENCY"

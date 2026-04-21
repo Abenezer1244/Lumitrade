@@ -16,12 +16,14 @@ at stake.
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from ..core.enums import ExitReason
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.oanda_client import OandaClient
 from ..infrastructure.secure_logger import get_logger
+from ..utils.pip_math import pips_between
 
 logger = get_logger(__name__)
 
@@ -158,12 +160,15 @@ class PositionReconciler:
 
         # Mark as closed in DB — try to fetch real P&L from OANDA first.
         try:
-            opened_at = db_trade.get("opened_at", now.isoformat())
+            opened_at_raw = db_trade.get("opened_at") or now.isoformat()
+            entry_price_raw = db_trade.get("entry_price")
             outcome = "BREAKEVEN"
-            pnl_usd = 0
-            pnl_pips = 0
-            exit_price = db_trade.get("entry_price")
-            close_time = opened_at
+            pnl_usd: float = 0.0
+            pnl_pips: Decimal = Decimal("0")
+            exit_price = entry_price_raw
+            close_time = opened_at_raw
+            exit_reason = ExitReason.UNKNOWN.value
+            oanda_close_reason: str | None = None
 
             # Attempt to get real P&L from OANDA if we have a broker_trade_id
             if broker_trade_id:
@@ -179,11 +184,24 @@ class PositionReconciler:
                     close_t = oanda_trade.get("closeTime")
                     if close_t:
                         close_time = close_t
+                    # Infer exit reason from the close-transaction reasons
+                    # OANDA populates these fields when a stop/tp order filled.
+                    tx_reasons = [
+                        oanda_trade.get(k)
+                        for k in (
+                            "stopLossOrderFillReason",
+                            "takeProfitOrderFillReason",
+                            "trailingStopLossOrderFillReason",
+                        )
+                        if oanda_trade.get(k)
+                    ]
+                    oanda_close_reason = tx_reasons[0] if tx_reasons else None
                     logger.info(
                         "ghost_trade_real_pnl_fetched",
                         trade_id=trade_id,
                         pnl_usd=pnl_usd,
                         outcome=outcome,
+                        oanda_close_reason=oanda_close_reason,
                     )
                 except Exception:
                     logger.warning(
@@ -192,17 +210,67 @@ class PositionReconciler:
                         broker_trade_id=broker_trade_id,
                     )
 
+            # Best-effort exit_reason classification:
+            #   1. If OANDA reported a specific fill reason, use it.
+            #   2. Otherwise infer from P&L sign: wins on ghost trades almost
+            #      always come from trailing-stop fills (we don't set fixed TP);
+            #      losses come from the fixed SL.
+            if oanda_close_reason:
+                if "TRAILING" in oanda_close_reason.upper():
+                    exit_reason = ExitReason.TRAILING_STOP.value
+                elif "STOP_LOSS" in oanda_close_reason.upper():
+                    exit_reason = ExitReason.SL_HIT.value
+                elif "TAKE_PROFIT" in oanda_close_reason.upper():
+                    exit_reason = ExitReason.TP_HIT.value
+            elif outcome == "WIN":
+                exit_reason = ExitReason.TRAILING_STOP.value
+            elif outcome == "LOSS":
+                exit_reason = ExitReason.SL_HIT.value
+
+            # Compute pnl_pips from real entry/exit so downstream analysis
+            # (lesson_analyzer, audit, dashboard) has complete data.
+            try:
+                if entry_price_raw and exit_price:
+                    direction = (db_trade.get("direction") or "").upper()
+                    entry_d = Decimal(str(entry_price_raw))
+                    exit_d = Decimal(str(exit_price))
+                    raw_pips = pips_between(entry_d, exit_d, pair)
+                    if direction == "BUY":
+                        pnl_pips = raw_pips if exit_d >= entry_d else -raw_pips
+                    elif direction == "SELL":
+                        pnl_pips = raw_pips if exit_d <= entry_d else -raw_pips
+            except Exception:
+                pnl_pips = Decimal("0")
+
+            # Duration in minutes — opened_at → close_time.
+            duration_minutes = None
+            try:
+                opened_dt = (
+                    datetime.fromisoformat(opened_at_raw.replace("Z", "+00:00"))
+                    if isinstance(opened_at_raw, str)
+                    else opened_at_raw
+                )
+                closed_dt = (
+                    datetime.fromisoformat(close_time.replace("Z", "+00:00"))
+                    if isinstance(close_time, str)
+                    else close_time
+                )
+                duration_minutes = int((closed_dt - opened_dt).total_seconds() // 60)
+            except Exception:
+                duration_minutes = None
+
             await self._db.update(
                 "trades",
                 {"id": trade_id},
                 {
                     "status": "CLOSED",
-                    "exit_reason": ExitReason.UNKNOWN.value,
+                    "exit_reason": exit_reason,
                     "outcome": outcome,
                     "pnl_usd": pnl_usd,
-                    "pnl_pips": pnl_pips,
+                    "pnl_pips": str(pnl_pips),
                     "exit_price": str(exit_price) if exit_price else None,
                     "closed_at": close_time,
+                    "duration_minutes": duration_minutes,
                 },
             )
             logger.info(

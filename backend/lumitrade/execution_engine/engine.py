@@ -22,6 +22,7 @@ from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.oanda_client import OandaClient, OandaTradingClient
 from ..utils.pip_math import pips_between
+from ..utils.time_utils import session_label_for_lesson
 from ..infrastructure.secure_logger import get_logger
 from .circuit_breaker import CircuitBreaker
 from .fill_verifier import FillVerifier
@@ -177,7 +178,7 @@ class ExecutionEngine:
                     "confidence_score": str(order.confidence),
                     "slippage_pips": str(result.slippage_pips),
                     "status": "OPEN",
-                    "session": "",
+                    "session": session_label_for_lesson(),
                     "opened_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -602,6 +603,22 @@ class ExecutionEngine:
         """Update trade record in DB as CLOSED."""
         trade_id = trade.get("id", "")
         now = datetime.now(timezone.utc)
+
+        # Compute duration_minutes from opened_at so every closed trade has
+        # a complete audit trail (required by lesson_analyzer and SA-02).
+        duration_minutes = None
+        opened_at_raw = trade.get("opened_at")
+        if opened_at_raw:
+            try:
+                opened_dt = (
+                    datetime.fromisoformat(opened_at_raw.replace("Z", "+00:00"))
+                    if isinstance(opened_at_raw, str)
+                    else opened_at_raw
+                )
+                duration_minutes = int((now - opened_dt).total_seconds() // 60)
+            except Exception:
+                duration_minutes = None
+
         try:
             await self._db.update(
                 "trades",
@@ -614,6 +631,7 @@ class ExecutionEngine:
                     "outcome": outcome,
                     "exit_reason": exit_reason,
                     "closed_at": now.isoformat(),
+                    "duration_minutes": duration_minutes,
                 },
             )
             logger.info(

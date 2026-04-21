@@ -37,6 +37,27 @@ def get_current_session(dt: datetime | None = None) -> Session:
     return Session.OTHER
 
 
+def session_label_for_lesson(dt: datetime | None = None) -> str:
+    """Return the session label used by lesson_filter and lesson_analyzer.
+
+    Simple UTC-hour buckets, independent of DST:
+      ASIAN  : 00-08 UTC
+      LONDON : 08-13 UTC
+      NY     : 13-21 UTC
+      OTHER  : 21-24 UTC
+
+    Matches lesson_analyzer.SESSION_RANGES so round-trip extraction works.
+    """
+    hour = (dt or datetime.now(timezone.utc)).hour
+    if 0 <= hour < 8:
+        return "ASIAN"
+    if 8 <= hour < 13:
+        return "LONDON"
+    if 13 <= hour < 21:
+        return "NY"
+    return "OTHER"
+
+
 def is_market_open(dt: datetime | None = None) -> bool:
     """Forex market is closed Saturday + most of Sunday."""
     now = dt or datetime.now(timezone.utc)
