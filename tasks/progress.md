@@ -9,6 +9,68 @@
 - **Strategy**: Turtle (no fixed TP) + ADX regime filter + Trading Memory + Visual Charts + TradingView consensus
 - **Deploy Rule**: Only deploy 13:00-23:59 UTC (never during trading hours)
 
+## Session 2026-04-21 (cont.) — Deploy + verify + Railway webhook fix
+
+### Critical infra bug discovered and fixed
+Railway's GitHub auto-deploy was **broken since 2026-04-13**. Every
+commit pushed between Apr 13 and Apr 21 was silently ignored by Railway
+(no rebuilds triggered). Discovery path:
+
+1. Audit + 5 bug fixes pushed 05:37–06:05 UTC — NO deploys
+2. After restart, logs showed `pairs: ["USD_CAD"]` and `count: 50`
+   (OLD code) — meaning none of the fixes were live.
+3. `railway deployment list` confirmed zero successful builds between
+   2026-04-13 and 2026-04-21.
+4. `railway up --service lumitrade-engine --detach --ci` forced a
+   fresh build from local source, unblocking deploy.
+5. Root cause via Railway GraphQL: `serviceInstances.source.repo` was
+   `null`. Both `lumitrade-engine` and `lumitrade-dashboard` had been
+   disconnected from GitHub at some point.
+6. Fixed via `serviceConnect` mutation on `lumitrade-engine`, setting
+   `repo: "Abenezer1244/Lumitrade"`. (Dashboard is on Vercel, left as-is.)
+7. Verified with test commit `0e9cf5a` — auto-deployed in ~3 min.
+
+### All 5 bug fixes now LIVE in production (confirmed by logs)
+- `"pairs": ["USD_CAD", "USD_JPY"]` — USD_JPY wired
+- `"count": 250` on H1, `120` on M15/H4 — Bug 1 candle fix
+- First MULTI-tier signal ever: `SELL 0.83, strategies: [EMA_TREND, MOMENTUM]`
+  (pre-fix, EMA_TREND was ALWAYS HOLD because ema_200=0 gate)
+- New trades have `session: "LONDON"` populated — Bug 5 close-path fix
+- `lesson_filter_boost_matched` firing for new specificity-aware rules
+
+### First new-code trades opened 2026-04-21 08:16-08:17 UTC
+| Pair | Dir | Entry | SL | Conf | Session |
+|---|---|---|---|---|---|
+| USD_CAD | SELL | 1.366 | 1.36878 | 0.83 | LONDON |
+| **USD_JPY** | **BUY** | **159.197** | **158.73** | **0.77** | **LONDON** |
+
+First USD_JPY trade in ~2 weeks. SL distance 46.7 pips (was ~20 pip
+median pre-fix — the 3x ATR math is now working because ema_200
+no longer forces HOLD).
+
+### Auto-deploy now verified working
+- Test commit `0e9cf5a` pushed → Railway auto-built → deployed in ~3 min
+- Future `git push origin main` will auto-deploy (no more `railway up` needed)
+
+### Tools / side installs
+- Impeccable skill pack installed (`npx skills add pbakaus/impeccable -y -g`)
+  — 17 frontend design skills symlinked to Claude Code via `~/.agents/skills/`.
+  Notable: `audit`, `polish`, `typeset`, `colorize`, `layout`.
+
+### Commits this session (in order)
+```
+48d1792 fix: fetch 250 H1 candles so EMA(200) actually computes
+1abe5a0 fix: show both trade directions in Claude prompt
+25d2f2e fix: lesson_filter honors specificity
+877bff1 fix: populate session, duration, pips, and exit_reason on close
+c38f793 docs: 103-trade audit report
+0f7df9d chore: track migration 014 in supabase/migrations/ format
+60fac64 feat: re-enable USD_JPY trading alongside USD_CAD
+4eb58d3 docs: update progress.md
+68a922c chore: cache bust for Railway redeploy
+0e9cf5a chore: test github-railway auto-deploy after reconnecting source repo
+```
+
 ## Session 2026-04-20 → 2026-04-21 — Audit + 5 Bug Fixes + USD_JPY re-enable
 
 ### 103-trade audit findings (docs/TRADE_AUDIT.md)
