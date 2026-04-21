@@ -59,11 +59,15 @@ class LumitradeConfig(BaseSettings):
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
     # ── Trading parameters (DB overrides env) ──────────────────
-    # 2-year backtest results (2,993 trades):
-    # USD_CAD: ONLY profitable pair (+$24,637, +$11K at 3x ATR SL)
-    # USD_JPY: -$25,316 | AUD_USD: -$2,527 | NZD_USD: -$12,621
-    # Focus on what works. XAU_USD to be added via CoinEXX.
-    pairs: list[str] = ["USD_CAD"]
+    # USD_CAD: only profitable pair in 2-year backtest (+$24,637 at 3x ATR)
+    #          — also the current franchise pair, 66.7% live WR.
+    # USD_JPY: the backtest was direction-agnostic and showed -$25K,
+    #          but our live direction-specific memory disagrees —
+    #          BUY:USD_JPY BOOST rule is 84.6% WR / +$8,586 over 13 live
+    #          trades, and BUY:USD_JPY:NY is 71% WR / +$4,694.
+    #          Lesson filter will BLOCK SELL:USD_JPY automatically if
+    #          the direction re-deteriorates (<35% WR on 5+ trades).
+    pairs: list[str] = ["USD_CAD", "USD_JPY"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
