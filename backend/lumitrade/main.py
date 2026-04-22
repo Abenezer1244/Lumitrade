@@ -301,6 +301,20 @@ class OrchestratorService:
                     await asyncio.sleep(300)  # Check again in 5 minutes
                     continue
 
+                # Weekday blackout — 106-trade audit showed Tuesday = 13% WR /
+                # −$13,309 over 23 trades (p<0.001). Default blocks Tuesday
+                # pending root-cause investigation. Configurable via
+                # blocked_weekdays_utc.
+                current_weekday = datetime.now(timezone.utc).weekday()
+                if current_weekday in self.config.blocked_weekdays_utc:
+                    logger.info(
+                        "weekday_blackout_skipping_scan",
+                        weekday=current_weekday,
+                        blocked=self.config.blocked_weekdays_utc,
+                    )
+                    await asyncio.sleep(self.config.signal_interval_minutes * 60)
+                    continue
+
                 # Refresh account balance from OANDA every cycle
                 try:
                     acct = await self.oanda.get_account_summary()

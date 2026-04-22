@@ -74,11 +74,22 @@ class LumitradeConfig(BaseSettings):
     signal_interval_minutes: int = 15
     max_risk_pct: Decimal = Decimal("0.02")
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
-    # Chart mode: allow high-confidence chart setups. Old 0.80 cap was for text-only.
-    max_confidence: Decimal = Decimal("0.95")
+    # 106-trade audit (2026-04-21): 0.80+ confidence bucket WR collapsed to
+    # 27.3% (−$5,620 over 22 trades). Confidence model is currently inverted
+    # above 0.80 — higher claimed confidence → worse outcomes. Until the
+    # scorer is recalibrated, reject signals above 0.80 rather than size up
+    # on them. Drops from 0.95 (chart-mode era) back to 0.80.
+    max_confidence: Decimal = Decimal("0.80")
     # 17-23 UTC blocked: late NY session + dead zone. 85-trade data + industry research confirm
     # low volume, wide spreads, choppy moves. Main session filter in main.py blocks >=17 UTC.
     no_trade_hours_utc: list[int] = [17, 18, 19, 20, 21, 22, 23]
+    # Weekday blackout knob. Python weekday(): 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri.
+    # Tuesday breakdown (23 trades / −$13,309) is dominated by W14 (17
+    # trades / −$11,081) and by pairs now excluded from the pair list
+    # (GBP/EUR/CHF/NZD on Tue = 0/12). Post-restriction Tuesday sample is
+    # only 6 trades. Leaving empty by default — re-enable with [1] if
+    # Tuesday drawdowns recur on USD_CAD / USD_JPY specifically.
+    blocked_weekdays_utc: list[int] = []
     max_open_trades: int = 100
     max_positions_per_pair: int = 10
     max_position_units: int = 500_000
@@ -91,7 +102,10 @@ class LumitradeConfig(BaseSettings):
     min_rr_ratio: Decimal = Decimal("1.5")
     min_sl_pips: Decimal = Decimal("15.0")
     min_tp_pips: Decimal = Decimal("15.0")
-    max_hold_hours: int = 6
+    # Raised from 6 → 24. 106-trade audit showed 6-24h bucket = 56% WR /
+    # +$5,795 and 24h+ bucket = 86% WR / +$6,802, while 0-6h = 31% WR /
+    # −$11,692. Forced 6h exit was severing trades just as they matured.
+    max_hold_hours: int = 24
     price_deviation_max: Decimal = Decimal("0.005")
     stale_tick_seconds: int = 5
     position_monitor_interval: int = 60
