@@ -3,11 +3,131 @@
 ## Current Status
 - **Phase**: 9 — Paper Trading (ACTIVE)
 - **Mode**: PAPER on OANDA practice account
-- **Balance**: ~$101,474 (103 closed trades, +$1,474 cumulative)
-- **Pairs trading**: USD_CAD + USD_JPY (re-enabled 2026-04-21)
-- **Engine**: Running on Railway, per-pair session windows
+- **Balance**: ~$100,904 (106 closed trades, +$904 cumulative, down from $13,345 peak)
+- **Pairs trading**: USD_CAD + USD_JPY
+- **Engine**: Running on Railway, per-pair session windows, **new: confidence cap 0.80 + max hold 24h**
 - **Strategy**: Turtle (no fixed TP) + ADX regime filter + Trading Memory + Visual Charts + TradingView consensus
-- **Deploy Rule**: Only deploy 13:00-23:59 UTC (never during trading hours)
+- **Deploy Rule**: Only deploy 13:00-23:59 UTC (never during trading hours) — *user pushed once in-window 2026-04-22 06:15 UTC with explicit acknowledgment*
+
+## Session 2026-04-21/22 — Frontend critique refactor + 106-trade audit + engine tuning
+
+### Part 1 — Frontend critique (2-round)
+Ran `/critique` skill twice (impeccable). Score went from 21/40 → 33/40 on Nielsen
+heuristics; impeccable detector 5 findings → 0.
+
+**7-phase refactor landed in one commit `f2a5b04`:**
+1. `/typeset` — 5 font families → 2 (Satoshi + JetBrains Mono). Purged 15 files of
+   inline `fontFamily` overrides. Removed PT Serif, Nunito, Space Grotesk, DM Sans.
+2. `/distill` — Sidebar 12 → 5 items (removed P2/P3 coming-soon placeholders).
+   Pricing tier neon glow → restrained "Recommended" label.
+3. `/layout` — Dashboard 10 → 6 panels with 4-tier hierarchy (hero Account+Today →
+   focal OpenPositions → secondary Signals + rail Risk/News/Halt).
+4. `/quieter` — Removed gradient "AI precision." clip-text; Three.js scroll spacer
+   400vh → 150vh; bounce arrow → opacity pulse; FAQ `max-height` → `grid-template-rows`;
+   LoadingScreen `width` → `scaleX`; pure-black modals → tinted navy.
+5. `/clarify` — Every settings slider gained Recommended + concrete tradeoff copy.
+6. `/harden` — Reduced-motion `useReducedMotion()` on Sidebar pulse. ModeToggle
+   PAPER→LIVE now requires typed phrase `START LIVE TRADING` + risk-ack checkbox.
+7. `/polish` + quick wins — Killed perpetual BUY/SELL badge bob, radar spin,
+   opacity breathe (OpenPositionsTable). Glass hover-lift universal → opt-in
+   `.glass-interactive`. Footer `#333` → tokenized. AccountPanel pipe → bullet.
+   Login emerald glow → brand token. KillSwitch "Reset" → "Dismiss" with
+   clarifying copy. Settings default `riskPct` 1.0 → 0.5 to match landing FAQ.
+   TopBar purged 7 stale PAGE_TITLES entries. Go/No-Go got tooltip + aria.
+
+Light-theme-default kept at user's explicit direction (flagged as downstream
+semantic-color consequence — `#DC2626` loss on light ≠ `#FF4D6A` loss on dark).
+
+Commit `f2a5b04` also included 14 previously-untracked components (ThemeToggle,
+LoadingSpinner, ConfirmDialog, ModeToggle, auth/login, e2e tests, etc.) that
+had never been on origin/main. Without them CI would have failed.
+
+### Part 2 — 106-trade audit (replaces the 103-trade report)
+Ran `backend/scripts/trade_audit.py`. Full data (Mar 26 – Apr 21):
+
+| Metric | Value |
+|---|---|
+| Net P&L | +$904.11 |
+| Win rate | 43.4% |
+| Profit factor | **1.026** (barely edge-positive) |
+| Max DD | −$15,065 (Apr 2) |
+| Peak equity | $13,345 |
+| Final cumulative | $904 (down $12,441 from peak) |
+
+**Confidence model inverted above 0.80:**
+- 0.70–0.80: **48.8% WR / +$6,455** (the sweet spot)
+- 0.80–0.90: **27.3% WR / −$5,620**
+- 0.90+: 0% WR / −$1,050
+
+**Hold time is crucial:**
+- 0–30min: 12.5% WR / −$2,802
+- 6–24h: 55.6% WR / +$5,795
+- 24h+: 85.7% WR / +$6,802
+
+The engine was force-closing trades at 6h before they matured.
+
+**Exit mix:** 81% of trades die on SL (86 SL_HIT vs 11 trailing-stop wins vs
+7 TP_HIT). Trailing mechanic is 100% WR when it fires — don't touch what's
+working.
+
+**Tuesday drill-down:** 23 Tues trades / −$13,309, but 83% of that was one
+week (W14 = −$11,081), and 12 of 23 were on pairs already excluded
+(GBP/EUR/CHF/NZD). Post-restriction Tuesday sample = 6 trades — too small
+to blanket-block. Added `blocked_weekdays_utc` config knob but default `[]`.
+
+### Part 3 — Engine tuning (commit `6948951`)
+Pushed **06:15 UTC inside trading hours** at user's explicit direction.
+Expect engine restart to have missed any in-flight signal.
+
+```python
+# backend/lumitrade/config.py
+max_confidence:     0.95 → 0.80   # rejects inverted-confidence bucket
+max_hold_hours:     6   → 24     # lets profitable trades mature
+blocked_weekdays_utc: []          # dormant knob, ready to flip to [1]
+```
+
+```python
+# backend/lumitrade/main.py
+# new weekday-blackout check in _signal_to_trade_loop (no-op while list is empty)
+```
+
+Wiring verified:
+- `max_confidence` → `_check_confidence_ceiling` in risk_engine:400, invoked at
+  risk_engine:105 with early-return rejection.
+- `max_hold_hours` → force-close check in execution_engine:231.
+- `blocked_weekdays_utc` → new check in main.py:308-316.
+
+**Already in place, verified against audit:**
+- GBP_USD already excluded via `pairs = [USD_CAD, USD_JPY]`.
+- SL is ATR × 3.0 per-pair (`quant_engine._calculate_sl`) — audit's
+  recommendation 8 was already implemented.
+- Trailing stop tuned per-pair (`TRAIL_ACTIVATION_PIPS`), 100% WR —
+  not touched.
+
+**Deferred (separate decisions needed):**
+- Restrict SELL to USD_CAD only (non-USD_CAD SELL = 0 wins / 12 trades).
+- Blackout 13:00–17:00 UTC (only ≥17 currently blocked).
+
+### Side cleanups
+- Deleted 22 shell-quoting garbage files (`0`, `25`, `EMA200`, `{c}`,
+  `backend/list[Trade]`, `../,`, `../clearInterval(interval)`, etc. — all
+  0-byte shell-accident artifacts).
+
+### Commits this session
+```
+f2a5b04 refactor(frontend): apply design critique — fonts, layout, motion calm, safety ceremony
+6948951 perf(engine): tune from 106-trade audit — confidence cap, hold-time, weekday knob
+```
+
+### Watch list for next session
+- Trade volume should drop from the 0.80 ceiling — don't over-interpret.
+- Re-audit after ~30 more trades. If 0.80 cap proves too tight and 0.70–0.80
+  samples well, consider raising back to 0.85.
+- Watch whether 24h hold reveals TP-tier winners that used to be force-closed.
+- If Tuesday drawdown recurs on USD_CAD/USD_JPY specifically, flip
+  `blocked_weekdays_utc=[1]`.
+- Re-run `/critique` on the frontend after some live user time to spot
+  new polish opportunities.
 
 ## Session 2026-04-21 (cont.) — Deploy + verify + Railway webhook fix
 

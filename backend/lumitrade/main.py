@@ -301,10 +301,10 @@ class OrchestratorService:
                     await asyncio.sleep(300)  # Check again in 5 minutes
                     continue
 
-                # Weekday blackout — 106-trade audit showed Tuesday = 13% WR /
-                # −$13,309 over 23 trades (p<0.001). Default blocks Tuesday
-                # pending root-cause investigation. Configurable via
-                # blocked_weekdays_utc.
+                # Weekday blackout — default empty list (no block). Flip on via
+                # blocked_weekdays_utc (e.g. [1] for Tue) if a weekday-specific
+                # drawdown appears on current pair set. See config.py for
+                # audit context.
                 current_weekday = datetime.now(timezone.utc).weekday()
                 if current_weekday in self.config.blocked_weekdays_utc:
                     logger.info(
