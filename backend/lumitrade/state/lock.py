@@ -85,32 +85,44 @@ class DistributedLock:
             current_holder = row.get("instance_id")
             lock_expires_at_str = row.get("lock_expires_at")
 
-            # We already hold the lock — refresh
+            # We already hold the lock — refresh. Conditional update on our
+            # own instance_id; if it fails, someone else stole the lock between
+            # the read and the write.
             if current_holder == instance_id:
-                await self._update_lock(instance_id, now, expected_holder=instance_id)
-                logger.info(
-                    "lock_reacquired",
-                    instance_id=instance_id,
-                )
+                ok = await self._update_lock(instance_id, now, expected_holder=instance_id)
+                if not ok:
+                    logger.warning("lock_reacquire_lost_race", instance_id=instance_id)
+                    return False
+                logger.info("lock_reacquired", instance_id=instance_id)
                 return True
 
             # Check if no holder or lock is expired
             if current_holder is None or not row.get("is_primary_instance"):
                 # No active holder — conditional claim (only if still vacant)
-                await self._update_lock(instance_id, now, expected_holder=current_holder)
-                logger.info(
-                    "lock_acquired",
-                    instance_id=instance_id,
-                    method="claim_vacant",
-                )
+                ok = await self._update_lock(instance_id, now, expected_holder=current_holder)
+                if not ok:
+                    logger.warning(
+                        "lock_claim_vacant_lost_race",
+                        instance_id=instance_id,
+                        previous_holder=current_holder,
+                    )
+                    return False
+                logger.info("lock_acquired", instance_id=instance_id, method="claim_vacant")
                 return True
 
             if lock_expires_at_str:
                 expires_at = datetime.fromisoformat(lock_expires_at_str)
                 if now > expires_at:
-                    # Lock holder is presumed dead — conditional takeover
-                    # Only succeeds if the holder hasn't changed since we read
-                    await self._update_lock(instance_id, now, expected_holder=current_holder)
+                    # Lock holder is presumed dead — conditional takeover.
+                    # Only succeeds if the holder hasn't changed since we read.
+                    ok = await self._update_lock(instance_id, now, expected_holder=current_holder)
+                    if not ok:
+                        logger.warning(
+                            "lock_takeover_lost_race",
+                            instance_id=instance_id,
+                            previous_holder=current_holder,
+                        )
+                        return False
                     logger.warning(
                         "lock_takeover",
                         instance_id=instance_id,
@@ -127,8 +139,16 @@ class DistributedLock:
                 )
                 return False
 
-            # No lock_expires_at — malformed, take over
-            await self._update_lock(instance_id, now)
+            # No lock_expires_at — malformed, conditional takeover (still
+            # require expected_holder to avoid clobbering a concurrent writer).
+            ok = await self._update_lock(instance_id, now, expected_holder=current_holder)
+            if not ok:
+                logger.warning(
+                    "lock_takeover_malformed_lost_race",
+                    instance_id=instance_id,
+                    previous_holder=current_holder,
+                )
+                return False
             logger.warning(
                 "lock_takeover_malformed",
                 instance_id=instance_id,
@@ -174,7 +194,16 @@ class DistributedLock:
 
             try:
                 now = datetime.now(timezone.utc)
-                await self._update_lock(instance_id, now)
+                # Renew with conditional update — only succeeds if WE still hold
+                # the lock. If another instance has taken over (split-brain
+                # avoidance), this returns False and we treat it as a failure
+                # so the failure counter trips and we shut down cleanly.
+                ok = await self._update_lock(instance_id, now, expected_holder=instance_id)
+                if not ok:
+                    raise RuntimeError(
+                        f"Lock renewal CAS failed — another instance "
+                        f"may have taken over while we were renewing"
+                    )
                 consecutive_failures = 0
                 logger.debug(
                     "lock_renewed",
@@ -283,7 +312,12 @@ class DistributedLock:
         Write the lock renewal to system_state singleton row.
         Uses conditional update when expected_holder is set to prevent
         race conditions (only updates if the current holder matches).
-        Returns True if the update succeeded.
+
+        Returns True ONLY if the conditional update actually matched a row
+        (compare-and-swap semantics). Returns False on zero-match — Codex
+        review 2026-04-25 finding #1: previous version returned True
+        unconditionally, allowing two instances to both believe they hold
+        the lock after a failover race.
         """
         lock_data = {
             "instance_id": instance_id,
@@ -300,5 +334,19 @@ class DistributedLock:
         else:
             filters = {"id": LOCK_ROW_ID}
 
-        await self._db.update("system_state", filters, lock_data)
+        result = await self._db.update("system_state", filters, lock_data)
+
+        # CAS verification: db.update returns the list of rows that matched
+        # the filters and were updated. Anything other than exactly 1 row
+        # means the conditional update raced against another writer and
+        # must be treated as a failed acquire/renew.
+        rows_updated = len(result) if isinstance(result, list) else 0
+        if rows_updated != 1:
+            logger.warning(
+                "lock_cas_failed",
+                instance_id=instance_id,
+                expected_holder=expected_holder,
+                rows_updated=rows_updated,
+            )
+            return False
         return True

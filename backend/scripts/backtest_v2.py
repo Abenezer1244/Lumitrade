@@ -1262,10 +1262,29 @@ def write_report(
                 lines.append(f"| {f.fold_id} | {f.train_pf:.2f} | {f.trades_in_train} "
                              f"| {f.test_pf:.2f} | {f.trades_in_test} | ${f.test_pnl:+,.0f} |\n")
             if folds:
-                test_pf_avg = statistics.mean(f.test_pf for f in folds if f.test_pf > 0) if any(f.test_pf > 0 for f in folds) else 0
+                # Robust aggregate per Codex review 2026-04-25 finding #5.
+                # Old code computed mean PF over only positive folds, which
+                # silently dropped losing/zero quarters and inflated the
+                # apparent OOS quality. New aggregate is honest:
+                #   - count of negative/zero folds (drag detector)
+                #   - median PF (robust to the 999 sentinel for no-loss folds)
+                #   - mean PF over ALL folds (capped to ignore the sentinel)
+                #   - total OOS P&L summed over all folds
+                # Never use positive-only averaging in any go/no-go decision.
+                neg_count = sum(1 for f in folds if f.test_pf <= 1.0)
+                # Cap at 99 to neutralize the 999 "no losses" sentinel; PF > 99
+                # is statistically meaningless on small fold samples anyway.
+                capped_pfs = [min(f.test_pf, 99.0) for f in folds]
+                pf_median = statistics.median(capped_pfs)
+                pf_mean = statistics.mean(capped_pfs)
                 test_pnl_total = sum(f.test_pnl for f in folds)
-                lines.append(f"\n**OOS aggregate:** {len(folds)} folds, "
-                             f"avg test PF {test_pf_avg:.2f}, total OOS P&L ${test_pnl_total:+,.0f}\n")
+                drag_warn = " 🔴 some folds were losers" if neg_count > 0 else ""
+                lines.append(
+                    f"\n**OOS aggregate (all {len(folds)} folds):** "
+                    f"median PF {pf_median:.2f}, mean PF {pf_mean:.2f}, "
+                    f"total OOS P&L ${test_pnl_total:+,.0f}, "
+                    f"folds at PF≤1.0: **{neg_count}**.{drag_warn}\n"
+                )
 
     if abl:
         lines.append("\n## Ablation — marginal contribution of each filter\n")

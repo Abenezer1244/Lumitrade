@@ -378,8 +378,16 @@ class ExecutionEngine:
         if not db_open or not self._oanda_read:
             return
 
-        # Filter to trades with valid broker IDs
-        trailable = [t for t in db_open if t.get("broker_trade_id", "").strip()]
+        # Filter to trades with valid REAL broker IDs. PAPER- prefixed IDs are
+        # simulated fills (PaperExecutor) and must NOT trigger any OANDA
+        # mutation calls — modify_trade() against PAPER-* would 404, waste API
+        # calls, pollute logs, and potentially trip the circuit breaker.
+        # Per Codex review 2026-04-25 finding #3.
+        trailable = [
+            t for t in db_open
+            if t.get("broker_trade_id", "").strip()
+            and not t.get("broker_trade_id", "").startswith("PAPER-")
+        ]
         if not trailable:
             return
 

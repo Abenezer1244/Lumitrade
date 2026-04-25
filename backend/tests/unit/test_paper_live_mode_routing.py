@@ -173,18 +173,20 @@ async def test_load_user_settings_normalizes_mode_case(env_with_required_keys):
 
 
 @pytest.mark.asyncio
-async def test_load_user_settings_rejects_garbage_mode(env_with_required_keys):
-    """Mode value other than PAPER/LIVE must be ignored (defense in depth)."""
+async def test_load_user_settings_garbage_mode_falls_to_paper(env_with_required_keys):
+    """Mode value other than PAPER/LIVE must FAIL CLOSED to PAPER, not be
+    ignored. Updated 2026-04-25 per Codex review finding #2 — leaving the
+    previous value intact would let a stale LIVE survive a corrupt write."""
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
 
     cfg = LumitradeConfig()
-    cfg.db_mode_override = None
+    cfg.db_mode_override = "LIVE"  # simulate a previous good LIVE read
     db = MagicMock()
     db.select_one = AsyncMock(return_value={
         "id": "settings",
         "open_trades": {"riskPct": 0.5, "maxPositions": 3, "maxPerPair": 1,
-                        "confidence": 70, "mode": "MAINNET"},
+                        "confidence": 70, "mode": "MAINNET"},  # garbage mode
     })
     engine = RiskEngine.__new__(RiskEngine)
     engine._config = cfg
@@ -192,7 +194,8 @@ async def test_load_user_settings_rejects_garbage_mode(env_with_required_keys):
     engine._db = db
 
     await engine._load_user_settings()
-    assert cfg.db_mode_override is None  # garbage rejected
+    assert cfg.db_mode_override == "PAPER", \
+        "Garbage mode must fail closed to PAPER, not retain stale LIVE"
 
 
 # ─── 3. ExecutionEngine routing ──────────────────────────────────────────────
