@@ -58,14 +58,18 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: |
           QUARTER=$(date -u +%Y-Q%q || python -c "import datetime as d; n=d.datetime.utcnow(); print(f'{n.year}-Q{(n.month-1)//3+1}')")
-          REPORT="../tasks/backtest_${QUARTER}.md"
-          echo "Writing report to $REPORT"
+          # Write to absolute path so later steps (which run from repo root) can find it.
+          REPORT_ABS="$GITHUB_WORKSPACE/tasks/backtest_${QUARTER}.md"
+          REPORT_REL="tasks/backtest_${QUARTER}.md"
+          echo "Writing report to $REPORT_ABS"
+          mkdir -p "$GITHUB_WORKSPACE/tasks"
+          mkdir -p "$GITHUB_WORKSPACE/tasks/_artifacts"
           python -m scripts.backtest_v2 \
             --pair USD_CAD --pair USD_JPY \
             --walk-forward --ablate --monte-carlo 10000 \
-            --report "$REPORT" \
-            | tee /tmp/backtest_console.txt
-          echo "REPORT_PATH=$REPORT" >> $GITHUB_ENV
+            --report "$REPORT_ABS" \
+            | tee "$GITHUB_WORKSPACE/tasks/_artifacts/backtest_console.txt"
+          echo "REPORT_PATH=$REPORT_REL" >> $GITHUB_ENV
           echo "QUARTER=$QUARTER" >> $GITHUB_ENV
 
       - name: Parse thresholds and decide labels
@@ -120,7 +124,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add tasks/
+          git add tasks/backtest_*.md
           git commit \
             -m "[quarterly-backtest] ${{ env.QUARTER }} — results" \
             -m "USD_CAD: PF ${{ steps.verdict.outputs.cad_pf }}, Sharpe ${{ steps.verdict.outputs.cad_sharpe }}, MAR ${{ steps.verdict.outputs.cad_mar }}" \
@@ -171,5 +175,5 @@ jobs:
         with:
           name: backtest-report-${{ env.QUARTER }}
           path: |
-            ${{ env.REPORT_PATH }}
-            /tmp/backtest_console.txt
+            tasks/backtest_*.md
+            tasks/_artifacts/backtest_console.txt

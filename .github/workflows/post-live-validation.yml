@@ -63,17 +63,19 @@ jobs:
           SINCE_DATE: ${{ github.event.inputs.since_date || '2026-04-25' }}
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          REPORT="../tasks/live_vs_backtest_${TODAY}.md"
+          REPORT_ABS="$GITHUB_WORKSPACE/tasks/live_vs_backtest_${TODAY}.md"
+          REPORT_REL="tasks/live_vs_backtest_${TODAY}.md"
+          mkdir -p "$GITHUB_WORKSPACE/tasks/_artifacts"
+          CONSOLE="$GITHUB_WORKSPACE/tasks/_artifacts/validation_console.txt"
           python -m scripts.compare_live_to_backtest \
             --since "$SINCE_DATE" \
             --pair USD_CAD \
             --bt-pf 1.96 --bt-sharpe 1.76 --bt-expectancy 118.25 \
             --bt-wr 0.543 --bt-source tasks/backtest_2026Q2_results.md \
-            --report "$REPORT" | tee /tmp/validation_console.txt
-          echo "REPORT_PATH=$REPORT" >> $GITHUB_ENV
+            --report "$REPORT_ABS" | tee "$CONSOLE"
+          echo "REPORT_PATH=$REPORT_REL" >> $GITHUB_ENV
           echo "REPORT_DATE=$TODAY" >> $GITHUB_ENV
-          # Verdict line is the last echo from the script
-          VERDICT=$(grep "^VERDICT:" /tmp/validation_console.txt | tail -1 | cut -d: -f2- | xargs)
+          VERDICT=$(grep "^VERDICT:" "$CONSOLE" | tail -1 | cut -d: -f2- | xargs)
           echo "VERDICT=$VERDICT" >> $GITHUB_ENV
 
       - name: Open pull request with verdict
@@ -84,7 +86,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add tasks/
+          git add tasks/live_vs_backtest_*.md
           git commit \
             -m "validation: live USD_CAD vs backtest predictions (${{ env.REPORT_DATE }})" \
             -m "Verdict: ${{ env.VERDICT }}" \
@@ -125,5 +127,5 @@ jobs:
         with:
           name: live-vs-backtest-${{ env.REPORT_DATE }}
           path: |
-            ${{ env.REPORT_PATH }}
-            /tmp/validation_console.txt
+            tasks/live_vs_backtest_*.md
+            tasks/_artifacts/validation_console.txt
