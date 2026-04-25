@@ -1,0 +1,143 @@
+name: Pre-Monday-Flip Verification
+
+# One-time scheduled job: Sunday 2026-04-26 22:30 UTC (30 min after forex
+# markets reopen). Verifies the engine is healthy on the new live OANDA
+# account before Monday's TRADING_MODE=LIVE cutover.
+#
+# Steps:
+#   1. Query live OANDA account balance via API. If < $50, flag as unfunded.
+#   2. Query Supabase trades table for any paper-on-live trades since reopen.
+#   3. Verify broker_trade_ids start with 'PAPER-' (PaperExecutor working).
+#   4. Open a GitHub issue with PASS/FAIL verdict.
+#
+# Required repo secrets (already configured):
+#   OANDA_API_KEY_TRADING
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_KEY
+#
+# Manual trigger: gh workflow run pre-monday-flip-check.yml
+
+on:
+  schedule:
+    - cron: '30 22 26 4 *'  # Apr 26 at 22:30 UTC (Sunday)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify:
+    name: Pre-Monday flip verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install httpx + supabase
+        run: pip install httpx supabase python-dotenv
+
+      - name: Run verification
+        id: verify
+        env:
+          OANDA_TOKEN: ${{ secrets.OANDA_API_KEY_TRADING }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          python <<'PYEOF' >> $GITHUB_OUTPUT
+          import os, json, httpx
+          from datetime import datetime, timezone
+          from supabase import create_client
+
+          ACCOUNT_ID = "001-001-19434175-002"
+          ACCOUNT_UUID = "fb884006-213e-5ee2-8e57-224fa0391eee"
+          REOPEN_AT = "2026-04-26T22:00:00+00:00"
+
+          # 1. OANDA balance
+          r = httpx.get(
+              f"https://api-fxtrade.oanda.com/v3/accounts/{ACCOUNT_ID}/summary",
+              headers={"Authorization": f"Bearer {os.environ['OANDA_TOKEN']}"},
+              timeout=15.0,
+          )
+          if r.status_code != 200:
+              print(f"verdict=FAIL")
+              print(f"summary<<EOF")
+              print(f"OANDA API returned HTTP {r.status_code}: {r.text[:300]}")
+              print(f"EOF")
+              raise SystemExit(1)
+          acct = r.json()["account"]
+          balance = float(acct["balance"])
+
+          # 2. Paper trades since reopen
+          sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+          trades = (sb.table("trades").select("*")
+                    .eq("account_id", ACCOUNT_UUID)
+                    .gte("opened_at", REOPEN_AT)
+                    .execute().data or [])
+
+          paper_count = sum(1 for t in trades if str(t.get("broker_trade_id", "")).startswith("PAPER-"))
+          live_count = len(trades) - paper_count
+
+          # 3. Verdict
+          funded = balance >= 50.0
+          paper_ok = (live_count == 0)  # No real live trades should fire while TRADING_MODE=PAPER
+          verdict = "PASS" if (funded and paper_ok) else "FAIL"
+
+          summary_lines = [
+              f"## Verdict: {verdict}",
+              f"",
+              f"**OANDA account:** {ACCOUNT_ID}",
+              f"**Balance:** ${balance:.2f}",
+              f"**Funded (>=\$50):** {'YES' if funded else 'NO'}",
+              f"",
+              f"**Paper-on-live trades since reopen:** {paper_count}",
+              f"**Unexpected live trades:** {live_count}",
+              f"**PaperExecutor working correctly:** {'YES' if paper_ok else 'NO — broker_trade_ids without PAPER- prefix detected'}",
+              f"",
+              f"**Ready for Monday flip:** {'YES' if verdict == 'PASS' else 'NO'}",
+          ]
+          if not funded:
+              summary_lines.append("\n🔴 **BLOCKER:** OANDA account not funded. Fund \$100 at https://trade.oanda.com")
+          if not paper_ok:
+              summary_lines.append(f"\n🔴 **BLOCKER:** {live_count} trade(s) bypassed PaperExecutor — investigate before flip")
+
+          print(f"verdict={verdict}")
+          print(f"balance={balance:.2f}")
+          print(f"paper_count={paper_count}")
+          print(f"live_count={live_count}")
+          # Use multi-line output for summary
+          print("summary<<DELIM")
+          for line in summary_lines:
+              print(line)
+          print("DELIM")
+          PYEOF
+
+      - name: Open GitHub issue with verdict
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREFIX=""
+          if [ "${{ steps.verify.outputs.verdict }}" = "FAIL" ]; then
+            PREFIX="🔴 "
+          else
+            PREFIX="✅ "
+          fi
+          # Use --body-file via heredoc-to-file to avoid YAML escaping
+          {
+            echo "${{ steps.verify.outputs.summary }}"
+            echo ""
+            echo "---"
+            echo "Generated by .github/workflows/pre-monday-flip-check.yml"
+            echo "Auto-fired Sunday 22:30 UTC for Monday cutover prep."
+          } > /tmp/issue_body.md
+          gh issue create \
+            --title "${PREFIX}Pre-Monday-flip verification — ${{ steps.verify.outputs.verdict }}" \
+            --body-file /tmp/issue_body.md \
+            --repo ${{ github.repository }}
