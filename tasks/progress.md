@@ -1,13 +1,132 @@
 # Lumitrade Progress
 
 ## Current Status
-- **Phase**: 9 — Paper Trading (ACTIVE)
-- **Mode**: PAPER on OANDA practice account
-- **Balance**: ~$100,904 (106 closed trades, +$904 cumulative, down from $13,345 peak)
-- **Pairs trading**: USD_CAD + USD_JPY
-- **Engine**: Running on Railway, per-pair session windows, **new: confidence cap 0.80 + max hold 24h**
-- **Strategy**: Turtle (no fixed TP) + ADX regime filter + Trading Memory + Visual Charts + TradingView consensus
-- **Deploy Rule**: Only deploy 13:00-23:59 UTC (never during trading hours) — *user pushed once in-window 2026-04-22 06:15 UTC with explicit acknowledgment*
+- **Phase**: 9 — Paper Trading + LIVE prep (Monday 2026-04-27 cutover planned)
+- **Mode**: env=PAPER on Railway, dashboard armed=LIVE → effective=PAPER (dual-switch holding)
+- **OANDA account**: switched from practice `101-001-37434000-001` to LIVE `001-001-19434175-002` (unfunded; user fund $100 over weekend)
+- **Pairs trading**: USD_CAD only when env flips LIVE (USD_JPY auto-excluded by `live_pairs` filter); both in paper
+- **Engine**: Running on Railway, dual-switch (env+dashboard) live mode, PaperExecutor activated, per-pair max_hold (USD_CAD=96h)
+- **Strategy**: Turtle (trailing only) + ADX regime + Trading Memory + Visual Charts + TradingView consensus, 0.80 conf cap, 0.25% risk for live
+- **Deploy Rule**: Only 13:00-23:59 UTC
+
+## Session 2026-04-25 — 2-yr backtest, dual-switch live mode, OANDA cutover prep
+
+### Part 1 — Live-parity 2-year backtest infrastructure
+Discovery audit found old backtest predated **every** post-audit filter (3.0× ATR SL,
+24h max hold, conf band 0.70-0.80, ADX gate, tiered risk, trailing-stop logic).
+26 filter gaps + 17 divergent params identified. Built `backend/scripts/backtest_v2.py`
+(~1300 lines) at live parity, with walk-forward (6mo/3mo, 8 folds), Monte Carlo
+bootstrap (10k), per-filter ablation (13 variants), Sharpe/Sortino/Calmar/MAR/
+expectancy/Wilson-CI/bootstrap-CI, friction model (1.5p USD_CAD spread / 1.0p
+USD_JPY / 0.5p slippage / daily swap >24h), and a look-ahead bias self-test.
+35 unit tests including ADX correctness, indicator non-leakage, full quant logic
+parity, and walk-forward fold structure.
+
+Methodology research subagent grounded gates in Pardo (2008), Aronson (2007),
+Bailey & López de Prado (2014), Carver (2015), Chan (2013).
+
+### Part 2 — 2-year backtest verdict (2024-04-24 → 2026-04-24)
+
+| Pair | PF | Sharpe | MAR | MC P(profit) | Live status |
+|---|---|---|---|---|---|
+| USD_CAD | **1.96** | **1.76** | **2.09** | **93.5%** | ✅ Approved |
+| USD_JPY | **1.04** | **0.10** | **0.07** | **55.0%** | 🔴 Paper-only |
+
+USD_JPY's 2-year evidence under the current filter stack disagrees with its
+24-trade live-paper streak (+$5,499). Backtest wins per PRD §3.4.
+
+### Part 3 — Phase 5 production changes (commit `119b4e0`)
+- `config.live_pairs = ["USD_CAD"]` — enforced at startup when TRADING_MODE=LIVE
+- `config.max_hold_hours_for(pair)` — USD_CAD gets 96h, others stay 24h
+  (ablation showed lifting CAD cap took PF 1.96 → 3.78, +$8.2K/2yr)
+- Removed dead `>=0.90 → 2% risk` tier (couldn't fire under 0.80 confidence cap)
+- PRD §3.4 Backtest Verification subsection added
+
+### Part 4 — risk_engine test mock fixes (commit `7d075cd`)
+18 pre-existing test_risk_engine.py failures fixed — `_make_config()` was
+missing `max_positions_per_pair` and other numeric fields, causing
+`int < MagicMock` TypeErrors. RE-019 updated for 0.80 cap, RE-020
+rewritten for the removed dead 2% tier.
+
+### Part 5 — CI workflows (commits `ecf98de` → `dc38198`)
+- `.github/workflows/quarterly-backtest.yml` — auto-runs Jan/Apr/Jul/Oct 1
+  at 14:00 UTC, opens PR with verdict, labels CRITICAL on threshold breach
+- `.github/workflows/post-live-validation.yml` — fires once on 2026-05-16
+  14:00 UTC (3 weeks post-go-live), compares live USD_CAD trades vs
+  backtest predictions, opens PR with CONFIRMED/DRIFTING/DIVERGED verdict
+- `backend/scripts/compare_live_to_backtest.py` — comparison helper
+- 3 GitHub repo secrets set (OANDA_API_KEY_TRADING, SUPABASE_URL,
+  SUPABASE_SERVICE_KEY) via stdin pipe
+- 8 PR labels created
+- Repo permission "Allow Actions to create PRs" enabled via API
+- Smoke-test successful: PR #17 auto-created and merged the testing flow
+
+### Part 6 — Dual-switch live mode + PaperExecutor activation (commit `e70ba7e`)
+**Major bug found and fixed:** `PaperExecutor` was instantiated since Phase 5 but
+never called — `execute_order()` always routed to `_oanda_executor` regardless
+of TRADING_MODE. So all 112 paper trades were real OANDA API calls (just to
+the practice account when OANDA_ENVIRONMENT=practice).
+
+Fixed by adding `effective_trading_mode()` config method that returns LIVE
+iff BOTH env_var AND dashboard ModeToggle agree on LIVE. `execute_order`
+now branches on it. `risk_engine._load_user_settings` populates
+`config.db_mode_override` from settings JSON, hot-reloaded on every signal
+evaluation. ModeToggle.tsx shows "Engine env: X · Effective: Y" status
+banner with a yellow warning when env=PAPER locks the LIVE button.
+
+14 new routing tests covering all combinations of env+db modes.
+
+### Part 7 — OANDA live cutover prep
+- New live OANDA account: `001-001-19434175-002` (USD, unfunded)
+- New live API token verified against api-fxtrade.oanda.com → HTTP 200
+- Railway env updated: `OANDA_API_KEY_TRADING`, `OANDA_API_KEY_DATA`,
+  `OANDA_ACCOUNT_ID=001-001-19434175-002`, `OANDA_ENVIRONMENT=live`
+- TRADING_MODE kept PAPER on Railway
+- Engine confirmed connected to new live account: `oanda_connected balance=0.0000`
+- Dashboard ModeToggle armed via Supabase: `mode=LIVE, riskPct=0.25,
+  maxPositions=1, maxPerPair=1, confidence=70`
+- `scripts/go_live.sh` written with 5 preflight checks (deploy window,
+  weekend guard, balance >= $50, dashboard mode=LIVE, current TRADING_MODE
+  != LIVE) + typed-`GO` confirmation + log tailing
+
+### Part 8 — Senior-trader review caveats
+After explicit user request, ran a 4-decade-trader-voice analysis. Key concerns
+flagged: 35-trade sample below Aronson 100-trade threshold, Wilson CI on win rate
+[38.2, 69.5]% includes losing strategies, walk-forward fold 5 was PF 0.00
+(strategy may be in regime decay), friction at $100 starter eats ~7% of
+risk-per-trade per round trip, fontconfig errors in production logs may mean
+chart-mode is broken, no catastrophic-event protection (volatility/news),
+Friday outsized P&L is a fragile-edge signature. Recommended: 2-3 weeks of
+paper-on-live observation before flip OR flip Monday at 0.25% risk and
+accept first month is tuition. User chose Monday flip.
+
+### Commits this session
+```
+119b4e0 feat(backtest): live-parity v2 backtest + USD_CAD-only live, per-pair max_hold
+7d075cd test(risk): fix mock setup + update RE-019/RE-020 for 0.80 cap
+ecf98de ci: quarterly backtest + post-live-validation workflows
+081c2a9 ci(backtest): use absolute paths to fix cross-step path resolution
+dc38198 ci(backtest): self-create labels, fault-tolerant PR creation
+e70ba7e feat(execution): activate PaperExecutor + dual-switch mode (env AND db)
+9aef895 chore: add scripts/go_live.sh for safe Monday cutover
+```
+
+### Monday 2026-04-27 — go-live plan
+1. User funds OANDA $100 (must happen weekend)
+2. Sunday 22:00 UTC: forex reopens, paper-on-live trades start firing on
+   new account, broker_trade_id starts with `PAPER-`
+3. Monday ~20:00 UTC (1 PM PT): user runs `bash scripts/go_live.sh`,
+   typed-GO confirms after preflights, env flips to LIVE
+4. Watch for `live_pair_filter_applied paper_only_pairs=['USD_JPY']
+   live_pairs=['USD_CAD']` in Railway logs
+5. First real OANDA fill (broker_trade_id NOT starting with `PAPER-`)
+
+### Watch list for Monday + first week
+- Live spread on $100 account vs 1.5p USD_CAD assumption — if 2-3x worse, halt
+- Claude validator rejection rate (currently unknown — production-only data)
+- Lesson filter blocking rate
+- First 5 trades' P&L vs 22-pip-SL × 0.25% risk = $0.25 per loss expected
+- The post-live validation workflow auto-fires 2026-05-16 14:00 UTC
 
 ## Session 2026-04-21/22 — Frontend critique refactor + 106-trade audit + engine tuning
 
