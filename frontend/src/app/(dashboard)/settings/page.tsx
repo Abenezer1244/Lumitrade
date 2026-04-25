@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<TradingSettingsData>(DEFAULT_SETTINGS);
   const [guardrails, setGuardrails] = useState<GuardrailsData>(DEFAULT_GUARDRAILS);
   const [mode, setMode] = useState<"PAPER" | "LIVE">("PAPER");
+  const [envMode, setEnvMode] = useState<"PAPER" | "LIVE">("PAPER");
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const { toast } = useToast();
@@ -44,6 +45,7 @@ export default function SettingsPage() {
           scanInterval: data.scanInterval ?? DEFAULT_SETTINGS.scanInterval,
         });
         setMode(data.mode ?? "PAPER");
+        setEnvMode(data.env_mode ?? "PAPER");
         if (data.guardrails) {
           setGuardrails({
             maxPositionUnits: data.guardrails.maxPositionUnits ?? DEFAULT_GUARDRAILS.maxPositionUnits,
@@ -87,7 +89,12 @@ export default function SettingsPage() {
   return (
     <div>
       <div className="space-y-6 max-w-2xl">
-        <ModeToggle mode={mode} onToggle={setMode} />
+        <ModeToggle
+          mode={mode}
+          onToggle={setMode}
+          envMode={envMode}
+          effectiveMode={envMode === "LIVE" && mode === "LIVE" ? "LIVE" : "PAPER"}
+        />
         <TradingSettings
           settings={settings}
           guardrails={guardrails}

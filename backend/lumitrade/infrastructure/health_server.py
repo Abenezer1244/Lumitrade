@@ -355,7 +355,14 @@ class HealthServer:
     }
 
     async def _handle_get_settings(self, request: web.Request) -> web.Response:
-        """GET /settings — return user settings + guardrails."""
+        """GET /settings — return user settings + guardrails + effective mode.
+
+        Includes:
+          - mode: what the dashboard last saved (PAPER / LIVE)
+          - env_mode: TRADING_MODE env var (Railway-controlled)
+          - effective_mode: what the engine ACTUALLY uses for execution
+                            (LIVE iff env_mode==LIVE AND mode==LIVE)
+        """
         try:
             row = await self._db.select_one(
                 "system_state", {"id": self.SETTINGS_ROW_ID}
@@ -368,7 +375,7 @@ class HealthServer:
         except Exception:
             user_settings = dict(self.SETTINGS_DEFAULTS)
 
-        # Merge guardrails from config
+        # Merge guardrails + dual-switch mode visibility from config
         from ..config import LumitradeConfig
         try:
             config = LumitradeConfig()  # type: ignore[call-arg]
@@ -377,10 +384,20 @@ class HealthServer:
                 "dailyLossLimitPct": float(config.daily_loss_limit_pct) * 100,
                 "weeklyLossLimitPct": float(config.weekly_loss_limit_pct) * 100,
             }
+            env_mode = config.trading_mode
+            db_mode = user_settings.get("mode", "PAPER")
+            effective_mode = "LIVE" if (env_mode == "LIVE" and db_mode == "LIVE") else "PAPER"
         except Exception:
             guardrails = dict(self.GUARDRAILS)
+            env_mode = "PAPER"
+            effective_mode = "PAPER"
 
-        return web.json_response({**user_settings, "guardrails": guardrails})
+        return web.json_response({
+            **user_settings,
+            "guardrails": guardrails,
+            "env_mode": env_mode,
+            "effective_mode": effective_mode,
+        })
 
     async def _handle_post_settings(self, request: web.Request) -> web.Response:
         """POST /settings — save user-adjustable settings."""

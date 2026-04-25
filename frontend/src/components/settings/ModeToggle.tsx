@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Info } from "lucide-react";
 
 interface ModeToggleProps {
   mode: "PAPER" | "LIVE";
   onToggle: (mode: "PAPER" | "LIVE") => void;
   disabled?: boolean;
+  /** TRADING_MODE env var on Railway. Restart-only. */
+  envMode?: "PAPER" | "LIVE";
+  /** What the engine actually executes against. LIVE iff envMode AND mode are both LIVE. */
+  effectiveMode?: "PAPER" | "LIVE";
 }
 
 const ARM_PHRASE = "START LIVE TRADING";
@@ -15,7 +19,14 @@ export default function ModeToggle({
   mode,
   onToggle,
   disabled = false,
+  envMode,
+  effectiveMode,
 }: ModeToggleProps) {
+  // Live LIVE requires BOTH the env var AND the user's dashboard selection
+  // to say LIVE. If the env is PAPER, the LIVE button is locked — selecting
+  // it persists user intent but won't actually execute live until env flips.
+  const liveLocked = envMode === "PAPER";
+  const modesDisagree = effectiveMode !== undefined && effectiveMode !== mode;
   const [phase, setPhase] = useState<"idle" | "arming">("idle");
   const [input, setInput] = useState("");
   const [riskAck, setRiskAck] = useState(false);
@@ -57,6 +68,34 @@ export default function ModeToggle({
   return (
     <div className="glass p-5">
       <h2 className="text-heading text-primary mb-4">Trading Mode</h2>
+
+      {effectiveMode !== undefined && envMode !== undefined && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-elevated border border-border flex items-center gap-2 text-xs">
+          <Info size={14} className="text-tertiary shrink-0" />
+          <span className="text-tertiary">Engine env:</span>
+          <span className={`font-mono font-bold ${envMode === "LIVE" ? "text-profit" : "text-warning"}`}>
+            {envMode}
+          </span>
+          <span className="text-tertiary">·</span>
+          <span className="text-tertiary">Effective:</span>
+          <span className={`font-mono font-bold ${effectiveMode === "LIVE" ? "text-profit" : "text-warning"}`}>
+            {effectiveMode}
+          </span>
+          {modesDisagree && (
+            <span className="ml-auto text-loss font-bold">selection ≠ effective</span>
+          )}
+        </div>
+      )}
+
+      {liveLocked && (
+        <div className="mb-3 px-3 py-2 rounded-lg border border-warning bg-warning-dim text-xs text-warning flex items-start gap-2">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span>
+            LIVE selection saves your intent but cannot execute real trades — Railway
+            <span className="font-mono mx-1">TRADING_MODE</span>is currently <span className="font-mono">PAPER</span>.
+          </span>
+        </div>
+      )}
 
       <div className="flex gap-3">
         <button

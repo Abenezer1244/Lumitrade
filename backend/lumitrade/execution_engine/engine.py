@@ -82,9 +82,11 @@ class ExecutionEngine:
             return None
 
         try:
-            # Both PAPER and LIVE use real OANDA orders
-            # PAPER connects to practice server, LIVE to production server
-            # This ensures paper trades show real positions on OANDA
+            # Effective mode (env_var AND dashboard_toggle): PAPER -> simulated
+            # fills via PaperExecutor (no broker calls). LIVE -> real OANDA /
+            # Capital.com orders. Either gate set to PAPER blocks live fills.
+            effective_mode = self.config.effective_trading_mode()
+
             state = await self._circuit_breaker.check_and_transition()
             from ..core.enums import CircuitBreakerState
             if state == CircuitBreakerState.OPEN:
@@ -94,10 +96,22 @@ class ExecutionEngine:
                 )
                 return None
             try:
-                # Route to Capital.com for metals, OANDA for forex
-                if order.pair in self.CAPITAL_INSTRUMENTS and self._capital_executor:
+                if effective_mode == "PAPER":
+                    # Simulated fill — no broker call. Both env=LIVE+db=PAPER
+                    # and env=PAPER paths land here.
+                    logger.info(
+                        "paper_mode_simulated_fill",
+                        order_ref=str(order.order_ref),
+                        pair=order.pair,
+                        env_mode=self.config.trading_mode,
+                        db_mode=self.config.db_mode_override,
+                    )
+                    result = await self._paper_executor.execute(order, current_price)
+                elif order.pair in self.CAPITAL_INSTRUMENTS and self._capital_executor:
+                    # Live metals via Capital.com
                     result = await self._capital_executor.execute(order)
                 else:
+                    # Live forex via OANDA
                     result = await self._oanda_executor.execute(order)
                 await self._circuit_breaker.record_success()
             except Exception:

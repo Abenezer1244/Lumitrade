@@ -130,6 +130,32 @@ class LumitradeConfig(BaseSettings):
     lesson_block_threshold: Decimal = Decimal("0.35")
     lesson_boost_threshold: Decimal = Decimal("0.65")
 
+    # Defense-in-depth dual-switch for live trading. Both must agree on "LIVE"
+    # for actual broker calls to fire. Any mismatch falls back to paper.
+    #
+    # `trading_mode`        — env var, set on Railway. Restart-only switch.
+    # `db_mode_override`    — written by `risk_engine._load_user_settings` from
+    #                         the dashboard ModeToggle. Hot-reloaded on each
+    #                         signal evaluation, so a panic flip in the UI takes
+    #                         effect within ~15 min (one scan cycle).
+    db_mode_override: Optional[str] = None  # "LIVE" or "PAPER"; None = default to env
+
+    def effective_trading_mode(self) -> str:
+        """Returns 'LIVE' iff BOTH the env var AND the dashboard say LIVE.
+        Any other combination yields 'PAPER' — i.e. simulated execution.
+
+        Truth table:
+          env=LIVE,  db=LIVE   -> LIVE   (real OANDA orders)
+          env=LIVE,  db=PAPER  -> PAPER  (dashboard kill-switch)
+          env=PAPER, db=LIVE   -> PAPER  (env wins; never live without env)
+          env=PAPER, db=PAPER  -> PAPER  (both agree)
+          env=PAPER, db=None   -> PAPER  (no DB override yet)
+          env=LIVE,  db=None   -> PAPER  (DB hasn't loaded; safe default)
+        """
+        if self.trading_mode == "LIVE" and self.db_mode_override == "LIVE":
+            return "LIVE"
+        return "PAPER"
+
     @cached_property
     def account_uuid(self) -> str:
         """Deterministic UUID derived from OANDA account ID for DB storage."""

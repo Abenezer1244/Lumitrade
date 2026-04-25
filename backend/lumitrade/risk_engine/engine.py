@@ -562,7 +562,14 @@ class RiskEngine:
     # ── User Settings from DB ────────────────────────────────────
 
     async def _load_user_settings(self) -> None:
-        """Load user-adjustable settings from Supabase, fall back to config."""
+        """Load user-adjustable settings from Supabase, fall back to config.
+
+        Reads:
+          - riskPct, maxPositions, maxPerPair, confidence (numeric guardrails)
+          - mode ("PAPER" | "LIVE") — written by the dashboard ModeToggle.
+            Stored on `config.db_mode_override`. The actual paper/live switch
+            is `config.effective_trading_mode()` which ANDs env + db.
+        """
         try:
             row = await self._db.select_one("system_state", {"id": "settings"})
             if row and row.get("open_trades") and isinstance(row["open_trades"], dict):
@@ -571,12 +578,28 @@ class RiskEngine:
                 self._config.max_open_trades = int(s.get("maxPositions", self._config.max_open_trades))
                 self._config.max_positions_per_pair = int(s.get("maxPerPair", self._config.max_positions_per_pair))
                 self._config.min_confidence = Decimal(str(s.get("confidence", int(self._config.min_confidence * 100)))) / Decimal("100")
+
+                raw_mode = s.get("mode")
+                if isinstance(raw_mode, str) and raw_mode.upper() in ("PAPER", "LIVE"):
+                    new_mode = raw_mode.upper()
+                    if new_mode != self._config.db_mode_override:
+                        logger.info(
+                            "db_mode_override_changed",
+                            old=self._config.db_mode_override,
+                            new=new_mode,
+                            env_mode=self._config.trading_mode,
+                            effective=("LIVE" if (self._config.trading_mode == "LIVE" and new_mode == "LIVE") else "PAPER"),
+                        )
+                    self._config.db_mode_override = new_mode
+
                 logger.info(
                     "user_settings_loaded",
                     max_risk_pct=str(self._config.max_risk_pct),
                     max_open_trades=self._config.max_open_trades,
                     max_per_pair=self._config.max_positions_per_pair,
                     min_confidence=str(self._config.min_confidence),
+                    db_mode=self._config.db_mode_override,
+                    effective_mode=self._config.effective_trading_mode(),
                 )
         except Exception as e:
             logger.warning("user_settings_load_failed", error=str(e))
