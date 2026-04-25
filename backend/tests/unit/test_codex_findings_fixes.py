@@ -336,3 +336,173 @@ def test_wfa_aggregate_includes_losing_folds(env_keys):
     # Capped sentinel: 999 -> 99 in mean calc, but median = 6.21 (middle of [0, 6.21, 99])
     # We don't assert specific numbers (depends on capping semantics), just that the structure is right.
     report_path.unlink()
+
+
+# ─── Codex follow-up review #1: Lock CAS in bootstrap + release ─────────────
+
+
+@pytest.mark.asyncio
+async def test_lock_bootstrap_verifies_winner_after_upsert(env_keys):
+    """Cold-start race: two instances see no row, both upsert. After upsert,
+    the loser must read back and discover the winner's instance_id, returning
+    False instead of declaring success."""
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(side_effect=[
+        None,  # initial select: no row exists yet
+        {"id": "primary", "instance_id": "instance-WINNER"},  # readback after our upsert
+    ])
+    db.upsert = AsyncMock(return_value=[{"id": "primary"}])
+    lock = DistributedLock(db)
+    ok = await lock.acquire("instance-LOSER")
+    assert ok is False, "Bootstrap loser must detect winner via readback and return False"
+
+
+@pytest.mark.asyncio
+async def test_lock_bootstrap_returns_true_when_we_win(env_keys):
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(side_effect=[
+        None,
+        {"id": "primary", "instance_id": "instance-A"},
+    ])
+    db.upsert = AsyncMock(return_value=[{"id": "primary"}])
+    lock = DistributedLock(db)
+    ok = await lock.acquire("instance-A")
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_lock_release_uses_cas_filter(env_keys):
+    """release() must filter by both id AND instance_id so a takeover
+    between read and release write doesn't get wiped by previous holder.
+    Codex follow-up review #1."""
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(return_value={"id": "primary", "instance_id": "instance-A"})
+    db.update = AsyncMock(return_value=[{"id": "primary"}])  # 1 row updated
+    lock = DistributedLock(db)
+    await lock.release("instance-A")
+    call = db.update.call_args
+    args, _ = call
+    table, filters, data = args[0], args[1], args[2]
+    assert table == "system_state"
+    assert filters.get("instance_id") == "instance-A", \
+        "release() must include instance_id in filter for CAS"
+    assert "id" in filters  # LOCK_ROW_ID is the singleton key (actual value is internal)
+
+
+@pytest.mark.asyncio
+async def test_lock_release_aborts_if_cas_mismatch(env_keys):
+    """If between our read and release write someone else took the lock,
+    the conditional update returns 0 rows — release must abort cleanly
+    without clobbering the new holder."""
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(return_value={"id": "primary", "instance_id": "instance-A"})
+    db.update = AsyncMock(return_value=[])  # 0 rows updated — race lost
+    lock = DistributedLock(db)
+    # Should not raise; just log and return
+    await lock.release("instance-A")
+    # No assertion on side effect — just that it didn't crash and didn't try harder
+
+
+# ─── Codex follow-up review #2: Atomic settings parse ──────────────────────
+
+
+@pytest.mark.asyncio
+async def test_settings_load_corrupt_riskpct_falls_to_paper(env_keys):
+    """A bad numeric field (e.g., riskPct: 'abc') must not leave a stale LIVE
+    in memory just because the parse raised. Validate-then-commit pattern."""
+    engine, cfg = _make_engine(env_keys, {
+        "id": "settings",
+        "open_trades": {"riskPct": "abc-not-a-number", "maxPositions": 1,
+                        "maxPerPair": 1, "confidence": 70, "mode": "LIVE"},
+    })
+    cfg.db_mode_override = "LIVE"  # stale LIVE before the bad parse
+    await engine._load_user_settings()
+    assert cfg.db_mode_override == "PAPER", \
+        "Numeric parse failure must still force PAPER (validate-then-commit)"
+
+
+@pytest.mark.asyncio
+async def test_settings_load_corrupt_maxpositions_falls_to_paper(env_keys):
+    engine, cfg = _make_engine(env_keys, {
+        "id": "settings",
+        "open_trades": {"riskPct": 0.5, "maxPositions": "not-an-int",
+                        "maxPerPair": 1, "confidence": 70, "mode": "LIVE"},
+    })
+    cfg.db_mode_override = "LIVE"
+    await engine._load_user_settings()
+    assert cfg.db_mode_override == "PAPER"
+
+
+@pytest.mark.asyncio
+async def test_settings_load_partial_commit_does_not_happen(env_keys):
+    """If parsing fails midway, NO config field should be partially committed."""
+    from lumitrade.config import LumitradeConfig
+    from lumitrade.risk_engine.engine import RiskEngine
+    cfg = LumitradeConfig()
+    cfg.max_risk_pct = Decimal("0.02")  # original value
+    cfg.db_mode_override = "LIVE"
+    db = MagicMock()
+    db.select_one = AsyncMock(return_value={
+        "id": "settings",
+        "open_trades": {"riskPct": 0.001, "maxPositions": "garbage",  # 2nd field bad
+                        "maxPerPair": 1, "confidence": 70, "mode": "LIVE"},
+    })
+    engine = RiskEngine.__new__(RiskEngine)
+    engine._config = cfg
+    engine.config = cfg
+    engine._db = db
+    await engine._load_user_settings()
+    # max_risk_pct must NOT have been updated to 0.001 / 100 = 0.00001 since
+    # the parse aborted on maxPositions
+    assert cfg.max_risk_pct == Decimal("0.02"), \
+        "Partial commit detected — first field updated even though second failed"
+    assert cfg.db_mode_override == "PAPER"
+
+
+# ─── Codex follow-up review #3: _get_open_pairs scoped to account_id ───────
+
+
+@pytest.mark.asyncio
+async def test_get_open_pairs_filters_by_account_id(env_keys):
+    """Correlation sizing uses _get_open_pairs to detect open positions on
+    correlated pairs. Without account_id filter, another account's open
+    USD_CAD reduces THIS account's allowed size on a correlated pair."""
+    from lumitrade.config import LumitradeConfig
+    from lumitrade.risk_engine.engine import RiskEngine
+    cfg = LumitradeConfig()
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[])
+    engine = RiskEngine.__new__(RiskEngine)
+    engine._config = cfg
+    engine.config = cfg
+    engine._db = db
+    await engine._get_open_pairs()
+    call = db.select.call_args
+    args, _ = call
+    filters = args[1]
+    assert filters.get("account_id") == cfg.account_uuid
+
+
+# ─── Codex follow-up review #4: Scanner already-in-position scoped ─────────
+
+
+def test_scanner_already_in_position_query_includes_account_id(env_keys):
+    """Static check: the scanner's already-in-position guard must filter by
+    account_id. We grep the source rather than mocking the whole scanner
+    pipeline because the query is a one-liner inside execute_scan."""
+    scanner_path = ROOT / "lumitrade" / "ai_brain" / "scanner.py"
+    src = scanner_path.read_text(encoding="utf-8")
+    # Find the already-in-position block
+    assert "already_in_position_skip" in src
+    # Confirm the query right above it includes account_id
+    snippet = src.split("already_in_position_skip")[0]
+    last_select = snippet.rfind('self._db.select')
+    assert last_select != -1, "scanner.py must call self._db.select before already_in_position_skip"
+    # Look forward from that select to find the closing paren
+    select_block = snippet[last_select:last_select + 400]
+    assert "account_id" in select_block, \
+        f"Scanner already-in-position query missing account_id filter:\n{select_block}"

@@ -157,9 +157,15 @@ class SignalScanner:
             logger.info("early_spread_skip", pair=pair, spread=str(snapshot.spread_pips), max=str(max_spread))
             return None
 
-        # 1a-iii. Already-in-position check (FIFO) — skip if we already hold this pair
+        # 1a-iii. Already-in-position check (FIFO) — skip if WE (this account)
+        # already hold this pair. Account-scoped per Codex follow-up review #4
+        # — without account_id filter, one account holding USD_CAD would silently
+        # starve every other account from scanning that pair before risk engine runs.
         try:
-            open_trades = await self._db.select("trades", {"status": "OPEN", "pair": pair})
+            open_trades = await self._db.select(
+                "trades",
+                {"status": "OPEN", "pair": pair, "account_id": self.config.account_uuid},
+            )
             if open_trades:
                 logger.info("already_in_position_skip", pair=pair, open_count=len(open_trades))
                 return None

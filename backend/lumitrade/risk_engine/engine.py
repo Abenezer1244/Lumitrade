@@ -583,55 +583,76 @@ class RiskEngine:
         Otherwise an outage that follows a LIVE read would silently keep the
         engine in LIVE despite losing the dashboard kill-switch.
         """
+        # ── STEP 1: PRE-EMPTIVELY FAIL CLOSED ──────────────────────
+        # Codex follow-up review #2: numeric parsing happened AFTER the fail-closed
+        # checks but BEFORE db_mode_override was reassigned. A malformed riskPct
+        # would raise mid-parse and leave a stale LIVE in memory. Fix: reset to
+        # PAPER FIRST, validate the entire payload into local variables, then
+        # commit the parsed values to self._config only if every field parsed.
+        previous_mode = self._config.db_mode_override
+        self._config.db_mode_override = "PAPER"
+
+        # ── STEP 2: READ ───────────────────────────────────────────
         try:
             row = await self._db.select_one("system_state", {"id": "settings"})
         except Exception as e:
-            # DB unreachable — fail closed
-            previous = self._config.db_mode_override
-            self._config.db_mode_override = "PAPER"
             logger.warning(
                 "user_settings_load_failed_fail_closed",
                 error=str(e),
-                previous_mode=previous,
+                previous_mode=previous_mode,
                 forced_mode="PAPER",
             )
             return
 
-        # Missing or malformed row — fail closed
+        # Missing or malformed row — already failed closed at step 1, just log
         if not row or not row.get("open_trades") or not isinstance(row["open_trades"], dict):
-            previous = self._config.db_mode_override
-            self._config.db_mode_override = "PAPER"
             logger.warning(
                 "user_settings_malformed_fail_closed",
                 row_present=bool(row),
-                previous_mode=previous,
+                previous_mode=previous_mode,
                 forced_mode="PAPER",
             )
             return
 
+        # ── STEP 3: PARSE TO LOCALS (validate-then-commit) ─────────
         s = row["open_trades"]
-        self._config.max_risk_pct = Decimal(str(s.get("riskPct", float(self._config.max_risk_pct) * 100))) / Decimal("100")
-        self._config.max_open_trades = int(s.get("maxPositions", self._config.max_open_trades))
-        self._config.max_positions_per_pair = int(s.get("maxPerPair", self._config.max_positions_per_pair))
-        self._config.min_confidence = Decimal(str(s.get("confidence", int(self._config.min_confidence * 100)))) / Decimal("100")
+        try:
+            parsed_risk_pct = Decimal(str(s.get("riskPct", float(self._config.max_risk_pct) * 100))) / Decimal("100")
+            parsed_max_open = int(s.get("maxPositions", self._config.max_open_trades))
+            parsed_max_per_pair = int(s.get("maxPerPair", self._config.max_positions_per_pair))
+            parsed_min_conf = Decimal(str(s.get("confidence", int(self._config.min_confidence * 100)))) / Decimal("100")
+        except (TypeError, ValueError, ArithmeticError) as e:
+            # Numeric field corrupt (e.g., riskPct: "abc"). Already in PAPER from
+            # step 1; don't commit any partial values.
+            logger.warning(
+                "user_settings_numeric_parse_failed_fail_closed",
+                error=str(e),
+                previous_mode=previous_mode,
+                forced_mode="PAPER",
+            )
+            return
 
-        # Mode: must be exactly "PAPER" or "LIVE" (case-insensitive).
-        # Any other value (None, garbage string, wrong type) → fail closed to PAPER.
         raw_mode = s.get("mode")
         if isinstance(raw_mode, str) and raw_mode.upper() in ("PAPER", "LIVE"):
-            new_mode = raw_mode.upper()
+            parsed_mode = raw_mode.upper()
         else:
-            new_mode = "PAPER"
+            parsed_mode = "PAPER"
 
-        if new_mode != self._config.db_mode_override:
+        # ── STEP 4: COMMIT (everything parsed, safe to mutate config) ──
+        self._config.max_risk_pct = parsed_risk_pct
+        self._config.max_open_trades = parsed_max_open
+        self._config.max_positions_per_pair = parsed_max_per_pair
+        self._config.min_confidence = parsed_min_conf
+
+        if parsed_mode != previous_mode:
             logger.info(
                 "db_mode_override_changed",
-                old=self._config.db_mode_override,
-                new=new_mode,
+                old=previous_mode,
+                new=parsed_mode,
                 env_mode=self._config.trading_mode,
-                effective=("LIVE" if (self._config.trading_mode == "LIVE" and new_mode == "LIVE") else "PAPER"),
+                effective=("LIVE" if (self._config.trading_mode == "LIVE" and parsed_mode == "LIVE") else "PAPER"),
             )
-        self._config.db_mode_override = new_mode
+        self._config.db_mode_override = parsed_mode
 
         logger.info(
             "user_settings_loaded",
@@ -646,9 +667,15 @@ class RiskEngine:
     # ── Helpers ───────────────────────────────────────────────────
 
     async def _get_open_pairs(self) -> list[str]:
-        """Return list of currency pairs with currently open positions."""
+        """Return list of currency pairs with currently open positions for THIS
+        account only. Used by correlation sizing — without account_id scoping,
+        another account's open correlated pair would shrink this account's
+        position size. Codex follow-up review #3."""
         try:
-            rows = await self._db.select("trades", {"status": "OPEN"})
+            rows = await self._db.select(
+                "trades",
+                {"status": "OPEN", "account_id": self._config.account_uuid},
+            )
             pairs = list({row["pair"] for row in rows if "pair" in row})
             return pairs
         except Exception:

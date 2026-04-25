@@ -62,7 +62,10 @@ class DistributedLock:
             )
 
             if row is None:
-                # No singleton row — create it with lock
+                # No singleton row — bootstrap. Two cold-starting instances
+                # could race here, so after the upsert we must verify WE are
+                # the recorded primary. Per Codex follow-up review #1:
+                # bootstrap path must not blindly return True.
                 await self._db.upsert(
                     "system_state",
                     {
@@ -75,6 +78,17 @@ class DistributedLock:
                         "updated_at": now.isoformat(),
                     },
                 )
+                # Verify: read back. If another instance won the race, their
+                # instance_id is now in the row and we lost.
+                check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
+                actual_holder = (check or {}).get("instance_id")
+                if actual_holder != instance_id:
+                    logger.warning(
+                        "lock_bootstrap_lost_race",
+                        instance_id=instance_id,
+                        winner=actual_holder,
+                    )
+                    return False
                 logger.info(
                     "lock_acquired",
                     instance_id=instance_id,
@@ -273,9 +287,12 @@ class DistributedLock:
                 return
 
             now = datetime.now(timezone.utc)
-            await self._db.update(
+            # CAS release per Codex follow-up review #1: filter by both id AND
+            # instance_id so a takeover that happened between the read above
+            # and this write doesn't get clobbered by the previous holder.
+            result = await self._db.update(
                 "system_state",
-                {"id": LOCK_ROW_ID},
+                {"id": LOCK_ROW_ID, "instance_id": instance_id},
                 {
                     "instance_id": None,
                     "is_primary_instance": False,
@@ -283,6 +300,15 @@ class DistributedLock:
                     "updated_at": now.isoformat(),
                 },
             )
+            rows_updated = len(result) if isinstance(result, list) else 0
+            if rows_updated != 1:
+                logger.warning(
+                    "lock_release_lost_race",
+                    instance_id=instance_id,
+                    rows_updated=rows_updated,
+                    msg="Another instance took the lock between our read and release write — leaving them alone",
+                )
+                return
             logger.info(
                 "lock_released",
                 instance_id=instance_id,
