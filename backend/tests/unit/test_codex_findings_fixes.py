@@ -506,3 +506,136 @@ def test_scanner_already_in_position_query_includes_account_id(env_keys):
     select_block = snippet[last_select:last_select + 400]
     assert "account_id" in select_block, \
         f"Scanner already-in-position query missing account_id filter:\n{select_block}"
+
+
+# ─── Codex round-3 review #1: Vacant-row lock CAS via readback ──────────────
+
+
+@pytest.mark.asyncio
+async def test_lock_vacant_row_uses_readback_cas(env_keys):
+    """Two standbys racing into a vacant existing row (current_holder=None)
+    must not both declare success. The loser's readback discovers the winner."""
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(side_effect=[
+        # First read: row exists but vacant
+        {"id": "singleton", "instance_id": None, "is_primary_instance": False,
+         "lock_expires_at": None},
+        # Readback after our update: winner already wrote their id
+        {"id": "singleton", "instance_id": "instance-WINNER",
+         "is_primary_instance": True},
+    ])
+    db.update = AsyncMock(return_value=[{"id": "singleton"}])
+    lock = DistributedLock(db)
+    ok = await lock.acquire("instance-LOSER")
+    assert ok is False, "Vacant-row loser must detect winner via readback"
+
+
+@pytest.mark.asyncio
+async def test_lock_vacant_row_we_win(env_keys):
+    from lumitrade.state.lock import DistributedLock
+    db = MagicMock()
+    db.select_one = AsyncMock(side_effect=[
+        {"id": "singleton", "instance_id": None, "is_primary_instance": False,
+         "lock_expires_at": None},
+        {"id": "singleton", "instance_id": "instance-A",
+         "is_primary_instance": True},
+    ])
+    db.update = AsyncMock(return_value=[{"id": "singleton"}])
+    lock = DistributedLock(db)
+    ok = await lock.acquire("instance-A")
+    assert ok is True
+
+
+# ─── Codex round-3 review #2: PromptBuilder account-scoped queries ──────────
+
+
+@pytest.mark.asyncio
+async def test_prompt_builder_trade_history_filters_by_account(env_keys):
+    from lumitrade.ai_brain.prompt_builder import PromptBuilder
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[])
+    pb = PromptBuilder(db=db, account_id="acct-123")
+    await pb._get_trade_history("USD_CAD")
+    # All three select calls (buy_recent, sell_recent, all_trades) must include account_id
+    for call in db.select.call_args_list:
+        args, _ = call
+        filters = args[1]
+        assert filters.get("account_id") == "acct-123", \
+            f"PromptBuilder query missing account_id: {filters}"
+
+
+@pytest.mark.asyncio
+async def test_prompt_builder_performance_insights_filters_by_account(env_keys):
+    from lumitrade.ai_brain.prompt_builder import PromptBuilder
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[])
+    pb = PromptBuilder(db=db, account_id="acct-123")
+    await pb._get_performance_insights("USD_CAD")
+    for call in db.select.call_args_list:
+        args, _ = call
+        filters = args[1]
+        assert filters.get("account_id") == "acct-123"
+
+
+# ─── Codex round-3 review #3: Reconciler account-scoped ────────────────────
+
+
+@pytest.mark.asyncio
+async def test_reconciler_filters_by_account_uuid(env_keys):
+    """Reconciler with account_uuid must only consider this account's open
+    trades — without this, other tenants' open positions get classified as
+    ghosts and force-closed."""
+    from lumitrade.state.reconciler import PositionReconciler
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[])
+    oanda = MagicMock()
+    oanda.get_open_trades = AsyncMock(return_value=[])
+    alerts = MagicMock()
+    alerts.send_critical = AsyncMock()
+    reconciler = PositionReconciler(db, oanda, alerts, account_uuid="acct-123")
+    await reconciler.reconcile()
+    call = db.select.call_args
+    args, _ = call
+    filters = args[1]
+    assert filters.get("account_id") == "acct-123"
+
+
+@pytest.mark.asyncio
+async def test_reconciler_legacy_no_account_unscoped(env_keys):
+    """Reconciler called without account_uuid (legacy) must keep working
+    (single-account dev/test) — falls back to unscoped query."""
+    from lumitrade.state.reconciler import PositionReconciler
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[])
+    oanda = MagicMock()
+    oanda.get_open_trades = AsyncMock(return_value=[])
+    alerts = MagicMock()
+    alerts.send_critical = AsyncMock()
+    reconciler = PositionReconciler(db, oanda, alerts)  # no account_uuid
+    await reconciler.reconcile()
+    call = db.select.call_args
+    args, _ = call
+    filters = args[1]
+    assert "account_id" not in filters  # unscoped, but doesn't crash
+
+
+# ─── Codex round-3 review #4: Repair endpoints account-scoped ──────────────
+
+
+def test_repair_endpoints_have_account_id_filters(env_keys):
+    """Static check that the three repair endpoint handlers in health_server
+    include account_id in their trade queries. They run hard-deletes and
+    rewrites, so unscoped queries could destroy other tenants' history."""
+    health_path = ROOT / "lumitrade" / "infrastructure" / "health_server.py"
+    src = health_path.read_text(encoding="utf-8")
+    for handler_name in ["_handle_fix_breakeven", "_handle_purge_ghosts",
+                         "_handle_fix_timestamps"]:
+        # Find the handler block
+        start = src.find(f"async def {handler_name}")
+        assert start != -1, f"Handler {handler_name} not found"
+        # Look at the next 1500 chars (handler body)
+        block = src[start:start + 1500]
+        # It must include account_id somewhere in its DB query
+        assert "account_id" in block, \
+            f"{handler_name} missing account_id filter:\n{block[:400]}"

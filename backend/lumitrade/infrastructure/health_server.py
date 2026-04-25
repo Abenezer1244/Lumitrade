@@ -563,7 +563,10 @@ class HealthServer:
             oanda = OandaClient(config)
             try:
                 alerts = AlertService(config, self._db)
-                reconciler = PositionReconciler(self._db, oanda, alerts)
+                reconciler = PositionReconciler(
+                    self._db, oanda, alerts,
+                    account_uuid=config.account_uuid,
+                )
                 result = await reconciler.reconcile()
 
                 # Sync system_state.open_trades with reconciliation result
@@ -598,9 +601,13 @@ class HealthServer:
             config = LumitradeConfig()  # type: ignore[call-arg]
             oanda = OandaClient(config)
 
-            # Find all CLOSED trades with BREAKEVEN outcome
+            # Find all CLOSED trades with BREAKEVEN outcome FOR THIS ACCOUNT.
+            # Account scoping per Codex round-3 review #4 — without it, this
+            # endpoint would rewrite another tenant's closed trade history.
             breakeven_trades = await self._db.select(
-                "trades", {"status": "CLOSED", "outcome": "BREAKEVEN"}
+                "trades",
+                {"status": "CLOSED", "outcome": "BREAKEVEN",
+                 "account_id": config.account_uuid},
             )
 
             fixed = []
@@ -680,11 +687,17 @@ class HealthServer:
             return web.json_response({"error": "Internal server error"}, status=500)
 
     async def _handle_purge_ghosts(self, request: web.Request) -> web.Response:
-        """POST /purge-ghosts — remove BREAKEVEN trades with no broker_trade_id (never executed)."""
+        """POST /purge-ghosts — remove BREAKEVEN trades with no broker_trade_id (never executed).
+        Account-scoped per Codex round-3 review #4 — this endpoint hard-deletes
+        rows by id, so unscoped queries could destroy another tenant's history."""
         try:
-            # Find all CLOSED BREAKEVEN trades
+            from ..config import LumitradeConfig
+            config = LumitradeConfig()  # type: ignore[call-arg]
+            # Find all CLOSED BREAKEVEN trades FOR THIS ACCOUNT
             breakeven_trades = await self._db.select(
-                "trades", {"status": "CLOSED", "outcome": "BREAKEVEN"}
+                "trades",
+                {"status": "CLOSED", "outcome": "BREAKEVEN",
+                 "account_id": config.account_uuid},
             )
 
             # Filter to those with no broker_trade_id or empty broker_trade_id
@@ -731,7 +744,12 @@ class HealthServer:
             config = LumitradeConfig()  # type: ignore[call-arg]
             oanda = OandaClient(config)
 
-            closed_trades = await self._db.select("trades", {"status": "CLOSED"})
+            # Account-scoped per Codex round-3 review #4 — this endpoint
+            # rewrites closed_at on every row it touches.
+            closed_trades = await self._db.select(
+                "trades",
+                {"status": "CLOSED", "account_id": config.account_uuid},
+            )
             fixed = []
             errors = []
             try:

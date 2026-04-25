@@ -161,7 +161,10 @@ class StateManager:
             from .reconciler import PositionReconciler
 
             alerts = AlertService(self._config, self._db)
-            reconciler = PositionReconciler(self._db, self._oanda, alerts)
+            reconciler = PositionReconciler(
+                self._db, self._oanda, alerts,
+                account_uuid=self._config.account_uuid,
+            )
             result = await reconciler.reconcile()
 
             self._state["reconciliation"] = {

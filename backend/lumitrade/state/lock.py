@@ -110,15 +110,34 @@ class DistributedLock:
                 logger.info("lock_reacquired", instance_id=instance_id)
                 return True
 
-            # Check if no holder or lock is expired
+            # Check if no holder (vacant) or lock is no longer marked primary
             if current_holder is None or not row.get("is_primary_instance"):
-                # No active holder — conditional claim (only if still vacant)
-                ok = await self._update_lock(instance_id, now, expected_holder=current_holder)
-                if not ok:
+                # Vacant-row case: cannot CAS on instance_id == NULL via our
+                # current update primitive (filter does not support null
+                # predicates). Per Codex round-3 review #1: write-then-readback
+                # to detect race losers, same pattern as the cold-start
+                # bootstrap path. Two concurrent claimants both pass through
+                # the unconditional update, but only the last writer's
+                # instance_id stays recorded — the earlier writer reads back
+                # and discovers it lost.
+                await self._db.update(
+                    "system_state",
+                    {"id": LOCK_ROW_ID},
+                    {
+                        "instance_id": instance_id,
+                        "is_primary_instance": True,
+                        "lock_expires_at": (now + timedelta(seconds=LOCK_TTL_SECONDS)).isoformat(),
+                        "updated_at": now.isoformat(),
+                    },
+                )
+                check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
+                actual_holder = (check or {}).get("instance_id")
+                if actual_holder != instance_id:
                     logger.warning(
                         "lock_claim_vacant_lost_race",
                         instance_id=instance_id,
                         previous_holder=current_holder,
+                        winner=actual_holder,
                     )
                     return False
                 logger.info("lock_acquired", instance_id=instance_id, method="claim_vacant")

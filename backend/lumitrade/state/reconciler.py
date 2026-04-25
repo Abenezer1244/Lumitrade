@@ -42,10 +42,17 @@ class PositionReconciler:
         db: DatabaseClient,
         oanda: OandaClient,
         alerts: AlertService,
+        account_uuid: str = "",
     ) -> None:
         self._db = db
         self._oanda = oanda
         self._alerts = alerts
+        # account_uuid scopes all DB reads/writes to this account.
+        # Empty string = legacy unscoped behavior (only acceptable in
+        # single-account dev/test). Per Codex round-3 review #3:
+        # without scoping, another tenant's open positions are
+        # misclassified as ghosts and force-closed.
+        self._account_uuid = account_uuid
 
     async def reconcile(self) -> dict:
         """
@@ -65,11 +72,13 @@ class PositionReconciler:
         matched: list[dict] = []
 
         try:
-            # Fetch DB open trades
-            db_trades = await self._db.select(
-                "trades",
-                {"status": "OPEN"},
-            )
+            # Fetch DB open trades — scoped to this account when account_uuid
+            # is set. Per Codex round-3 review #3: unscoped query treats
+            # other tenants' open trades as ghosts and force-closes them.
+            db_filter = {"status": "OPEN"}
+            if self._account_uuid:
+                db_filter["account_id"] = self._account_uuid
+            db_trades = await self._db.select("trades", db_filter)
 
             # Fetch OANDA open trades
             oanda_trades = await self._oanda.get_open_trades()

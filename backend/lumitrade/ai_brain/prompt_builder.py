@@ -359,16 +359,24 @@ class PromptBuilder:
         if not self.db:
             return "  No trade history available."
 
+        # All trade-history queries scoped to THIS account per Codex round-3
+        # review #2 — prompt explicitly tells Claude this is "your own trade
+        # history", so cross-account leakage would directly bias signal
+        # generation for the wrong account.
+        base_filter = {"pair": pair, "status": "CLOSED"}
+        if self.account_id:
+            base_filter["account_id"] = self.account_id
+
         try:
             buy_recent = await self.db.select(
                 "trades",
-                {"pair": pair, "status": "CLOSED", "direction": "BUY"},
+                {**base_filter, "direction": "BUY"},
                 order="closed_at",
                 limit=10,
             )
             sell_recent = await self.db.select(
                 "trades",
-                {"pair": pair, "status": "CLOSED", "direction": "SELL"},
+                {**base_filter, "direction": "SELL"},
                 order="closed_at",
                 limit=10,
             )
@@ -376,7 +384,7 @@ class PromptBuilder:
             # Small pull (limit=500) keeps this cheap; most pairs have <100 trades.
             all_trades = await self.db.select(
                 "trades",
-                {"pair": pair, "status": "CLOSED"},
+                base_filter,
                 order="closed_at",
                 limit=500,
             )
@@ -454,18 +462,26 @@ class PromptBuilder:
         if not self.db:
             return "  No performance insights available."
 
+        # Account-scoped per Codex round-3 review #2 — analyzer writes
+        # account_id on insight rows but reader was ignoring it.
+        pair_filter = {"pair": pair, "is_actionable": True}
+        general_filter = {"pair": None, "is_actionable": True}
+        if self.account_id:
+            pair_filter["account_id"] = self.account_id
+            general_filter["account_id"] = self.account_id
+
         try:
             # Get pair-specific insights
             pair_insights = await self.db.select(
                 "performance_insights",
-                {"pair": pair, "is_actionable": True},
+                pair_filter,
                 order="created_at",
                 limit=3,
             )
             # Get general insights (not pair-specific)
             general_insights = await self.db.select(
                 "performance_insights",
-                {"pair": None, "is_actionable": True},
+                general_filter,
                 order="created_at",
                 limit=2,
             )

@@ -615,7 +615,10 @@ class OrchestratorService:
                 from .infrastructure.alert_service import AlertService
                 from .state.reconciler import PositionReconciler
 
-                reconciler = PositionReconciler(self.db, self.oanda, self.alerts)
+                reconciler = PositionReconciler(
+                    self.db, self.oanda, self.alerts,
+                    account_uuid=self.config.account_uuid,
+                )
                 result = await reconciler.reconcile()
 
                 ghosts = len(result.get("ghosts", []))
