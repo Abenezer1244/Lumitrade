@@ -221,14 +221,17 @@ class ExecutionEngine:
         for trade in db_open:
             broker_id = trade.get("broker_trade_id", "")
 
-            # Max hold time: close after 6 hours regardless of P&L
+            # Max hold time: per-pair (USD_CAD allows longer holds — its edge
+            # runs in trades >24h per backtest_2026Q2_results.md ablation).
             opened_at = trade.get("opened_at", "")
+            pair = trade.get("pair", "")
+            max_hold = self.config.max_hold_hours_for(pair)
             if opened_at and broker_id and not broker_id.startswith("PAPER-"):
                 try:
                     from datetime import datetime as _dt
                     open_time = _dt.fromisoformat(opened_at.replace("Z", "+00:00"))
                     age_hours = (datetime.now(timezone.utc) - open_time).total_seconds() / 3600
-                    if age_hours >= self.config.max_hold_hours:
+                    if age_hours >= max_hold:
                         # Only attempt close during market hours (Sun 22:00 - Fri 22:00 UTC)
                         now = datetime.now(timezone.utc)
                         weekday = now.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
@@ -255,8 +258,8 @@ class ExecutionEngine:
                             if self._events:
                                 self._events.publish(
                                     "EXECUTION", "MAX_HOLD_CLOSE",
-                                    f"Auto-closed {trade.get('pair', '')} after {age_hours:.1f}h (max 6h)",
-                                    pair=trade.get("pair", ""), severity="WARNING",
+                                    f"Auto-closed {pair} after {age_hours:.1f}h (max {max_hold}h)",
+                                    pair=pair, severity="WARNING",
                                 )
                         except Exception as e:
                             logger.error("max_hold_close_failed", broker_id=broker_id, error=str(e))

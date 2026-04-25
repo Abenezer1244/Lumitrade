@@ -520,13 +520,17 @@ class RiskEngine:
         """
         Determine the risk percentage for position sizing.
 
-        Per Addition Set 2E:
-          - If AI recommended_risk_pct is present and performance data is
-            sufficient: use AI recommendation, clamped to [0.25%, 2.0%].
-          - Otherwise: standard confidence-based tiers:
-              * confidence >= 0.90 -> 2.0%
+        Per Addition Set 2E + 2026-04-25 backtest review:
+          - If AI recommended_risk_pct is present: use AI recommendation,
+            clamped to [0.25%, 2.0%].
+          - Otherwise: confidence-based tiers (capped by max_confidence=0.80):
               * confidence >= 0.80 -> 1.0%
               * else              -> 0.5%
+
+        Note: the prior `>= 0.90 -> 2.0%` tier was dead code — `max_confidence=0.80`
+        in config.py rejects any signal above 0.80 before sizing, so the tier
+        could never fire. Removed in commit landing the 2-year backtest review
+        (tasks/backtest_2026Q2_results.md).
         """
         min_risk = Decimal("0.0025")  # 0.25%
         max_risk = Decimal("0.02")    # 2.0%
@@ -543,9 +547,7 @@ class RiskEngine:
 
         # Standard confidence-based tiers
         confidence = proposal.confidence_adjusted
-        if confidence >= Decimal("0.90"):
-            risk_pct = Decimal("0.02")   # 2.0%
-        elif confidence >= Decimal("0.80"):
+        if confidence >= Decimal("0.80"):
             risk_pct = Decimal("0.01")   # 1.0%
         else:
             risk_pct = Decimal("0.005")  # 0.5%

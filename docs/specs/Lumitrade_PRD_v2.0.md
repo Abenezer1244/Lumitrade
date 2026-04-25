@@ -58,6 +58,25 @@ The following are explicitly OUT OF SCOPE for Phase 0 and must not influence arc
 - Regulatory filings or investment advisor registration
 - White-label or API-as-a-service offering
 
+## 3.4 Backtest Verification (Pairs Approved for Live)
+A pair may only be enabled in `LIVE` trading mode after passing a 2-year backtest under the **current** filter stack with all four research-grounded thresholds met:
+
+- Profit factor ≥ 1.5
+- Sharpe ratio (annualized) ≥ 1.0
+- Calmar / MAR ≥ 0.5
+- Monte Carlo 10k-resample P(profit) ≥ 85%
+
+Source: Pardo (2008), Aronson (2007), Bailey & López de Prado (2014), Carver (2015), Chan (2013). See `tasks/backtest_2026Q2_results.md` for the full report.
+
+**Current verdict (2026-04-25 backtest, 2024-04-24 → 2026-04-24):**
+
+| Pair | PF | Sharpe | MAR | MC P(profit) | Live status |
+|---|---|---|---|---|---|
+| USD_CAD | 1.96 | 1.76 | 2.09 | 93.5% | ✅ Approved |
+| USD_JPY | 1.04 | 0.10 | 0.07 | 55.0% | 🔴 Paper-only |
+
+`config.live_pairs` enforces this filter automatically when `TRADING_MODE=LIVE`. USD_JPY remains in `config.pairs` for paper-mode evaluation and can be promoted only after a fresh passing backtest.
+
 # 4. User Personas
 ## 4.1 Phase 0 — Primary Persona
 

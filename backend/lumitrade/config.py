@@ -59,15 +59,19 @@ class LumitradeConfig(BaseSettings):
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
     # ── Trading parameters (DB overrides env) ──────────────────
-    # USD_CAD: only profitable pair in 2-year backtest (+$24,637 at 3x ATR)
-    #          — also the current franchise pair, 66.7% live WR.
-    # USD_JPY: the backtest was direction-agnostic and showed -$25K,
-    #          but our live direction-specific memory disagrees —
-    #          BUY:USD_JPY BOOST rule is 84.6% WR / +$8,586 over 13 live
-    #          trades, and BUY:USD_JPY:NY is 71% WR / +$4,694.
-    #          Lesson filter will BLOCK SELL:USD_JPY automatically if
-    #          the direction re-deteriorates (<35% WR on 5+ trades).
+    # `pairs`: the trading universe (used in PAPER mode).
+    # `live_pairs`: the subset that may trade in LIVE mode.
+    #
+    # 2-year backtest under current filter stack (see tasks/backtest_2026Q2_results.md):
+    #   USD_CAD: PF 1.96, Sharpe 1.76, MAR 2.09, MC P(profit) 93.5% — passes all
+    #            research-grounded live thresholds. Approved for LIVE.
+    #   USD_JPY: PF 1.04, Sharpe 0.10, MAR 0.07, MC P(profit) 55.0% — fails every
+    #            threshold. Backtest disagrees with the small live-paper sample
+    #            (24 trades, +$5,499). Holds in PAPER until either (a) a fresh
+    #            backtest under a tuned-for-JPY filter stack passes, or (b) ~50+
+    #            additional paper trades sustain the edge. PRD §3.4.
     pairs: list[str] = ["USD_CAD", "USD_JPY"]
+    live_pairs: list[str] = ["USD_CAD"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
@@ -105,7 +109,18 @@ class LumitradeConfig(BaseSettings):
     # Raised from 6 → 24. 106-trade audit showed 6-24h bucket = 56% WR /
     # +$5,795 and 24h+ bucket = 86% WR / +$6,802, while 0-6h = 31% WR /
     # −$11,692. Forced 6h exit was severing trades just as they matured.
+    #
+    # Per-pair overrides (see tasks/backtest_2026Q2_results.md ablation):
+    # USD_CAD ablation showed removing the 24h cap took PF 1.96 → 3.78
+    # (+$8,177 over 2 years). USD_CAD's edge runs in long-trend trades that
+    # want >24h. USD_JPY ablation went the opposite way (−$1,250 without cap),
+    # so JPY keeps the 24h default.
     max_hold_hours: int = 24
+    max_hold_hours_overrides: dict[str, int] = {"USD_CAD": 96}
+
+    def max_hold_hours_for(self, pair: str) -> int:
+        """Per-pair max hold time. Falls back to `max_hold_hours` if no override."""
+        return self.max_hold_hours_overrides.get(pair, self.max_hold_hours)
     price_deviation_max: Decimal = Decimal("0.005")
     stale_tick_seconds: int = 5
     position_monitor_interval: int = 60

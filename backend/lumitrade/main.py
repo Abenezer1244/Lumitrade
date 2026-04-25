@@ -154,6 +154,21 @@ class OrchestratorService:
         except Exception as e:
             logger.warning("instrument_validation_failed", error=str(e))
 
+        # 6c. LIVE-mode pair filter: keep only backtest-approved pairs.
+        # See tasks/backtest_2026Q2_results.md and PRD §3.4. USD_JPY is paper-only
+        # because its 2-year backtest fails every research-grounded live threshold
+        # (PF 1.04, Sharpe 0.10, MAR 0.07).
+        if self.config.trading_mode == "LIVE":
+            paper_only = [p for p in self.config.pairs if p not in self.config.live_pairs]
+            if paper_only:
+                self.config.pairs = [p for p in self.config.pairs if p in self.config.live_pairs]
+                logger.warning(
+                    "live_pair_filter_applied",
+                    paper_only_pairs=paper_only,
+                    live_pairs=self.config.pairs,
+                    rationale="backtest_2026Q2_results.md",
+                )
+
         # 7. Initialize trading components (import here to avoid circular deps)
         from .ai_brain.claude_client import ClaudeClient
         from .ai_brain.consensus_engine import ConsensusEngine
