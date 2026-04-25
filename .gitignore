@@ -67,7 +67,10 @@ supabase/.temp/
 .claude-flow/
 .claude/*
 !.claude/settings.json
-!.claude/settings.local.json
+# .claude/settings.local.json is DELIBERATELY NOT allowlisted — Claude's `.local`
+# convention means per-machine secrets/permissions, never to be committed.
+# Codex review 2026-04-25 flagged 34 JWT tokens in this file when it was
+# allowlisted; treating it as gitignored at all times closes that hole.
 .firecrawl/
 .gstack/
 .superpowers/
