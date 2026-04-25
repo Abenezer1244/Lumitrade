@@ -62,3 +62,27 @@ docker-compose.override.yml
 # Supabase local
 supabase/.temp/
 .claude/skills/gstack/
+
+# Tool runtime state — large, never review-relevant
+.claude-flow/
+.claude/*
+!.claude/settings.json
+!.claude/settings.local.json
+.firecrawl/
+.gstack/
+.superpowers/
+.swarm/
+.obsidian/
+
+# Large local-only data
+graphify-out/
+backend/data/
+
+# Plugin / tool config (per-machine, not for review)
+.mcp.json
+skills-lock.json
+
+# Shell-quoting artifacts (created by accidental bash splits — clean up if seen)
+$*
+[0-9]
+[0-9][0-9]
