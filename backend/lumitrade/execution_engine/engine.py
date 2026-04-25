@@ -746,7 +746,13 @@ class ExecutionEngine:
         min_trades = 50
         every_n = 10
         try:
-            count = await self._db.count("trades", {"status": "CLOSED"})
+            # Account-scoped count per Codex round-4 finding #4 — without
+            # this filter, another tenant's closed trades would spuriously
+            # trigger or suppress this account's analysis cadence.
+            count = await self._db.count(
+                "trades",
+                {"status": "CLOSED", "account_id": self.config.account_uuid},
+            )
             if count < min_trades:
                 return
             if count % every_n == 0:

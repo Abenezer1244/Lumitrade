@@ -363,8 +363,9 @@ async def test_lock_bootstrap_returns_true_when_we_win(env_keys):
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
     db.select_one = AsyncMock(side_effect=[
-        None,
-        {"id": "primary", "instance_id": "instance-A"},
+        None,                                                        # initial read
+        {"id": "primary", "instance_id": "instance-A"},              # 1st readback
+        {"id": "primary", "instance_id": "instance-A"},              # 2nd confirmation read
     ])
     db.upsert = AsyncMock(return_value=[{"id": "primary"}])
     lock = DistributedLock(db)
@@ -536,8 +537,13 @@ async def test_lock_vacant_row_we_win(env_keys):
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
     db.select_one = AsyncMock(side_effect=[
+        # Initial read: row exists but vacant
         {"id": "singleton", "instance_id": None, "is_primary_instance": False,
          "lock_expires_at": None},
+        # 1st readback: we won
+        {"id": "singleton", "instance_id": "instance-A",
+         "is_primary_instance": True},
+        # 2nd confirmation read: still us
         {"id": "singleton", "instance_id": "instance-A",
          "is_primary_instance": True},
     ])
@@ -639,3 +645,85 @@ def test_repair_endpoints_have_account_id_filters(env_keys):
         # It must include account_id somewhere in its DB query
         assert "account_id" in block, \
             f"{handler_name} missing account_id filter:\n{block[:400]}"
+
+
+# ─── Codex round-4 review #1: Lock-first startup gates trading ──────────────
+
+
+def test_main_startup_acquires_lock_before_state_restore(env_keys):
+    """Static check: in main.py startup(), lock acquisition must precede
+    state.restore() (which performs DB writes). Codex round-4 finding #1 —
+    standby instances were corrupting DB state before knowing they lost."""
+    main_path = ROOT / "lumitrade" / "main.py"
+    src = main_path.read_text(encoding="utf-8")
+    idx_lock = src.find("self.lock.acquire")
+    idx_restore = src.find("self.state.restore()")
+    assert idx_lock != -1, "Lock acquire call not found"
+    assert idx_restore != -1, "state.restore() call not found"
+    assert idx_lock < idx_restore, (
+        f"Lock acquire (pos {idx_lock}) must come BEFORE state.restore() "
+        f"(pos {idx_restore}) — currently restore happens first, which means "
+        f"a standby corrupts DB before learning it lost the lock."
+    )
+
+
+def test_main_startup_exits_when_lock_not_acquired(env_keys):
+    """Static check: when is_primary is False, startup must exit (raise
+    SystemExit) — not just log and continue. Otherwise standbys still start
+    trading loops."""
+    main_path = ROOT / "lumitrade" / "main.py"
+    src = main_path.read_text(encoding="utf-8")
+    # The block right after the lock check should raise SystemExit
+    lock_section_start = src.find("self.lock.acquire(self.config.instance_id)")
+    section = src[lock_section_start:lock_section_start + 1500]
+    assert "if not is_primary" in section
+    assert "SystemExit" in section, \
+        "Standby path must SystemExit, not just log and proceed"
+
+
+# ─── Codex round-4 review #3: PromptBuilder uses account_uuid not oanda_account_id ──
+
+
+def test_scanner_passes_account_uuid_to_prompt_builder(env_keys):
+    """SignalScanner must wire PromptBuilder with config.account_uuid (the
+    DB row identifier), not config.oanda_account_id (the broker identifier).
+    Trade rows are written with account_uuid, so PromptBuilder filters
+    would miss in production if wired with the wrong identifier."""
+    scanner_path = ROOT / "lumitrade" / "ai_brain" / "scanner.py"
+    src = scanner_path.read_text(encoding="utf-8")
+    # Find the PromptBuilder construction
+    idx = src.find("PromptBuilder(")
+    assert idx != -1
+    construction = src[idx:idx + 200]
+    assert "account_uuid" in construction, \
+        f"PromptBuilder must be constructed with account_uuid:\n{construction}"
+    assert "oanda_account_id" not in construction, \
+        f"PromptBuilder must NOT use oanda_account_id:\n{construction}"
+
+
+def test_main_weekly_intelligence_passes_account_uuid(env_keys):
+    """run_weekly_intelligence must use account_uuid, not oanda_account_id."""
+    main_path = ROOT / "lumitrade" / "main.py"
+    src = main_path.read_text(encoding="utf-8")
+    # Find the run_weekly_intelligence call
+    idx = src.find("run_weekly_intelligence(")
+    assert idx != -1
+    call = src[idx:idx + 200]
+    assert "account_uuid" in call, \
+        f"run_weekly_intelligence must use account_uuid:\n{call}"
+
+
+# ─── Codex round-4 review #4: _trigger_insight_analysis account-scoped ─────
+
+
+def test_trigger_insight_analysis_count_filters_by_account(env_keys):
+    """Static check that _trigger_insight_analysis counts THIS account's
+    closed trades only. Without scoping, another tenant's activity would
+    spuriously trigger or suppress this account's insight cadence."""
+    exec_path = ROOT / "lumitrade" / "execution_engine" / "engine.py"
+    src = exec_path.read_text(encoding="utf-8")
+    idx = src.find("async def _trigger_insight_analysis")
+    assert idx != -1
+    body = src[idx:idx + 800]
+    assert "account_id" in body, \
+        f"_trigger_insight_analysis must filter by account_id:\n{body[:400]}"

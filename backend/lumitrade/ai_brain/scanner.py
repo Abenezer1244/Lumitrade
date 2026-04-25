@@ -69,7 +69,11 @@ class SignalScanner:
         self._adjuster = ConfidenceAdjuster()
         self._fallback = RuleBasedFallback()
         self._sentiment = SentimentAnalyzer(config)
-        self._prompt_builder = PromptBuilder(db, config.oanda_account_id)
+        # Pass account_uuid (the DB row identifier), NOT oanda_account_id.
+        # Trade rows are written with account_uuid, so PromptBuilder must
+        # filter on the same identifier or the round-3 scoping fix becomes
+        # a no-op in production. Codex round-4 finding #3.
+        self._prompt_builder = PromptBuilder(db, config.account_uuid)
         self._lesson_filter = LessonFilter(db, config)
         self._chart_gen = ChartGenerator()
         self._tv_signal = TradingViewSignal()

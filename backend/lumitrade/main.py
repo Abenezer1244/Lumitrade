@@ -118,19 +118,34 @@ class OrchestratorService:
         await self.db.connect()
         logger.info("database_connected")
 
-        # 3. Initialize state manager
-        self.state = StateManager(self.config, self.db, self.oanda)
-
-        # 4. Restore persisted system state
-        await self.state.restore()
-        logger.info("state_restored")
-
-        # 5. Try to acquire primary lock
+        # 3. ACQUIRE PRIMARY LOCK FIRST. Codex round-4 finding #1 — startup
+        # must NOT do any mutating work before becoming primary. Otherwise
+        # a standby (rolling redeploy overlap, manual second instance, lost
+        # failover race) can corrupt DB state and place duplicate live OANDA
+        # orders during the ~30s window before it figures out it lost.
         is_primary = await self.lock.acquire(self.config.instance_id)
         logger.info("lock_status", is_primary=is_primary)
 
         if not is_primary:
-            logger.info("running_as_standby", instance_id=self.config.instance_id)
+            logger.warning(
+                "lock_not_acquired_exiting",
+                instance_id=self.config.instance_id,
+                msg="Refusing to run as standby — exit cleanly so Railway "
+                    "respawns and the survivor can re-attempt the lock.",
+            )
+            raise SystemExit(
+                f"Lock acquisition failed for {self.config.instance_id}. "
+                "Another instance holds the primary lock; this process refuses "
+                "to start trading loops as a standby. Restart will retry."
+            )
+
+        # 4. Initialize state manager — safe now that we hold the lock
+        self.state = StateManager(self.config, self.db, self.oanda)
+
+        # 5. Restore persisted system state — performs reconciliation +
+        # writes; only safe to run as the verified primary.
+        await self.state.restore()
+        logger.info("state_restored")
 
         # 6. Validate OANDA connection
         try:
@@ -655,8 +670,10 @@ class OrchestratorService:
                 wait_seconds = (next_sunday - now).total_seconds()
                 await asyncio.sleep(max(wait_seconds, 60))
 
+                # account_uuid (DB row identifier), not oanda_account_id
+                # — same fix as scanner.py per Codex round-4 finding #3.
                 await self.subagents.run_weekly_intelligence(
-                    self.config.oanda_account_id
+                    self.config.account_uuid
                 )
             except asyncio.CancelledError:
                 break

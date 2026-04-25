@@ -78,8 +78,15 @@ class DistributedLock:
                         "updated_at": now.isoformat(),
                     },
                 )
-                # Verify: read back. If another instance won the race, their
-                # instance_id is now in the row and we lost.
+                # Verify with DELAYED double-readback. Codex round-4 finding #2:
+                # an immediate readback can miss a competing writer that lands
+                # microseconds later. Sleeping briefly then reading twice
+                # materially shrinks the race window from microseconds to
+                # 200ms+ collisions. NOT true CAS — proper fix requires DB-side
+                # atomic primitive (Postgres advisory lock or version column +
+                # update WHERE version = expected). Tracked as follow-up phase.
+                # Single-instance Railway today doesn't trigger this race.
+                await asyncio.sleep(0.2)
                 check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
                 actual_holder = (check or {}).get("instance_id")
                 if actual_holder != instance_id:
@@ -87,6 +94,16 @@ class DistributedLock:
                         "lock_bootstrap_lost_race",
                         instance_id=instance_id,
                         winner=actual_holder,
+                    )
+                    return False
+                # Second confirmation read after another short delay
+                await asyncio.sleep(0.2)
+                check2 = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
+                if (check2 or {}).get("instance_id") != instance_id:
+                    logger.warning(
+                        "lock_bootstrap_lost_race_late",
+                        instance_id=instance_id,
+                        winner=(check2 or {}).get("instance_id"),
                     )
                     return False
                 logger.info(
@@ -130,6 +147,9 @@ class DistributedLock:
                         "updated_at": now.isoformat(),
                     },
                 )
+                # Same delayed double-readback pattern as bootstrap.
+                # See bootstrap branch comment for the limitation.
+                await asyncio.sleep(0.2)
                 check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
                 actual_holder = (check or {}).get("instance_id")
                 if actual_holder != instance_id:
@@ -138,6 +158,16 @@ class DistributedLock:
                         instance_id=instance_id,
                         previous_holder=current_holder,
                         winner=actual_holder,
+                    )
+                    return False
+                # Second confirmation read
+                await asyncio.sleep(0.2)
+                check2 = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
+                if (check2 or {}).get("instance_id") != instance_id:
+                    logger.warning(
+                        "lock_claim_vacant_lost_race_late",
+                        instance_id=instance_id,
+                        winner=(check2 or {}).get("instance_id"),
                     )
                     return False
                 logger.info("lock_acquired", instance_id=instance_id, method="claim_vacant")
