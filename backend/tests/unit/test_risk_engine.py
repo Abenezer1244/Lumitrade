@@ -23,13 +23,29 @@ from lumitrade.core.models import ApprovedOrder, RiskRejection, SignalProposal
 
 
 def _make_config():
-    """Create a mock config with default trading parameters."""
+    """Create a mock config with default trading parameters.
+
+    These must be REAL values (not MagicMock auto-attributes) for any field
+    the risk engine compares numerically — otherwise `value < <MagicMock>`
+    raises TypeError.
+    """
     config = MagicMock()
     config.max_open_trades = 3
+    config.max_positions_per_pair = 10
+    config.max_position_units = 500_000
     config.trade_cooldown_minutes = 60
     config.min_confidence = Decimal("0.65")
+    config.max_confidence = Decimal("0.80")
     config.max_spread_pips = Decimal("3.0")
     config.min_rr_ratio = Decimal("1.5")
+    config.min_sl_pips = Decimal("15.0")
+    config.min_tp_pips = Decimal("15.0")
+    config.daily_loss_limit_pct = Decimal("0.05")
+    config.weekly_loss_limit_pct = Decimal("0.10")
+    config.no_trade_hours_utc = []
+    config.blocked_weekdays_utc = []
+    config.news_blackout_before_min = 30
+    config.news_blackout_after_min = 15
     config.trading_mode = "PAPER"
     config.oanda_account_id = "test-account"
     return config
@@ -273,11 +289,17 @@ class TestRejections:
 
 
 class TestPositionSizing:
-    """RE-018 to RE-021: Risk percentage and position sizing."""
+    """RE-018 to RE-021: Risk percentage and position sizing.
+
+    Note: max_confidence cap was lowered to 0.80 in the 106-trade audit
+    (commit 6948951) and the >=0.90 -> 2% tier was removed in the 2-yr
+    backtest review (commit 119b4e0). RE-019 uses 0.80 (the cap boundary)
+    and RE-020 verifies the cap rejection that replaced the dead 2% tier.
+    """
 
     @pytest.mark.asyncio
     async def test_position_size_0_5pct_for_low_confidence(self, engine):
-        """RE-018"""
+        """RE-018: confidence below 0.80 -> 0.5% risk."""
         result = await engine.evaluate(
             _make_proposal(confidence=Decimal("0.70")), Decimal("1000")
         )
@@ -286,21 +308,25 @@ class TestPositionSizing:
 
     @pytest.mark.asyncio
     async def test_position_size_1pct_for_mid_confidence(self, engine):
-        """RE-019"""
+        """RE-019: confidence at 0.80 ceiling -> 1% risk."""
         result = await engine.evaluate(
-            _make_proposal(confidence=Decimal("0.82")), Decimal("1000")
+            _make_proposal(confidence=Decimal("0.80")), Decimal("1000")
         )
         assert isinstance(result, ApprovedOrder)
         assert result.risk_pct == Decimal("0.01")
 
     @pytest.mark.asyncio
-    async def test_position_size_2pct_for_high_confidence(self, engine):
-        """RE-020"""
+    async def test_high_confidence_rejected_by_ceiling(self, engine):
+        """RE-020 (rewritten): confidence above 0.80 cap -> CONFIDENCE_CEILING
+        rejection. Replaces the prior `>=0.90 -> 2%` test, which was for a
+        sizing tier that no longer exists (dead branch removed in commit
+        119b4e0 — the 0.80 cap rejects above-0.80 signals before sizing,
+        so the 2% tier could never fire)."""
         result = await engine.evaluate(
             _make_proposal(confidence=Decimal("0.92")), Decimal("1000")
         )
-        assert isinstance(result, ApprovedOrder)
-        assert result.risk_pct == Decimal("0.02")
+        assert isinstance(result, RiskRejection)
+        assert result.rule_violated == "CONFIDENCE_CEILING"
 
     @pytest.mark.asyncio
     async def test_rejects_when_calculated_units_below_1000(self, engine):
