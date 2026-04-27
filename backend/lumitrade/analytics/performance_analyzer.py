@@ -1112,7 +1112,10 @@ class PerformanceAnalyzer:
         Insights written to performance_insights with
         insight_type="confidence_calibration".
         """
-        MIN_BUCKET_TRADES = 5
+        # Aronson (2007) minimum for statistical significance.
+        # Below this threshold, a "bad" bucket is indistinguishable from noise
+        # in a low-frequency system (Codex review 2026-04-27 finding #3).
+        MIN_BUCKET_TRADES = 30
         LOW_WIN_RATE_THRESHOLD = Decimal("0.30")
 
         # Buckets defined as (label, low_inclusive, high_exclusive) in 0-100 scale
@@ -1169,10 +1172,17 @@ class PerformanceAnalyzer:
                 if win_rate >= LOW_WIN_RATE_THRESHOLD:
                     continue  # performing adequately — no insight needed
 
+                # Wilson 95% CI — guards against acting on noise
+                from math import sqrt as _sqrt
+                z = 1.96
+                n = total
+                p = float(win_rate)
+                ci_lo = (p + z*z/(2*n) - z*_sqrt((p*(1-p) + z*z/(4*n))/n)) / (1 + z*z/n)
+                ci_hi = (p + z*z/(2*n) + z*_sqrt((p*(1-p) + z*z/(4*n))/n)) / (1 + z*z/n)
                 recommendation = (
-                    f"Confidence range {label} has only {win_rate_q} win rate over "
-                    f"{total} trades (net P&L: ${net_pnl_usd_q}). "
-                    f"Recommend avoiding trades in this confidence bracket."
+                    f"Confidence range {label}: {win_rate_q} win rate over {total} trades "
+                    f"(95% CI [{ci_lo:.2f}, {ci_hi:.2f}], net P&L: ${net_pnl_usd_q}). "
+                    f"Advisory only — monitor for further deterioration."
                 )
 
                 try:
@@ -1184,7 +1194,7 @@ class PerformanceAnalyzer:
                         sample_size=total,
                         period_start=period_start,
                         period_end=period_end,
-                        is_actionable=True,
+                        is_actionable=False,
                         recommendation=recommendation,
                         detail={
                             "confidence_range": label,

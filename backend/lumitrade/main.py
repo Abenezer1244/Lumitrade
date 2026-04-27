@@ -455,6 +455,16 @@ class OrchestratorService:
                             logger.info("signal_hold_skipped", pair=pair)
                             continue
 
+                        # Telemetry: directional signal generated — visible in logs
+                        # as "signal_candidate". Track candidate vs executed ratio
+                        # to detect regime decay before it shows in P&L.
+                        logger.info(
+                            "signal_candidate",
+                            pair=pair,
+                            action=_action_str(proposal.action),
+                            confidence=str(proposal.confidence_adjusted),
+                        )
+
                         # 1b. Consensus validation — second Claude opinion
                         try:
                             consensus_context = (

@@ -525,37 +525,29 @@ class RiskEngine:
         """
         Determine the risk percentage for position sizing.
 
-        Per Addition Set 2E + 2026-04-25 backtest review:
-          - If AI recommended_risk_pct is present: use AI recommendation,
-            clamped to [0.25%, 2.0%].
-          - Otherwise: confidence-based tiers (capped by max_confidence=0.80):
-              * confidence >= 0.80 -> 1.0%
-              * else              -> 0.5%
+        Uses a deterministic confidence-based schedule only.
+        AI recommended_risk_pct is logged for future calibration but does NOT
+        override sizing — it has no empirical validation yet and bypassed the
+        confidence-band protection (Codex review 2026-04-27 finding #1).
 
-        Note: the prior `>= 0.90 -> 2.0%` tier was dead code — `max_confidence=0.80`
-        in config.py rejects any signal above 0.80 before sizing, so the tier
-        could never fire. Removed in commit landing the 2-year backtest review
-        (tasks/backtest_2026Q2_results.md).
+        Confidence tiers (capped by max_confidence=0.80):
+          * confidence >= 0.80 -> 1.0%
+          * else               -> 0.5%
         """
-        min_risk = Decimal("0.0025")  # 0.25%
-        max_risk = Decimal("0.02")    # 2.0%
-
-        # Check for AI-recommended risk with sufficient performance data
-        if proposal.recommended_risk_pct is not None:
-            clamped = max(min_risk, min(max_risk, proposal.recommended_risk_pct))
-            logger.info(
-                "risk_pct_ai_recommended",
-                raw=str(proposal.recommended_risk_pct),
-                clamped=str(clamped),
-            )
-            return clamped
-
-        # Standard confidence-based tiers
         confidence = proposal.confidence_adjusted
         if confidence >= Decimal("0.80"):
             risk_pct = Decimal("0.01")   # 1.0%
         else:
             risk_pct = Decimal("0.005")  # 0.5%
+
+        # Log AI recommendation as advisory telemetry only — not applied
+        if proposal.recommended_risk_pct is not None:
+            logger.info(
+                "risk_pct_ai_advisory_not_applied",
+                ai_recommended=str(proposal.recommended_risk_pct),
+                deterministic=str(risk_pct),
+                reason="advisory_only_pending_empirical_validation",
+            )
 
         logger.info(
             "risk_pct_confidence_based",
