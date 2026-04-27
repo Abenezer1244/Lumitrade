@@ -47,6 +47,10 @@ def _make_config():
     config.news_blackout_before_min = 30
     config.news_blackout_after_min = 15
     config.trading_mode = "PAPER"
+    config.force_paper_mode = False
+    # Real method (not auto-mocked) so the risk engine can build a valid
+    # TradingMode enum from its return value when constructing ApprovedOrder.
+    config.effective_trading_mode = MagicMock(return_value="PAPER")
     config.oanda_account_id = "test-account"
     return config
 

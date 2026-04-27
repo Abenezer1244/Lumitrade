@@ -229,7 +229,13 @@ class RiskEngine:
 
         # ── Build ApprovedOrder ──────────────────────────────────
         direction = Direction.BUY if proposal.action == Action.BUY else Direction.SELL
-        mode = TradingMode(self._config.trading_mode)
+        # Use effective mode (env + dashboard + force_paper_mode lockdown)
+        # so that downstream `_save_trade()` persists the actual execution
+        # mode rather than the raw env var. Without this, FORCE_PAPER_MODE
+        # routes orders to PaperExecutor but the trades table still gets
+        # mode='LIVE' rows, which corrupts analytics and reconciliation.
+        # Codex review 2026-04-27 finding #2.
+        mode = TradingMode(self._config.effective_trading_mode())
 
         approved = ApprovedOrder(
             order_ref=uuid4(),
