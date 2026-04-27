@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Lock } from "lucide-react";
 
 interface ModeToggleProps {
   mode: "PAPER" | "LIVE";
@@ -11,6 +11,13 @@ interface ModeToggleProps {
   envMode?: "PAPER" | "LIVE";
   /** What the engine actually executes against. LIVE iff envMode AND mode are both LIVE. */
   effectiveMode?: "PAPER" | "LIVE";
+  /**
+   * Backend-side hard lock (FORCE_PAPER_MODE env). When true, the LIVE
+   * button is hidden, the toggle becomes non-interactive, and a lock
+   * banner explains that no real-broker order can fire regardless of UI
+   * action. Use during demo / practice weeks.
+   */
+  forcePaperLockdown?: boolean;
 }
 
 const ARM_PHRASE = "START LIVE TRADING";
@@ -21,6 +28,7 @@ export default function ModeToggle({
   disabled = false,
   envMode,
   effectiveMode,
+  forcePaperLockdown = false,
 }: ModeToggleProps) {
   // Live LIVE requires BOTH the env var AND the user's dashboard selection
   // to say LIVE. If the env is PAPER, the LIVE button is locked — selecting
@@ -32,7 +40,7 @@ export default function ModeToggle({
   const [riskAck, setRiskAck] = useState(false);
 
   const inputMatches = input === ARM_PHRASE;
-  const canArm = inputMatches && riskAck && !disabled;
+  const canArm = inputMatches && riskAck && !disabled && !forcePaperLockdown;
 
   function handlePaperSelect() {
     // PAPER is the safe default — halting is always immediate, no ceremony.
@@ -45,7 +53,7 @@ export default function ModeToggle({
   }
 
   function handleLiveSelect() {
-    if (disabled || mode === "LIVE") return;
+    if (disabled || mode === "LIVE" || forcePaperLockdown) return;
     setPhase("arming");
     setInput("");
     setRiskAck(false);
@@ -87,7 +95,25 @@ export default function ModeToggle({
         </div>
       )}
 
-      {liveLocked && (
+      {forcePaperLockdown && (
+        <div
+          className="mb-3 px-3 py-2 rounded-lg border border-warning bg-warning-dim text-xs text-warning flex items-start gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <Lock size={14} className="shrink-0 mt-0.5" />
+          <span>
+            <span className="font-bold">Demo Week — Paper Lock active.</span>{" "}
+            <span className="font-mono mx-1">FORCE_PAPER_MODE</span>is set on
+            the engine. New orders are simulated by PaperExecutor — no live
+            broker entry will fire regardless of toggle state. (Existing
+            open positions and manual close actions still talk to the
+            broker; OANDA endpoint is currently <span className="font-mono">practice</span>.)
+          </span>
+        </div>
+      )}
+
+      {!forcePaperLockdown && liveLocked && (
         <div className="mb-3 px-3 py-2 rounded-lg border border-warning bg-warning-dim text-xs text-warning flex items-start gap-2">
           <AlertTriangle size={14} className="shrink-0 mt-0.5" />
           <span>
@@ -102,27 +128,29 @@ export default function ModeToggle({
           onClick={handlePaperSelect}
           disabled={disabled}
           className={`flex-1 py-3 rounded-lg border text-sm font-bold transition-colors ${
-            mode === "PAPER"
+            mode === "PAPER" || forcePaperLockdown
               ? "bg-warning-dim border-warning text-warning"
               : "bg-elevated border-border text-secondary"
           } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          aria-pressed={mode === "PAPER"}
+          aria-pressed={mode === "PAPER" || forcePaperLockdown}
         >
           PAPER
         </button>
 
-        <button
-          onClick={handleLiveSelect}
-          disabled={disabled || phase === "arming"}
-          className={`flex-1 py-3 rounded-lg border text-sm font-bold transition-colors ${
-            mode === "LIVE"
-              ? "bg-profit-dim border-profit text-profit"
-              : "bg-elevated border-border text-secondary"
-          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          aria-pressed={mode === "LIVE"}
-        >
-          LIVE
-        </button>
+        {!forcePaperLockdown && (
+          <button
+            onClick={handleLiveSelect}
+            disabled={disabled || phase === "arming"}
+            className={`flex-1 py-3 rounded-lg border text-sm font-bold transition-colors ${
+              mode === "LIVE"
+                ? "bg-profit-dim border-profit text-profit"
+                : "bg-elevated border-border text-secondary"
+            } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            aria-pressed={mode === "LIVE"}
+          >
+            LIVE
+          </button>
+        )}
       </div>
 
       {phase === "arming" && (
@@ -198,7 +226,7 @@ export default function ModeToggle({
         </div>
       )}
 
-      {phase === "idle" && mode === "LIVE" && (
+      {phase === "idle" && mode === "LIVE" && !forcePaperLockdown && (
         <div className="flex items-start gap-2 mt-3">
           <AlertTriangle size={14} className="text-loss shrink-0 mt-0.5" />
           <p className="text-xs text-loss">

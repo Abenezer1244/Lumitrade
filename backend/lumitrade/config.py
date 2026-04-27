@@ -141,11 +141,24 @@ class LumitradeConfig(BaseSettings):
     #                         effect within ~15 min (one scan cycle).
     db_mode_override: Optional[str] = None  # "LIVE" or "PAPER"; None = default to env
 
+    # Demo-week hard lock. When set, `effective_trading_mode()` returns PAPER
+    # unconditionally — env var, dashboard toggle, and arming flow are all
+    # bypassed. Use during demo periods where no real-broker order may be
+    # sent regardless of operator action. Set FORCE_PAPER_MODE=true on
+    # Railway. Default off so production live trading is not affected.
+    force_paper_mode: bool = Field(
+        validation_alias="FORCE_PAPER_MODE", default=False
+    )
+
     def effective_trading_mode(self) -> str:
         """Returns 'LIVE' iff BOTH the env var AND the dashboard say LIVE.
         Any other combination yields 'PAPER' — i.e. simulated execution.
 
-        Truth table:
+        Hard override: if `force_paper_mode` is set (FORCE_PAPER_MODE env),
+        returns PAPER unconditionally. This is the demo-week safety lock —
+        no env / DB / arming combination can produce LIVE while it is on.
+
+        Truth table (when force_paper_mode is False):
           env=LIVE,  db=LIVE   -> LIVE   (real OANDA orders)
           env=LIVE,  db=PAPER  -> PAPER  (dashboard kill-switch)
           env=PAPER, db=LIVE   -> PAPER  (env wins; never live without env)
@@ -153,6 +166,8 @@ class LumitradeConfig(BaseSettings):
           env=PAPER, db=None   -> PAPER  (no DB override yet)
           env=LIVE,  db=None   -> PAPER  (DB hasn't loaded; safe default)
         """
+        if self.force_paper_mode:
+            return "PAPER"
         if self.trading_mode == "LIVE" and self.db_mode_override == "LIVE":
             return "LIVE"
         return "PAPER"

@@ -25,6 +25,7 @@ export default function SettingsPage() {
   const [guardrails, setGuardrails] = useState<GuardrailsData>(DEFAULT_GUARDRAILS);
   const [mode, setMode] = useState<"PAPER" | "LIVE">("PAPER");
   const [envMode, setEnvMode] = useState<"PAPER" | "LIVE">("PAPER");
+  const [forcePaperLockdown, setForcePaperLockdown] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const { toast } = useToast();
@@ -46,6 +47,7 @@ export default function SettingsPage() {
         });
         setMode(data.mode ?? "PAPER");
         setEnvMode(data.env_mode ?? "PAPER");
+        setForcePaperLockdown(Boolean(data.force_paper_mode));
         if (data.guardrails) {
           setGuardrails({
             maxPositionUnits: data.guardrails.maxPositionUnits ?? DEFAULT_GUARDRAILS.maxPositionUnits,
@@ -112,7 +114,14 @@ export default function SettingsPage() {
           mode={mode}
           onToggle={handleModeToggle}
           envMode={envMode}
-          effectiveMode={envMode === "LIVE" && mode === "LIVE" ? "LIVE" : "PAPER"}
+          effectiveMode={
+            forcePaperLockdown
+              ? "PAPER"
+              : envMode === "LIVE" && mode === "LIVE"
+                ? "LIVE"
+                : "PAPER"
+          }
+          forcePaperLockdown={forcePaperLockdown}
         />
         <TradingSettings
           settings={settings}

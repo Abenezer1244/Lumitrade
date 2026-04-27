@@ -308,12 +308,18 @@ class OrchestratorService:
             and self.state._state.get("kill_switch_active", False)
         )
 
+        force_paper = bool(getattr(self.config, "force_paper_mode", False))
+        # Lockdown wins over both switches — surface the actual gate the
+        # execution engine will use, not just the dual-switch result.
+        effective_with_lockdown = "PAPER" if force_paper else will_be_effective
+
         logger.info(
             "startup_diagnostics",
             env_trading_mode=env_mode,
             db_dashboard_mode=db_dashboard_mode,
             settings_row_present=settings_row_present,
-            effective_mode_at_first_scan=will_be_effective,
+            force_paper_mode=force_paper,
+            effective_mode_at_first_scan=effective_with_lockdown,
             oanda_environment=self.config.oanda_environment,
             oanda_endpoint=self.config.oanda_base_url,
             oanda_account_id=self.config.oanda_account_id,

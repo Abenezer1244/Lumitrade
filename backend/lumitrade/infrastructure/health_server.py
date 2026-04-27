@@ -268,8 +268,13 @@ class HealthServer:
 
         db_mode_live = db_dashboard_mode == "LIVE"
 
-        # 3. effective mode (the gate the execution engine actually uses)
-        effective_mode = "LIVE" if (env_mode_live and db_mode_live) else "PAPER"
+        # 3. effective mode (the gate the execution engine actually uses).
+        # Demo-week hard lock wins over both switches.
+        force_paper_mode = bool(getattr(config, "force_paper_mode", False))
+        if force_paper_mode:
+            effective_mode = "PAPER"
+        else:
+            effective_mode = "LIVE" if (env_mode_live and db_mode_live) else "PAPER"
 
         # 4. OANDA reachability + balance
         oanda_reachable = False
@@ -306,9 +311,11 @@ class HealthServer:
 
         # Composite: ready when every box is checked. Demo can run in
         # PAPER mode (PaperExecutor) too — `ready_for_live_demo` only
-        # gates the LIVE-on-practice path.
+        # gates the LIVE-on-practice path. When `force_paper_mode` is on,
+        # live can never be ready by design — that is the lockdown's job.
         ready_for_live_demo = (
-            env_mode_live
+            not force_paper_mode
+            and env_mode_live
             and db_mode_live
             and settings_row_present
             and oanda_reachable
@@ -323,7 +330,9 @@ class HealthServer:
             "ready_for_live_demo": ready_for_live_demo,
             "ready_for_paper_demo": ready_for_paper_demo,
             "effective_mode": effective_mode,
+            "force_paper_mode": force_paper_mode,
             "checks": {
+                "force_paper_mode_lockdown": force_paper_mode,
                 "env_mode_is_LIVE": env_mode_live,
                 "dashboard_mode_is_LIVE": db_mode_live,
                 "settings_row_present": settings_row_present,
@@ -334,6 +343,7 @@ class HealthServer:
             "values": {
                 "env_trading_mode": env_mode,
                 "db_dashboard_mode": db_dashboard_mode,
+                "force_paper_mode": force_paper_mode,
                 "oanda_environment": config.oanda_environment,
                 "oanda_account_id": config.oanda_account_id,
                 "oanda_balance": oanda_balance,
@@ -525,18 +535,33 @@ class HealthServer:
             if row:
                 open_trades = row.get("open_trades", [])
 
-                # Compute effective mode: LIVE only when env AND dashboard both LIVE
+                # Compute effective mode: LIVE only when env AND dashboard
+                # both LIVE — UNLESS force_paper_mode lockdown is active,
+                # in which case we always report PAPER so dashboards can't
+                # render a misleading LIVE badge during demo week
+                # (Codex review finding #3).
                 effective_mode = "PAPER"
                 try:
                     config = self._get_config()
-                    env_mode = config.trading_mode
-                    settings_row = await self._db.select_one(
-                        "system_state", {"id": self.SETTINGS_ROW_ID}
-                    )
-                    db_mode = "PAPER"
-                    if settings_row and isinstance(settings_row.get("open_trades"), dict):
-                        db_mode = settings_row["open_trades"].get("mode", "PAPER")
-                    effective_mode = "LIVE" if (env_mode == "LIVE" and db_mode == "LIVE") else "PAPER"
+                    if bool(getattr(config, "force_paper_mode", False)):
+                        effective_mode = "PAPER"
+                    else:
+                        env_mode = config.trading_mode
+                        settings_row = await self._db.select_one(
+                            "system_state", {"id": self.SETTINGS_ROW_ID}
+                        )
+                        db_mode = "PAPER"
+                        stored_settings = (
+                            settings_row.get("open_trades")
+                            if settings_row else None
+                        )
+                        if isinstance(stored_settings, dict):
+                            db_mode = stored_settings.get("mode", "PAPER")
+                        effective_mode = (
+                            "LIVE"
+                            if (env_mode == "LIVE" and db_mode == "LIVE")
+                            else "PAPER"
+                        )
                 except Exception:
                     pass
 
@@ -618,17 +643,25 @@ class HealthServer:
             }
             env_mode = config.trading_mode
             db_mode = user_settings.get("mode", "PAPER")
-            effective_mode = "LIVE" if (env_mode == "LIVE" and db_mode == "LIVE") else "PAPER"
+            force_paper_mode = bool(getattr(config, "force_paper_mode", False))
+            if force_paper_mode:
+                effective_mode = "PAPER"
+            else:
+                effective_mode = (
+                    "LIVE" if (env_mode == "LIVE" and db_mode == "LIVE") else "PAPER"
+                )
         except Exception:
             guardrails = dict(self.GUARDRAILS)
             env_mode = "PAPER"
             effective_mode = "PAPER"
+            force_paper_mode = False
 
         return web.json_response({
             **user_settings,
             "guardrails": guardrails,
             "env_mode": env_mode,
             "effective_mode": effective_mode,
+            "force_paper_mode": force_paper_mode,
         })
 
     async def _handle_post_settings(self, request: web.Request) -> web.Response:
@@ -639,6 +672,24 @@ class HealthServer:
         except Exception:
             return web.json_response({"error": "Invalid JSON"}, status=400)
 
+        # Demo-week lockdown: reject any attempt to persist mode=LIVE
+        # while FORCE_PAPER_MODE is on. Without this, a stale LIVE could
+        # be written into the settings row and reactivate the moment the
+        # lockdown is lifted (Codex review finding #2).
+        force_paper_mode_active = False
+        try:
+            force_paper_mode_active = bool(self._get_config().force_paper_mode)
+        except Exception:
+            pass
+
+        requested_mode = body.get("mode")
+        if force_paper_mode_active:
+            persisted_mode = "PAPER"
+        elif requested_mode in ("PAPER", "LIVE"):
+            persisted_mode = requested_mode
+        else:
+            persisted_mode = "PAPER"
+
         # Validate and clamp values
         clamped = {
             "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 1.0)))),
@@ -646,7 +697,7 @@ class HealthServer:
             "maxPerPair": max(1, min(10, int(body.get("maxPerPair", 1)))),
             "confidence": max(50, min(90, int(body.get("confidence", 65)))),
             "scanInterval": max(5, min(60, int(body.get("scanInterval", 15)))),
-            "mode": body.get("mode", "PAPER") if body.get("mode") in ("PAPER", "LIVE") else "PAPER",
+            "mode": persisted_mode,
         }
 
         try:
