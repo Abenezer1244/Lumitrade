@@ -2,7 +2,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# eslint-config-next@16 declares a peer-dep on eslint@^9 while the project
+# pins eslint@^8. Without --legacy-peer-deps, npm ci aborts on ERESOLVE
+# and the dashboard service has been failing to build since 2026-04-26.
+RUN npm ci --legacy-peer-deps
 
 # Force fresh copy of source files
 ARG CACHE_DATE=20260330b
