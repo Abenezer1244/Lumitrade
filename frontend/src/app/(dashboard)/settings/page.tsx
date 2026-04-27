@@ -82,6 +82,25 @@ export default function SettingsPage() {
     }
   }, [settings, mode, toast]);
 
+  const handleModeToggle = useCallback(async (newMode: "PAPER" | "LIVE") => {
+    setMode(newMode);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...settings, mode: newMode }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      toast(`Trading mode set to ${newMode}`, "success");
+    } catch {
+      toast("Failed to save mode change", "error");
+      setMode(newMode === "LIVE" ? "PAPER" : "LIVE");
+    } finally {
+      setSaving(false);
+    }
+  }, [settings, toast]);
+
   if (!loaded) {
     return <div className="animate-pulse h-96 glass" />;
   }
@@ -91,7 +110,7 @@ export default function SettingsPage() {
       <div className="space-y-6 max-w-2xl">
         <ModeToggle
           mode={mode}
-          onToggle={setMode}
+          onToggle={handleModeToggle}
           envMode={envMode}
           effectiveMode={envMode === "LIVE" && mode === "LIVE" ? "LIVE" : "PAPER"}
         />

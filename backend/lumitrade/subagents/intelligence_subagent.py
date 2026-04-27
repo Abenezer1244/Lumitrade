@@ -34,10 +34,17 @@ class IntelligenceContext(TypedDict, total=False):
 
 
 class IntelligenceReport(TypedDict, total=False):
-    """Return shape of ``IntelligenceSubagent.run``. Empty dict on error."""
+    """Return shape of ``IntelligenceSubagent.run``.
 
+    status is always present: "ok" | "error".
+    On error, ``error`` describes the failure; ``report`` and ``generated_at``
+    are absent.
+    """
+
+    status: str
     report: str
     generated_at: str
+    error: str
 
 INTELLIGENCE_SYSTEM_PROMPT = """You are a senior forex market analyst for Lumitrade, an AI-powered forex trading system.
 You produce concise, actionable weekly intelligence reports for a systematic trader.
@@ -86,6 +93,7 @@ class IntelligenceSubagent(BaseSubagent):
             if cached:
                 logger.info("intelligence_report_cache_hit", report_date=today_str)
                 return {
+                    "status": "ok",
                     "report": cached[0]["report"],
                     "generated_at": cached[0]["generated_at"],
                 }
@@ -106,7 +114,7 @@ class IntelligenceSubagent(BaseSubagent):
 
             if not response_text:
                 logger.warning("intelligence_empty_response")
-                return {}
+                return {"status": "error", "error": "empty_response"}
 
             generated_at = datetime.now(timezone.utc).isoformat()
 
@@ -132,13 +140,14 @@ class IntelligenceSubagent(BaseSubagent):
             )
 
             return {
+                "status": "ok",
                 "report": response_text,
                 "generated_at": generated_at,
             }
 
         except Exception as e:
             logger.error("intelligence_subagent_error", error=str(e))
-            return {}
+            return {"status": "error", "error": str(e)}
 
     async def _build_user_prompt(
         self,

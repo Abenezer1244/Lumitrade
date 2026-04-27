@@ -60,7 +60,12 @@ class SubagentOrchestrator:
 
     async def run_post_trade(self, trade, signal) -> None:
         recent_trades = signal.get("recent_trades", []) if isinstance(signal, dict) else []
-        await self.post_trade.run({"recent_trades": recent_trades, "closed_trade": trade})
+        result = await self.post_trade.run({"recent_trades": recent_trades, "closed_trade": trade})
+        status = result.get("status")
+        if status == "error":
+            logger.error("post_trade_analyst_failed", error=result.get("error"))
+        elif status == "partial":
+            logger.warning("post_trade_insight_lost", error=result.get("error"))
 
     async def run_risk_monitor(self, open_trades, market_data) -> None:
         await self.risk_monitor.run({"open_trades": open_trades, "market": market_data})
@@ -88,11 +93,18 @@ class SubagentOrchestrator:
         except Exception:
             account_summary = {}
 
-        await self.intelligence.run({
+        result = await self.intelligence.run({
+            "account_id": account_id,
             "recent_trades": recent_trades,
             "account_summary": account_summary,
             "pairs": ["EUR_USD", "GBP_USD", "USD_JPY"],
         })
+        if result.get("status") == "error":
+            logger.error(
+                "weekly_intelligence_failed",
+                account_id=account_id,
+                error=result.get("error"),
+            )
 
     async def run_onboarding(self, account_id: str, message: str) -> str:
         result = await self.onboarding.run(

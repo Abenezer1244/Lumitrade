@@ -65,12 +65,10 @@ supabase/.temp/
 
 # Tool runtime state — large, never review-relevant
 .claude-flow/
-.claude/*
-!.claude/settings.json
-# .claude/settings.local.json is DELIBERATELY NOT allowlisted — Claude's `.local`
-# convention means per-machine secrets/permissions, never to be committed.
-# Codex review 2026-04-25 flagged 34 JWT tokens in this file when it was
-# allowlisted; treating it as gitignored at all times closes that hole.
+.claude/
+# .claude/ is entirely local: hooks execute repo-owned Node scripts with broad
+# permissions and lifecycle hooks write back to MEMORY.md. Per Codex adversarial
+# review 2026-04-26, committing this collapses the trust boundary for any cloner.
 .firecrawl/
 .gstack/
 .superpowers/

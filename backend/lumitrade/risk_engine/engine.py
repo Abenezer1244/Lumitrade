@@ -8,6 +8,7 @@ rejects (RiskRejection) the trade.
 Per BDS Section 6.1 + Addition Set 2E (adaptive position sizing).
 """
 
+import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -742,15 +743,17 @@ class RiskEngine:
         # Log rejection to risk_events table
         try:
             await self._db.insert("risk_events", {
+                "account_id": str(self._config.account_uuid),
                 "signal_id": str(proposal.signal_id),
-                "pair": proposal.pair,
                 "event_type": "REJECTION",
-                "rule_violated": rule_name,
-                "current_value": current_value,
-                "threshold": threshold,
                 "risk_state": risk_state.value,
-                "reason": reason,
-                "created_at": now.isoformat(),
+                "detail": json.dumps({
+                    "pair": proposal.pair,
+                    "rule_violated": rule_name,
+                    "current_value": current_value,
+                    "threshold": threshold,
+                    "reason": reason,
+                }),
             })
         except Exception:
             logger.warning(

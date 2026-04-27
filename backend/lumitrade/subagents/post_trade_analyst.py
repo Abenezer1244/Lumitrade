@@ -35,11 +35,18 @@ class PostTradeContext(TypedDict, total=False):
 
 
 class PostTradeAnalysis(TypedDict, total=False):
-    """Return shape of ``PostTradeAnalystAgent.run``. Empty dict on error
-    or when fewer than ``MIN_TRADES`` trades are provided."""
+    """Return shape of ``PostTradeAnalystAgent.run``.
 
+    status is always present: "ok" | "error" | "skip".
+    "skip" means insufficient trades (intentional no-op, not a failure).
+    On "error", ``error`` describes the failure.
+    """
+
+    status: str
     analysis: str
     trade_count: int
+    error: str
+    reason: str
 
 SYSTEM_PROMPT = (
     "You are a quantitative trading performance analyst. "
@@ -99,7 +106,7 @@ class PostTradeAnalystAgent(BaseSubagent):
                 trade_count=len(trades),
                 min_required=self.MIN_TRADES,
             )
-            return {}
+            return {"status": "skip", "reason": "insufficient_trades"}
 
         try:
             # Use the last 20 trades for analysis
@@ -118,7 +125,7 @@ class PostTradeAnalystAgent(BaseSubagent):
 
             if not response:
                 logger.warning("post_trade_analyst_empty_response")
-                return {}
+                return {"status": "error", "error": "empty_response"}
 
             logger.info(
                 "post_trade_analysis_generated",
@@ -141,21 +148,32 @@ class PostTradeAnalystAgent(BaseSubagent):
 
             # Persist analysis as a performance insight for the feedback loop
             # This gets read by PromptBuilder._get_performance_insights() on next scan
-            await self._store_insight(analysis_trades, response)
+            stored = await self._store_insight(analysis_trades, response)
+
+            if not stored:
+                return {
+                    "status": "partial",
+                    "error": "insight_store_failed",
+                    "analysis": response,
+                    "trade_count": len(analysis_trades),
+                }
 
             return {
+                "status": "ok",
                 "analysis": response,
                 "trade_count": len(analysis_trades),
             }
 
         except Exception as e:
             logger.error("post_trade_analyst_error", error=str(e))
-            return {}
+            return {"status": "error", "error": str(e)}
 
-    async def _store_insight(self, trades: list, analysis: str) -> None:
-        """Store SA-02 analysis as a performance insight for the feedback loop."""
+    async def _store_insight(self, trades: list, analysis: str) -> bool:
+        """Store SA-02 analysis as a performance insight for the feedback loop.
+
+        Returns True on success, False if the DB write failed.
+        """
         try:
-            # Extract the most traded pair from the analysis batch
             pair_counts: dict[str, int] = {}
             for t in trades:
                 p = t.get("pair", "")
@@ -177,8 +195,10 @@ class PostTradeAnalystAgent(BaseSubagent):
                 "detail": "{}",
             })
             logger.info("post_trade_insight_stored", pair=top_pair, trades=len(trades))
+            return True
         except Exception as e:
             logger.warning("post_trade_insight_store_failed", error=str(e))
+            return False
 
     @staticmethod
     def _build_trade_summary(trades: list) -> str:

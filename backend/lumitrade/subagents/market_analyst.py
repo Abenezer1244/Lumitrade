@@ -33,10 +33,16 @@ class MarketAnalystContext(TypedDict, total=False):
     candles: list[dict[str, Any]]
 
 
-class MarketBriefing(TypedDict):
-    """Return shape of ``MarketAnalystAgent.run``. ``briefing`` is "" on error."""
+class MarketBriefing(TypedDict, total=False):
+    """Return shape of ``MarketAnalystAgent.run``.
 
+    status is always present: "ok" | "error".
+    On error, ``error`` describes the failure; ``briefing`` is "".
+    """
+
+    status: str
     briefing: str
+    error: str
 
 SYSTEM_PROMPT = (
     "You are a senior forex market analyst for an automated trading system. "
@@ -85,7 +91,7 @@ class MarketAnalystAgent(BaseSubagent):
 
         if not pair:
             logger.warning("market_analyst_missing_pair")
-            return {"briefing": ""}
+            return {"status": "error", "error": "missing_pair", "briefing": ""}
 
         try:
             indicators_str = self._format_indicators(indicators)
@@ -105,18 +111,18 @@ class MarketAnalystAgent(BaseSubagent):
 
             if not response:
                 logger.warning("market_analyst_empty_response", pair=pair)
-                return {"briefing": ""}
+                return {"status": "error", "error": "empty_response", "briefing": ""}
 
             logger.info(
                 "market_analyst_briefing_generated",
                 pair=pair,
                 briefing_length=len(response),
             )
-            return {"briefing": response}
+            return {"status": "ok", "briefing": response}
 
         except Exception as e:
             logger.error("market_analyst_error", pair=pair, error=str(e))
-            return {"briefing": ""}
+            return {"status": "error", "error": str(e), "briefing": ""}
 
     @staticmethod
     def _format_indicators(indicators: dict) -> str:
