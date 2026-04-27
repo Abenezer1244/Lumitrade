@@ -59,7 +59,7 @@ def calculate_position_size(
     """
     Calculate position size in units and risk amount in USD.
     Returns (units: int, risk_amount_usd: Decimal).
-    Rounds DOWN to nearest 1000 units (micro lot).
+    Floors to nearest unit — OANDA minimum is 1 unit for all pairs.
     """
     risk_usd = balance * risk_pct
     pv_per_unit = pip_value_per_unit(pair, current_rate)
@@ -68,13 +68,7 @@ def calculate_position_size(
         return 0, Decimal("0")
 
     raw_units = risk_usd / (sl_pips * pv_per_unit)
-
-    # Gold/metals: round to nearest unit (no micro lot requirement)
-    # Forex: floor to nearest 1000 (micro lot)
-    if pair.startswith("XAU") or pair.startswith("XAG") or pair.startswith("XPT") or pair.startswith("XPD"):
-        units = int(raw_units)  # Round to nearest unit
-    else:
-        units = int(raw_units / 1000) * 1000  # Floor to micro lot
+    units = max(0, int(raw_units))  # Floor to nearest unit, never negative
 
     actual_risk = units * sl_pips * pv_per_unit
     return units, actual_risk
