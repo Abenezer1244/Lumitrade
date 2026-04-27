@@ -135,15 +135,20 @@ class ExecutionEngine:
                     logger.exception("execute_order_pre_broker_kill_check_failed")
 
             try:
-                if effective_mode == "PAPER":
-                    # Simulated fill — no broker call. Both env=LIVE+db=PAPER
-                    # and env=PAPER paths land here.
+                pair_is_live_approved = order.pair in self.config.live_pairs
+                if effective_mode == "PAPER" or not pair_is_live_approved:
+                    # Simulated fill — no broker call. Lands here when:
+                    # - effective_mode is PAPER (either switch is PAPER), OR
+                    # - pair is not in live_pairs (shadow-scan pairs like USD_JPY
+                    #   always paper even when mode=LIVE, because their backtest
+                    #   stats don't meet the live threshold).
                     logger.info(
                         "paper_mode_simulated_fill",
                         order_ref=str(order.order_ref),
                         pair=order.pair,
                         env_mode=self.config.trading_mode,
                         db_mode=self.config.db_mode_override,
+                        reason="paper_mode" if effective_mode == "PAPER" else "pair_not_live_approved",
                     )
                     result = await self._paper_executor.execute(order, current_price)
                 elif order.pair in self.CAPITAL_INSTRUMENTS and self._capital_executor:

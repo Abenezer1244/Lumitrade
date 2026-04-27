@@ -169,20 +169,19 @@ class OrchestratorService:
         except Exception as e:
             logger.warning("instrument_validation_failed", error=str(e))
 
-        # 6c. LIVE-mode pair filter: keep only backtest-approved pairs.
-        # See tasks/backtest_2026Q2_results.md and PRD §3.4. USD_JPY is paper-only
-        # because its 2-year backtest fails every research-grounded live threshold
-        # (PF 1.04, Sharpe 0.10, MAR 0.07).
-        if self.config.trading_mode == "LIVE":
-            paper_only = [p for p in self.config.pairs if p not in self.config.live_pairs]
-            if paper_only:
-                self.config.pairs = [p for p in self.config.pairs if p in self.config.live_pairs]
-                logger.warning(
-                    "live_pair_filter_applied",
-                    paper_only_pairs=paper_only,
-                    live_pairs=self.config.pairs,
-                    rationale="backtest_2026Q2_results.md",
-                )
+        # 6c. Paper-shadow scan: all configured pairs are scanned regardless of
+        # live_pairs. Non-live pairs are routed to PaperExecutor at execution time
+        # (see execution_engine/engine.py). This lets USD_JPY generate shadow signals
+        # while USD_CAD runs live. Startup filter removed — DB mode is not yet loaded
+        # at this point so effective_trading_mode() always returns PAPER here.
+        paper_only = [p for p in self.config.pairs if p not in self.config.live_pairs]
+        if paper_only:
+            logger.info(
+                "paper_shadow_pairs_active",
+                paper_only_pairs=paper_only,
+                live_pairs=self.config.live_pairs,
+                note="these pairs scan but execution routes to PaperExecutor",
+            )
 
         # 7. Initialize trading components (import here to avoid circular deps)
         from .ai_brain.claude_client import ClaudeClient
