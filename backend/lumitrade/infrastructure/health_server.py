@@ -411,8 +411,24 @@ class HealthServer:
             )
             if row:
                 open_trades = row.get("open_trades", [])
+
+                # Compute effective mode: LIVE only when env AND dashboard both LIVE
+                effective_mode = "PAPER"
+                try:
+                    config = self._get_config()
+                    env_mode = config.trading_mode
+                    settings_row = await self._db.select_one(
+                        "system_state", {"id": self.SETTINGS_ROW_ID}
+                    )
+                    db_mode = "PAPER"
+                    if settings_row and isinstance(settings_row.get("open_trades"), dict):
+                        db_mode = settings_row["open_trades"].get("mode", "PAPER")
+                    effective_mode = "LIVE" if (env_mode == "LIVE" and db_mode == "LIVE") else "PAPER"
+                except Exception:
+                    pass
+
                 return {
-                    "mode": "PAPER",
+                    "mode": effective_mode,
                     "risk_state": row.get("risk_state", "NORMAL"),
                     "open_trades": len(open_trades) if isinstance(open_trades, list) else 0,
                     "daily_pnl_usd": float(row.get("daily_pnl_usd", 0)),
