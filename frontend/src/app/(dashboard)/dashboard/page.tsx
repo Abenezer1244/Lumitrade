@@ -5,6 +5,7 @@ import { Target } from "lucide-react";
 import AccountPanel from "@/components/dashboard/AccountPanel";
 import TodayPanel from "@/components/dashboard/TodayPanel";
 import OpenPositionsTable from "@/components/dashboard/OpenPositionsTable";
+import MissionControl from "@/components/dashboard/MissionControl";
 import RiskUtilization from "@/components/analytics/RiskUtilization";
 import { SignalFeed } from "@/components/signals/SignalFeed";
 import KillSwitchButton from "@/components/dashboard/KillSwitchButton";
@@ -152,6 +153,7 @@ export default function DashboardPage() {
           <SignalFeed limit={6} compact />
         </div>
         <div className="lg:col-span-4 space-y-4">
+          <MissionControl />
           <RiskUtilization />
           <NewsFeed />
           <KillSwitchButton />
