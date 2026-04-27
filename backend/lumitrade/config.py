@@ -55,6 +55,7 @@ class LumitradeConfig(BaseSettings):
     # ── Instance ───────────────────────────────────────────────
     instance_id: str = Field(validation_alias="INSTANCE_ID")
     trading_mode: str = Field(validation_alias="TRADING_MODE", default="PAPER")
+    paper_balance: Decimal = Field(validation_alias="PAPER_BALANCE", default=Decimal("100000"))
     log_level: str = Field(validation_alias="LOG_LEVEL", default="INFO")
     sentry_dsn: str = Field(validation_alias="SENTRY_DSN", default="")
 
