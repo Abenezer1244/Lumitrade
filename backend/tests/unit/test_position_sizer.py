@@ -27,7 +27,10 @@ class TestPositionSizer:
         risk_usd = 300 * 0.01 = $3.00
         pip_value_per_unit for EUR_USD (quote=USD) = 0.0001
         raw_units = 3.00 / (20 * 0.0001) = 3.00 / 0.002 = 1500
-        floored to 1000
+        Per commit 52d3587, pip_math floors to 1 unit (OANDA broker
+        minimum) — no more 1000-unit micro-lot rounding inside the
+        sizer. Policy thresholds (meaningful risk, etc.) are enforced
+        one layer up in risk_engine.
         """
         units, risk_usd = sizer.calculate(
             balance=Decimal("300"),
@@ -36,11 +39,11 @@ class TestPositionSizer:
             stop_loss=Decimal("1.0830"),
             pair="EUR_USD",
         )
-        assert units == 1000
+        assert units == 1500
         assert isinstance(units, int)
         assert risk_usd > Decimal("0")
-        # Actual risk = 1000 * 20 * 0.0001 = $2.00
-        assert risk_usd == Decimal("2.0000")
+        # Actual risk = 1500 * 20 * 0.0001 = $3.00
+        assert risk_usd == Decimal("3.0000")
 
     def test_ps_002_usd_jpy_1000_balance_2pct_15pip_sl(self, sizer):
         """PS-002: USD/JPY $1000 balance, 2% risk, 15 pip SL.
@@ -62,8 +65,10 @@ class TestPositionSizer:
         assert isinstance(units, int)
         assert risk_usd > Decimal("0")
 
-    def test_ps_003_rounds_down_to_micro_lot(self, sizer):
-        """PS-003: Units must be floored to nearest 1000 (micro lot boundary)."""
+    def test_ps_003_floors_to_nearest_unit(self, sizer):
+        """PS-003: Units floored to nearest integer (1-unit broker
+        minimum), not micro-lot. Old 1000-rounding behavior was removed
+        in 52d3587 to allow small accounts to size correctly."""
         units, risk_usd = sizer.calculate(
             balance=Decimal("500"),
             risk_pct=Decimal("0.01"),
@@ -72,9 +77,9 @@ class TestPositionSizer:
             pair="EUR_USD",
         )
         # risk = $5, sl = 20 pips, pv = 0.0001
-        # raw = 5 / (20 * 0.0001) = 2500 -> floored to 2000
-        assert units == 2000
-        assert units % 1000 == 0
+        # raw = 5 / (20 * 0.0001) = 2500 -> floored to int = 2500
+        assert units == 2500
+        assert isinstance(units, int)
 
     def test_ps_004_zero_sl_returns_zero(self, sizer):
         """PS-004: When entry == stop_loss (0 pip SL), return (0, 0)."""
@@ -88,8 +93,11 @@ class TestPositionSizer:
         assert units == 0
         assert risk_usd == Decimal("0")
 
-    def test_ps_005_small_balance_produces_valid_lot(self, sizer):
-        """PS-005: $50 account should still produce a valid micro lot or zero."""
+    def test_ps_005_small_balance_sizes_correctly(self, sizer):
+        """PS-005: $50 account must produce a valid integer position.
+        After 52d3587 the sizer floors to 1 unit, so small accounts no
+        longer collapse to zero. Risk-engine policy gates decide whether
+        the trade is meaningful (Gate B), not the sizer."""
         units, risk_usd = sizer.calculate(
             balance=Decimal("50"),
             risk_pct=Decimal("0.01"),
@@ -98,11 +106,10 @@ class TestPositionSizer:
             pair="EUR_USD",
         )
         # risk = $0.50, sl = 10 pips, pv = 0.0001
-        # raw = 0.50 / (10 * 0.0001) = 500 -> floored to 0
-        # With such a small balance, we might get 0 units
-        assert units >= 0
-        assert units % 1000 == 0
+        # raw = 0.50 / (10 * 0.0001) = 500 -> int = 500
+        assert units == 500
         assert isinstance(units, int)
+        assert risk_usd > Decimal("0")
 
     def test_ps_006_risk_amount_within_budget(self, sizer):
         """PS-006: Actual risk amount must be <= balance * risk_pct."""

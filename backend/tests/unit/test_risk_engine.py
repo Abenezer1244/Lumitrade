@@ -52,6 +52,11 @@ def _make_config():
     # TradingMode enum from its return value when constructing ApprovedOrder.
     config.effective_trading_mode = MagicMock(return_value="PAPER")
     config.oanda_account_id = "test-account"
+    # Two-gate sizing thresholds. Defaults match the new permissive
+    # broker floor + small policy floor; existing tests size trades
+    # large enough to clear both, so behavior is unchanged.
+    config.min_position_units_forex = 1
+    config.min_meaningful_risk_usd = Decimal("0.01")
     return config
 
 
@@ -333,8 +338,13 @@ class TestPositionSizing:
         assert result.rule_violated == "CONFIDENCE_CEILING"
 
     @pytest.mark.asyncio
-    async def test_rejects_when_calculated_units_below_1000(self, engine):
-        """RE-021: Small balance + large SL = units < 1000."""
+    async def test_rejects_when_units_below_broker_floor(self, engine):
+        """RE-021a: Broker-feasibility gate (Gate A). Two-gate rework
+        2026-04-27 dropped the hard 1000 floor in favor of a configurable
+        broker minimum that defaults to OANDA's actual minimum (1)."""
+        # Bump the broker floor for this test so we can assert it fires
+        # without needing an absurdly tiny balance.
+        engine._config.min_position_units_forex = 100
         result = await engine.evaluate(
             _make_proposal(
                 confidence=Decimal("0.65"),
@@ -342,10 +352,31 @@ class TestPositionSizing:
                 sl=Decimal("1.07430"),  # 100 pips SL
                 tp=Decimal("1.09930"),  # 150 pips TP (1.5 RR)
             ),
-            Decimal("10"),  # Very small balance
+            Decimal("10"),  # $10 balance × 0.5% risk × 100-pip = ~7 units
         )
         assert isinstance(result, RiskRejection)
         assert result.rule_violated == "MINIMUM_POSITION_SIZE"
+
+    @pytest.mark.asyncio
+    async def test_rejects_when_risk_below_policy_floor(self, engine):
+        """RE-021b: Policy-meaningfulness gate (Gate B). A trade with
+        risk budget below `min_meaningful_risk_usd` is rejected even
+        when the broker would accept it. Encodes the operational-cost
+        intent that the old 1000-unit floor was conflating with broker
+        minimums."""
+        # Tighten the policy floor so a small balance trips it.
+        engine._config.min_meaningful_risk_usd = Decimal("1.00")
+        result = await engine.evaluate(
+            _make_proposal(
+                confidence=Decimal("0.65"),
+                entry=Decimal("1.08430"),
+                sl=Decimal("1.07430"),
+                tp=Decimal("1.09930"),
+            ),
+            Decimal("10"),  # $0.05 risk @ 0.5% << $1.00 policy floor
+        )
+        assert isinstance(result, RiskRejection)
+        assert result.rule_violated == "MIN_RISK_BUDGET"
 
 
 class TestOrderDetails:

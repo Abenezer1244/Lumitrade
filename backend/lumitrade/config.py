@@ -98,6 +98,18 @@ class LumitradeConfig(BaseSettings):
     max_open_trades: int = 100
     max_positions_per_pair: int = 10
     max_position_units: int = 500_000
+    # Two-gate position sizing (Claude + Codex review 2026-04-27):
+    # `min_position_units_forex` is the BROKER floor — OANDA accepts ≥1 unit.
+    # `min_meaningful_risk_usd` is the POLICY floor — refuse trades whose
+    # risk budget is so small the operational cost (Claude API, DB rows,
+    # logs) outweighs any meaningful P&L. Old hard-coded 1000-unit gate
+    # conflated the two and locked out small accounts.
+    min_position_units_forex: int = Field(
+        validation_alias="MIN_POSITION_UNITS_FOREX", default=1
+    )
+    min_meaningful_risk_usd: Decimal = Field(
+        validation_alias="MIN_MEANINGFUL_RISK_USD", default=Decimal("0.50")
+    )
     daily_loss_limit_pct: Decimal = Decimal("0.05")
     weekly_loss_limit_pct: Decimal = Decimal("0.10")
     max_spread_pips: Decimal = Decimal("5.0")

@@ -172,9 +172,13 @@ class RiskEngine:
         if corr_multiplier < Decimal("1.0"):
             original_units = units
             units = int(Decimal(str(units)) * corr_multiplier)
-            # Floor to micro lot (1000 units) for forex, 1 unit for metals
-            if not is_metal:
-                units = (units // 1000) * 1000
+            # OANDA accepts integer units down to 1 for both forex and
+            # metals. The previous "round to 1000-unit micro lot" logic
+            # was a holdover from broker-conflation that zeroed out
+            # small-account corrections — dropped in the two-gate
+            # rework (Claude + Codex 2026-04-27).
+            if units < 0:
+                units = 0
             risk_amount_usd = risk_amount_usd * corr_multiplier
             logger.info(
                 "correlation_units_reduced",
@@ -214,18 +218,40 @@ class RiskEngine:
                 },
             )
 
-        # Minimum position size gate
-        # Metals (gold/silver): minimum 1 unit. Forex: minimum 1000 units.
-        min_units = 1 if is_metal else 1000
+        # ── Two-gate position sizing (Claude + Codex review 2026-04-27)
+        #
+        # Gate A — broker feasibility. OANDA accepts integer units >=1
+        # for both forex and metals. This guard enforces ONLY what the
+        # broker requires; policy decisions live in Gate B.
+        min_units = 1 if is_metal else self._config.min_position_units_forex
         if units < min_units:
             min_result: CheckResult = (
                 "MINIMUM_POSITION_SIZE",
                 False,
-                f"Calculated position size {units} below minimum {min_units} units",
+                f"Calculated position size {units} below broker minimum "
+                f"{min_units} units",
                 str(units),
                 str(min_units),
             )
             return await self._reject(proposal, min_result, risk_state, now)
+
+        # Gate B — policy meaningfulness. A trade with so little risk
+        # budget that operational cost (Claude API call ~$0.02, DB rows,
+        # OANDA REST quota, log volume) outweighs any plausible P&L is
+        # not worth executing. Configurable via MIN_MEANINGFUL_RISK_USD.
+        # This is what the old hard-coded 1000-unit floor was actually
+        # trying to express, but it was encoded as a broker constraint.
+        min_risk_usd = self._config.min_meaningful_risk_usd
+        if risk_amount_usd < min_risk_usd:
+            risk_result: CheckResult = (
+                "MIN_RISK_BUDGET",
+                False,
+                f"Trade risk ${risk_amount_usd} below meaningful "
+                f"threshold ${min_risk_usd}",
+                str(risk_amount_usd),
+                str(min_risk_usd),
+            )
+            return await self._reject(proposal, risk_result, risk_state, now)
 
         # ── Build ApprovedOrder ──────────────────────────────────
         direction = Direction.BUY if proposal.action == Action.BUY else Direction.SELL

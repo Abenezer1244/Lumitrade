@@ -61,7 +61,9 @@ class TestPositionSize:
     """PM-008 to PM-013: Position sizing formula."""
 
     def test_position_size_300_acct_1pct_20pip_sl(self):
-        """PM-008: $300 account, 1% risk, 20 pip SL, EUR/USD -> 1,000 units."""
+        """PM-008: $300 account, 1% risk, 20 pip SL, EUR/USD -> 1,500 units.
+        Per 52d3587, sizer floors to 1 unit (OANDA broker minimum), not
+        1000. raw = 3.00 / (20 * 0.0001) = 1500."""
         units, risk_usd = calculate_position_size(
             balance=Decimal("300"),
             risk_pct=Decimal("0.01"),
@@ -69,12 +71,13 @@ class TestPositionSize:
             pair="EUR_USD",
             current_rate=Decimal("1.08430"),
         )
-        assert units == 1000
-        # risk_usd should be close to $2 (1000 * 20 * 0.0001 = $2.00)
-        assert Decimal("1.50") <= risk_usd <= Decimal("2.50")
+        assert units == 1500
+        # risk_usd = 1500 * 20 * 0.0001 = $3.00
+        assert Decimal("2.50") <= risk_usd <= Decimal("3.50")
 
     def test_position_size_1000_acct_2pct_15pip_sl(self):
-        """PM-009: $1000 account, 2% risk, 15 pip SL, EUR/USD -> 13,000 units."""
+        """PM-009: $1000 account, 2% risk, 15 pip SL, EUR/USD -> 13,333 units.
+        Per 52d3587, sizer floors to 1 unit. raw = 20 / (15 * 0.0001) = 13333."""
         units, risk_usd = calculate_position_size(
             balance=Decimal("1000"),
             risk_pct=Decimal("0.02"),
@@ -82,9 +85,9 @@ class TestPositionSize:
             pair="EUR_USD",
             current_rate=Decimal("1.08430"),
         )
-        assert units == 13000
-        # risk_usd should be close to $19.50 (13000 * 15 * 0.0001 = $19.50)
-        assert Decimal("18.00") <= risk_usd <= Decimal("21.00")
+        assert units == 13333
+        # risk_usd = 13333 * 15 * 0.0001 ≈ $19.9995
+        assert Decimal("19.00") <= risk_usd <= Decimal("21.00")
 
     def test_position_size_rounds_down_to_micro_lot(self):
         """PM-010: Result rounds down to nearest 1000."""
