@@ -6,12 +6,32 @@ Never uses raw SQL string interpolation.
 Per SS Section 4.1.
 """
 
+from __future__ import annotations
+
+from typing import Any, Mapping, Union
+
 from supabase import AsyncClient, create_async_client
 
 from ..config import LumitradeConfig
 from .secure_logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# Recursive JSON value type used for filter / insert / update payloads.
+# Postgres + Supabase accept any JSON-serializable scalar plus list/dict
+# of the same. Using a recursive alias keeps the public method signatures
+# honest without forcing callers to cast.
+JsonValue = Union[
+    None,
+    bool,
+    int,
+    float,
+    str,
+    list["JsonValue"],
+    dict[str, "JsonValue"],
+]
+JsonRow = Mapping[str, JsonValue]
 
 
 class DatabaseClient:
@@ -35,19 +55,24 @@ class DatabaseClient:
             raise RuntimeError("DatabaseClient not connected. Call connect() first.")
         return self._client
 
-    async def insert(self, table: str, data: dict) -> dict:
-        """Parameterized insert — never raw SQL."""
+    async def insert(self, table: str, data: JsonRow) -> list[dict[str, Any]]:
+        """Parameterized insert — never raw SQL.
+
+        Returns the list of inserted rows as returned by Supabase
+        (``result.data``). Callers should treat the return value as
+        opaque except for length / membership checks.
+        """
         result = await self.client.table(table).insert(data).execute()
         return result.data
 
     async def select(
         self,
         table: str,
-        filters: dict,
+        filters: JsonRow,
         columns: str = "*",
         order: str | None = None,
         limit: int | None = None,
-    ) -> list:
+    ) -> list[dict[str, Any]]:
         """Parameterized select with filter dict."""
         query = self.client.table(table).select(columns)
         for key, value in filters.items():
@@ -59,12 +84,14 @@ class DatabaseClient:
         result = await query.execute()
         return result.data
 
-    async def select_one(self, table: str, filters: dict) -> dict | None:
+    async def select_one(self, table: str, filters: JsonRow) -> dict[str, Any] | None:
         """Select a single row matching filters."""
         rows = await self.select(table, filters, limit=1)
         return rows[0] if rows else None
 
-    async def update(self, table: str, filters: dict, data: dict) -> dict:
+    async def update(
+        self, table: str, filters: JsonRow, data: JsonRow
+    ) -> list[dict[str, Any]]:
         """Parameterized update."""
         query = self.client.table(table).update(data)
         for key, value in filters.items():
@@ -72,12 +99,12 @@ class DatabaseClient:
         result = await query.execute()
         return result.data
 
-    async def upsert(self, table: str, data: dict) -> dict:
+    async def upsert(self, table: str, data: JsonRow) -> list[dict[str, Any]]:
         """Parameterized upsert."""
         result = await self.client.table(table).upsert(data).execute()
         return result.data
 
-    async def count(self, table: str, filters: dict) -> int:
+    async def count(self, table: str, filters: JsonRow) -> int:
         """Count rows matching filters."""
         query = self.client.table(table).select("*", count="exact")
         for key, value in filters.items():
@@ -85,7 +112,7 @@ class DatabaseClient:
         result = await query.execute()
         return result.count or 0
 
-    async def delete(self, table: str, filters: dict) -> dict:
+    async def delete(self, table: str, filters: JsonRow) -> list[dict[str, Any]]:
         """Parameterized delete."""
         query = self.client.table(table).delete()
         for key, value in filters.items():

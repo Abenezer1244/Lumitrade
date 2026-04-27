@@ -18,6 +18,7 @@ from ..core.models import ApprovedOrder, RiskRejection, SignalProposal
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
+from ..utils.pip_math import pip_value_per_unit, pips_between
 from .calendar_guard import CalendarGuard
 from .correlation_matrix import CorrelationMatrix
 from .position_sizer import PositionSizer
@@ -192,7 +193,6 @@ class RiskEngine:
                 capped_units=max_units,
                 pair=proposal.pair,
             )
-            from ..utils.pip_math import pip_value_per_unit, pips_between
             sl_pips = pips_between(proposal.entry_price, proposal.stop_loss, proposal.pair)
             pv = pip_value_per_unit(proposal.pair, proposal.entry_price)
             units = max_units
@@ -281,8 +281,8 @@ class RiskEngine:
 
     async def _check_position_count(self) -> CheckResult:
         """Check 2: Max open positions not exceeded.
-        Scoped to this account_id per Codex review 2026-04-25 finding #4 —
-        prevents one account's open trades from blocking another account."""
+        Scoped to this account_id — prevents one account's open trades from
+        blocking another account."""
         max_positions = self._config.max_open_trades
         try:
             current_count = await self._db.count(

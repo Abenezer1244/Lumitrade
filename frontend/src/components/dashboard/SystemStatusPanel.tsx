@@ -49,13 +49,13 @@ function PulseDot({ status }: PulseDotProps) {
     ok:        { bg: "bg-profit",  ring: "bg-profit" },
     healthy:   { bg: "bg-profit",  ring: "bg-profit" },
     online:    { bg: "bg-profit",  ring: "bg-profit" },
-    closed:    { bg: "bg-profit",  ring: "bg-profit" },
+    CLOSED:    { bg: "bg-profit",  ring: "bg-profit" },
     degraded:  { bg: "bg-warning", ring: "bg-warning" },
     warning:   { bg: "bg-warning", ring: "bg-warning" },
-    half_open: { bg: "bg-warning", ring: "bg-warning" },
+    HALF_OPEN: { bg: "bg-warning", ring: "bg-warning" },
     offline:   { bg: "bg-loss",    ring: "bg-loss" },
     error:     { bg: "bg-loss",    ring: "bg-loss" },
-    open:      { bg: "bg-loss",    ring: "bg-loss" },
+    OPEN:      { bg: "bg-loss",    ring: "bg-loss" },
   };
 
   const colors = colorMap[status] ?? { bg: "bg-tertiary", ring: "bg-tertiary" };
@@ -66,7 +66,7 @@ function PulseDot({ status }: PulseDotProps) {
         className={`absolute inline-flex h-full w-full rounded-full ${colors.ring} opacity-75`}
         animate={{ scale: [1, 1.8, 1], opacity: [0.75, 0, 0.75] }}
         transition={{
-          duration: status === "ok" || status === "healthy" || status === "closed" ? 2.4 : 1.2,
+          duration: status === "ok" || status === "healthy" || status === "CLOSED" ? 2.4 : 1.2,
           repeat: Infinity,
           ease: "easeInOut",
         }}
@@ -224,7 +224,7 @@ export default function SystemStatusPanel() {
     {
       label: "Circuit Breaker",
       status: health.components.circuit_breaker.status,
-      detail: health.components.circuit_breaker.status.toUpperCase(),
+      detail: health.components.circuit_breaker.status,
     },
   ];
 

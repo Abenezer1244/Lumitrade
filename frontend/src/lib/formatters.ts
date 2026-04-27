@@ -1,8 +1,29 @@
 export function formatPrice(price: string | number, pair?: string): string {
   const n = typeof price === "string" ? parseFloat(price) : price;
   if (isNaN(n)) return "\u2014";
-  const decimals = pair?.includes("JPY") ? 3 : 5;
+  // JPY pairs quote to 3dp, gold (XAU) to 2dp, all other FX to 5dp.
+  // Single source of truth for instrument-precision rendering.
+  const decimals = pair?.includes("JPY") ? 3 : pair?.includes("XAU") ? 2 : 5;
   return n.toFixed(decimals);
+}
+
+/**
+ * Signed-USD formatter that mirrors the inline pattern used across the
+ * dashboard: positive/zero values get a leading "+", negatives render as
+ * "$X.XX" with no leading sign (loss color is conveyed via CSS class on the
+ * surrounding span, not via a minus glyph). Returns "\u2014" (em-dash) for
+ * null/undefined/NaN so the UI can distinguish "no data" from "$0.00".
+ */
+export function formatSignedUsd(
+  value: number | string | null | undefined,
+  opts?: { decimals?: number },
+): string {
+  if (value === null || value === undefined) return "\u2014";
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  if (isNaN(n)) return "\u2014";
+  const decimals = opts?.decimals ?? 2;
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}$${Math.abs(n).toFixed(decimals)}`;
 }
 
 export function formatPnl(value: string | number | null): { formatted: string; colorClass: string } {

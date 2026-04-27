@@ -49,9 +49,8 @@ class PositionReconciler:
         self._alerts = alerts
         # account_uuid scopes all DB reads/writes to this account.
         # Empty string = legacy unscoped behavior (only acceptable in
-        # single-account dev/test). Per Codex round-3 review #3:
-        # without scoping, another tenant's open positions are
-        # misclassified as ghosts and force-closed.
+        # single-account dev/test). Without scoping, another tenant's
+        # open positions are misclassified as ghosts and force-closed.
         self._account_uuid = account_uuid
 
     async def reconcile(self) -> dict:
@@ -73,8 +72,8 @@ class PositionReconciler:
 
         try:
             # Fetch DB open trades — scoped to this account when account_uuid
-            # is set. Per Codex round-3 review #3: unscoped query treats
-            # other tenants' open trades as ghosts and force-closes them.
+            # is set. Unscoped query would treat other tenants' open trades
+            # as ghosts and force-close them.
             db_filter = {"status": "OPEN"}
             if self._account_uuid:
                 db_filter["account_id"] = self._account_uuid
@@ -346,6 +345,13 @@ class PositionReconciler:
                     "position_size": abs_units,
                     "entry_price": str(price),
                     "stop_loss": str(price),
+                    # Phantom rows have no real SL distance — set
+                    # initial_stop_loss = entry so the trailing-stop
+                    # zero-distance guard explicitly skips them. These rows
+                    # are emergency reconciler inserts representing trades
+                    # opened outside our pipeline; they should be reviewed
+                    # manually, not algorithmically trailed.
+                    "initial_stop_loss": str(price),
                     "take_profit": str(price),
                     "mode": "PAPER",
                     "status": "OPEN",

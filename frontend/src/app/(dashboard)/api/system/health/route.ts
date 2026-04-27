@@ -12,7 +12,7 @@ const FALLBACK = {
     database: { status: "offline", latency_ms: 0 },
     price_feed: { status: "offline", last_tick_ago_s: 0 },
     risk_engine: { status: "ok", state: "NORMAL" },
-    circuit_breaker: { status: "closed" },
+    circuit_breaker: { status: "CLOSED" },
   },
   trading: {
     mode: "PAPER",

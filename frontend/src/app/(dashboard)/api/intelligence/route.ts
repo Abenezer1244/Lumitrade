@@ -1,4 +1,11 @@
 import { NextResponse } from "next/server";
+import type {
+  PairStat,
+  SessionStat,
+  RiskAssessment,
+  WeeklyReport,
+} from "@/types/intelligence";
+import { supabaseEnvReady, supabaseFetch } from "@/lib/api/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
@@ -15,46 +22,6 @@ interface ClosedTrade {
   opened_at: string;
   closed_at: string | null;
   exit_reason: string | null;
-}
-
-interface PairStat {
-  pair: string;
-  trades: number;
-  wins: number;
-  winRate: number;
-  pnlUsd: number;
-}
-
-interface SessionStat {
-  hour: number;
-  trades: number;
-  wins: number;
-  pnlUsd: number;
-}
-
-interface RiskAssessment {
-  maxDrawdownUsd: number;
-  maxConsecutiveLosses: number;
-  averageLossUsd: number;
-  riskRewardRatio: number;
-  largestWinUsd: number;
-  largestLossUsd: number;
-}
-
-interface WeeklyReport {
-  weekStart: string;
-  weekEnd: string;
-  totalTrades: number;
-  wins: number;
-  losses: number;
-  breakevens: number;
-  winRate: number;
-  totalPnlUsd: number;
-  totalPnlPips: number;
-  pairStats: PairStat[];
-  sessionStats: SessionStat[];
-  riskAssessment: RiskAssessment;
-  recommendations: string[];
 }
 
 /* ── Helpers ───────────────────────────────────────────────── */
@@ -306,45 +273,29 @@ function buildWeeklyReport(weekKey: string, trades: ClosedTrade[]): WeeklyReport
 /* ── Route Handler ─────────────────────────────────────────── */
 
 export async function GET() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !key) {
+  if (!supabaseEnvReady()) {
     return NextResponse.json(
       { error: "Server misconfigured: missing SUPABASE_URL or SERVICE_KEY" },
       { status: 500 }
     );
   }
 
-  try {
-    const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  // Fetch all closed trades
+  const trades = await supabaseFetch<ClosedTrade[]>(
+    "/rest/v1/trades?select=id,pair,direction,outcome,pnl_usd,pnl_pips,confidence_score,opened_at,closed_at,exit_reason&status=eq.CLOSED&order=closed_at.desc"
+  );
 
-    // Fetch all closed trades
-    const tradesRes = await fetch(
-      `${url}/rest/v1/trades?select=id,pair,direction,outcome,pnl_usd,pnl_pips,confidence_score,opened_at,closed_at,exit_reason&status=eq.CLOSED&order=closed_at.desc`,
-      { headers, cache: "no-store" }
-    );
-
-    if (!tradesRes.ok) {
-      return NextResponse.json({ reports: [] });
-    }
-
-    const trades: ClosedTrade[] = (await tradesRes.json()) ?? [];
-
-    if (trades.length === 0) {
-      return NextResponse.json({ reports: [] });
-    }
-
-    // Group by week (Monday-Sunday)
-    const weeks = groupByWeek(trades);
-
-    // Build reports, sorted newest first
-    const reports: WeeklyReport[] = Array.from(weeks.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([weekKey, weekTrades]) => buildWeeklyReport(weekKey, weekTrades));
-
-    return NextResponse.json({ reports });
-  } catch {
+  if (!trades || trades.length === 0) {
     return NextResponse.json({ reports: [] });
   }
+
+  // Group by week (Monday-Sunday)
+  const weeks = groupByWeek(trades);
+
+  // Build reports, sorted newest first
+  const reports: WeeklyReport[] = Array.from(weeks.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([weekKey, weekTrades]) => buildWeeklyReport(weekKey, weekTrades));
+
+  return NextResponse.json({ reports });
 }

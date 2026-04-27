@@ -9,6 +9,7 @@ import {
   formatPnl,
   formatTime,
   formatDuration,
+  formatSignedUsd,
 } from "@/lib/formatters";
 import { History, AlertTriangle } from "lucide-react";
 import Badge from "@/components/ui/Badge";
@@ -70,10 +71,10 @@ export default function TradesPage() {
       {filteredTrades.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           {[
-            { label: "Total P&L", value: `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(2)}`, color: totalPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
+            { label: "Total P&L", value: formatSignedUsd(totalPnl), color: totalPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
             { label: "Win Rate", value: `${winRate.toFixed(1)}%`, color: winRate >= 50 ? "var(--color-profit)" : "var(--color-loss)" },
             { label: "Trades", value: `${wins}W / ${losses}L`, color: "var(--color-text-primary)" },
-            { label: "Avg Trade", value: `${avgPnl >= 0 ? "+" : ""}$${Math.abs(avgPnl).toFixed(2)}`, color: avgPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
+            { label: "Avg Trade", value: formatSignedUsd(avgPnl), color: avgPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" },
           ].map((stat) => (
             <div key={stat.label} className="glass p-4 text-center">
               <p className="text-label mb-1" style={{ color: "var(--color-text-tertiary)" }}>{stat.label}</p>

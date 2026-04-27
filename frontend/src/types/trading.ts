@@ -3,7 +3,7 @@ export type Direction = "BUY" | "SELL";
 export type TradingMode = "PAPER" | "LIVE";
 export type Outcome = "WIN" | "LOSS" | "BREAKEVEN";
 export type Session = "LONDON" | "NEW_YORK" | "OVERLAP" | "TOKYO" | "OTHER";
-export type ExitReason = "SL_HIT" | "TP_HIT" | "AI_CLOSE" | "MANUAL" | "EMERGENCY" | "UNKNOWN";
+export type ExitReason = "SL_HIT" | "TP_HIT" | "AI_CLOSE" | "MANUAL" | "EMERGENCY" | "UNKNOWN" | "TRAILING_STOP";
 export type GenerationMethod = "AI" | "RULE_BASED";
 
 export interface Signal {

@@ -36,9 +36,10 @@ export default function LoginPage() {
       }
 
       setAuthState("success");
-    } catch {
+    } catch (e) {
+      console.error("auth login failed", e);
       setAuthState("error");
-      setErrorMessage("An unexpected error occurred. Please try again.");
+      setErrorMessage(e instanceof Error ? e.message : "Authentication failed");
     }
   }
 

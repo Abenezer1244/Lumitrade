@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { formatPair, formatPrice } from "@/lib/formatters";
 
 interface PriceData {
   pair: string;
@@ -11,10 +12,6 @@ interface PriceData {
 }
 
 const PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "XAU_USD"];
-
-function formatPair(pair: string): string {
-  return pair.replace("_", "/");
-}
 
 function formatSpread(pair: string, spread: number): string {
   const pipMultiplier = pair.includes("JPY") ? 100 : pair === "XAU_USD" ? 100 : 10000;
@@ -76,7 +73,7 @@ export default function PriceTicker() {
                 {formatPair(p.pair)}
               </span>
               <span className="text-[11px] font-mono" style={{ color: trendColor }}>
-                {p.bid.toFixed(p.pair.includes("JPY") ? 3 : p.pair === "XAU_USD" ? 2 : 5)}
+                {formatPrice(p.bid, p.pair)}
               </span>
               <TrendIcon size={10} style={{ color: trendColor }} />
               <span className="text-[9px] font-mono" style={{ color: "var(--color-text-tertiary)" }}>

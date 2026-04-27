@@ -25,6 +25,7 @@ from uuid import uuid4
 from ..config import LumitradeConfig
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
+from ..utils.time_utils import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -165,17 +166,10 @@ class LessonAnalyzer:
         opened_at = trade.get("opened_at", "")
         if not opened_at:
             return "OTHER"
-        try:
-            if isinstance(opened_at, str):
-                # Parse ISO format, handle timezone
-                dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
-            elif isinstance(opened_at, datetime):
-                dt = opened_at
-            else:
-                return "OTHER"
-            return _hour_to_session(dt.hour)
-        except (ValueError, AttributeError):
+        dt = parse_iso_utc(opened_at)
+        if dt is None:
             return "OTHER"
+        return _hour_to_session(dt.hour)
 
     def _extract_rsi_bracket(self, indicators: dict) -> str:
         """Extract RSI bracket from indicator snapshot."""
@@ -291,8 +285,15 @@ class LessonAnalyzer:
             if pnl is not None:
                 try:
                     total_pnl += Decimal(str(pnl))
-                except Exception:
-                    pass
+                except (ValueError, ArithmeticError, TypeError) as exc:
+                    # Bad pnl_usd value in DB — drop from total but surface
+                    # so we can investigate (lesson rule_type depends on this).
+                    logger.warning(
+                        "lesson_pnl_parse_failed",
+                        trade_id=t.get("id"),
+                        pnl_raw=str(pnl),
+                        error=str(exc),
+                    )
 
         # Determine rule type
         block_threshold = self._config.lesson_block_threshold if hasattr(self._config, 'lesson_block_threshold') else BLOCK_WIN_RATE

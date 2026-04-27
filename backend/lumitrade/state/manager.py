@@ -30,6 +30,7 @@ DB schema (system_state singleton row):
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Any, TypedDict
 
 from ..config import LumitradeConfig
 from ..core.enums import RiskState, TradingMode
@@ -41,6 +42,41 @@ logger = get_logger(__name__)
 
 STATE_ROW_ID = "singleton"
 PERSIST_INTERVAL_SECONDS = 5
+
+# Number of consecutive OANDA balance-refresh failures before we
+# escalate to an operator alert. Stale balance == position sizer
+# computes risk against outdated equity == real-money risk.
+_BALANCE_STALE_ALERT_THRESHOLD = 3
+
+
+class SystemState(TypedDict, total=False):
+    """In-memory shape of the state mapping owned by :class:`StateManager`.
+
+    ``total=False`` because two keys (``_last_daily_reset`` and the
+    ``reconciliation`` summary dict) are populated lazily. At runtime this
+    is just a plain ``dict`` — the annotation is purely a structural hint
+    for type checkers and IDEs and does not change behavior.
+    """
+
+    instance_id: str
+    trading_mode: str
+    risk_state: str
+    kill_switch_active: bool
+    pairs: list[str]
+    open_trades: list[Any]
+    daily_pnl: str
+    weekly_pnl: str
+    consecutive_losses: int
+    last_signal_at: str | None
+    last_trade_at: str | None
+    started_at: str
+    last_persisted_at: str | None
+    reconciliation: dict[str, Any] | None
+    account_balance: str
+    account_equity: str
+    confidence_threshold_override: str | None
+    # Lazy-populated, not present on init
+    _last_daily_reset: str
 
 
 class StateManager:
@@ -60,9 +96,15 @@ class StateManager:
         self._oanda = oanda
         self._persist_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
+        # Track consecutive OANDA balance-refresh failures so the
+        # persist loop can escalate to an operator alert at
+        # _BALANCE_STALE_ALERT_THRESHOLD. Reset to 0 on success.
+        self._consecutive_balance_refresh_failures: int = 0
+        self._balance_stale_alert_sent: bool = False
 
-        # In-memory state
-        self._state: dict = {
+        # In-memory state. Annotated as SystemState for IDE/type-checker
+        # support; runtime is a plain dict so no behavior change.
+        self._state: SystemState = {
             "instance_id": config.instance_id,
             "trading_mode": config.trading_mode,
             "risk_state": RiskState.NORMAL.value,
@@ -118,6 +160,12 @@ class StateManager:
                 if row.get("confidence_threshold_override") is not None:
                     self._state["confidence_threshold_override"] = str(
                         row["confidence_threshold_override"]
+                    )
+                # Hydrate kill_switch_active so a restart with the flag set
+                # in DB re-triggers close-out on the engine's next loop tick.
+                if "kill_switch_active" in row:
+                    self._state["kill_switch_active"] = bool(
+                        row.get("kill_switch_active", False)
                     )
 
                 logger.info(
@@ -220,6 +268,7 @@ class StateManager:
                     ),
                     "daily_opening_balance": self._state.get("account_balance", "0"),
                     "weekly_opening_balance": self._state.get("account_equity", "0"),
+                    "kill_switch_active": bool(self._state.get("kill_switch_active", False)),
                     "updated_at": now.isoformat(),
                 },
             )
@@ -262,7 +311,9 @@ class StateManager:
                 self._state["_last_daily_reset"] = today_str
                 logger.info("daily_pnl_reset_midnight", date=today_str)
 
-            # Refresh OANDA balance every persist cycle
+            # Refresh OANDA balance every persist cycle.
+            # Track consecutive failures: stale balance == position sizer
+            # computes risk on outdated equity == real money risk.
             if self._oanda:
                 try:
                     acct = await self._oanda.get_account_summary()
@@ -271,8 +322,54 @@ class StateManager:
                         self._state["account_equity"] = str(
                             acct.get("equity", acct.get("NAV", "0"))
                         )
-                except Exception:
-                    pass
+                        # Refresh succeeded — reset failure counter and
+                        # allow a future alert if we breach again.
+                        if self._consecutive_balance_refresh_failures > 0:
+                            logger.info(
+                                "oanda_balance_refresh_recovered",
+                                prior_failures=self._consecutive_balance_refresh_failures,
+                            )
+                        self._consecutive_balance_refresh_failures = 0
+                        self._balance_stale_alert_sent = False
+                except Exception as e:
+                    self._consecutive_balance_refresh_failures += 1
+                    logger.warning(
+                        "oanda_balance_refresh_failed",
+                        consecutive_failures=self._consecutive_balance_refresh_failures,
+                        threshold=_BALANCE_STALE_ALERT_THRESHOLD,
+                        error=str(e),
+                    )
+                    if (
+                        self._consecutive_balance_refresh_failures
+                        >= _BALANCE_STALE_ALERT_THRESHOLD
+                        and not self._balance_stale_alert_sent
+                    ):
+                        logger.error(
+                            "oanda_balance_stale_after_3_consecutive_refresh_failures",
+                            consecutive_failures=self._consecutive_balance_refresh_failures,
+                            last_known_balance=self._state.get("account_balance"),
+                            last_known_equity=self._state.get("account_equity"),
+                        )
+                        # Best-effort alert — never let alerting crash the
+                        # persist loop. AlertService is instantiated lazily
+                        # to avoid a constructor-signature change.
+                        try:
+                            from ..infrastructure.alert_service import AlertService
+
+                            alerts = AlertService(self._config, self._db)
+                            await alerts.send_critical(
+                                "OANDA balance refresh failing: "
+                                f"{self._consecutive_balance_refresh_failures} "
+                                "consecutive failures. Position sizer is using "
+                                "the last known balance — risk is being computed "
+                                "against potentially stale equity. Investigate "
+                                "OANDA connectivity / token rotation immediately."
+                            )
+                            self._balance_stale_alert_sent = True
+                        except Exception:
+                            logger.exception(
+                                "oanda_balance_stale_alert_send_failed"
+                            )
 
             await self.save()
 
@@ -311,6 +408,33 @@ class StateManager:
     @kill_switch_active.setter
     def kill_switch_active(self, value: bool) -> None:
         self._state["kill_switch_active"] = value
+
+    async def refresh_kill_switch_from_db(self) -> bool:
+        """
+        Re-read the kill_switch_active flag from the singleton DB row.
+        Used by main loop and execute_order to observe out-of-band activations
+        from the HTTP /kill-switch endpoint, which writes to DB only.
+
+        Returns the resulting in-memory value. On any DB error: FAIL CLOSED —
+        treat kill as active. Per PRD:579 (kill switch is a SAFETY contract:
+        "immediately halts all trading"). The cost of a false trigger on a
+        transient DB blip is one day's positions closed early; the cost of
+        fail-open is that an operator's emergency kill might silently not
+        fire. We pick the safer side. Recovery: once DB is healthy and the
+        row reads kill_switch_active=False, the next successful refresh
+        clears the in-memory flag — no restart required.
+        """
+        try:
+            row = await self._db.select_one(
+                "system_state",
+                {"id": STATE_ROW_ID},
+            )
+            if row is not None and "kill_switch_active" in row:
+                self._state["kill_switch_active"] = bool(row.get("kill_switch_active", False))
+        except Exception:
+            logger.exception("kill_switch_refresh_failed_failing_closed")
+            self._state["kill_switch_active"] = True
+        return bool(self._state.get("kill_switch_active", False))
 
     @property
     def trading_mode(self) -> TradingMode:

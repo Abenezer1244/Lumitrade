@@ -162,9 +162,9 @@ class SignalScanner:
             return None
 
         # 1a-iii. Already-in-position check (FIFO) — skip if WE (this account)
-        # already hold this pair. Account-scoped per Codex follow-up review #4
-        # — without account_id filter, one account holding USD_CAD would silently
-        # starve every other account from scanning that pair before risk engine runs.
+        # already hold this pair. Account-scoped — without account_id filter,
+        # one account holding USD_CAD would silently starve every other
+        # account from scanning that pair before risk engine runs.
         try:
             open_trades = await self._db.select(
                 "trades",
@@ -173,8 +173,15 @@ class SignalScanner:
             if open_trades:
                 logger.info("already_in_position_skip", pair=pair, open_count=len(open_trades))
                 return None
-        except Exception:
-            pass  # Non-critical — risk engine will catch it later
+        except Exception as e:
+            # Non-critical — risk engine will re-check before execution.
+            # Logged at debug so we have a trail when the cost-saving
+            # short-circuit fails and we end up spending Claude tokens.
+            logger.debug(
+                "scanner_open_trade_pre_check_failed_continuing",
+                pair=pair,
+                error=str(e),
+            )
 
         # 1b. Lesson filter — check BLOCK/BOOST rules before spending AI tokens
         #     Determine session from snapshot, check both directions.
@@ -630,8 +637,15 @@ class SignalScanner:
                 "ai_prompt_hash": "",
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
-        except Exception:
-            pass  # Non-critical
+        except Exception as e:
+            # Non-critical for trade safety, but hold signals are
+            # observability data — silent loss breaks the scan-history
+            # trace in the dashboard. Log so operators can see drift.
+            logger.warning(
+                "hold_signal_save_failed",
+                pair=pair,
+                error=str(e),
+            )
 
     async def _log_ai_interaction(
         self, prompt_hash: str, response: str, attempt: int

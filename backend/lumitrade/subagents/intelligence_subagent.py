@@ -1,19 +1,16 @@
 """
 SA-04: Intelligence Subagent
 ==============================
-Generates a weekly macro intelligence report using Claude.
-Covers: market outlook per pair, key economic events, performance review,
+Generates a weekly macro intelligence report via Claude. Pulls upcoming
+economic events from data_engine/calendar.py, caches reports in the
+intelligence_reports table (one row per ISO week), and surfaces them to
+the dashboard. Covers per-pair outlook, key events, performance review,
 and one strategic recommendation.
-
-Phase 2 TODO:
-- Integrate real news API data (ForexFactory, Investing.com calendar)
-- Pull actual economic calendar events from data_engine/calendar.py
-- Add caching so reports are only regenerated once per day
-- Store reports in DB for historical access via dashboard
 """
 
 import json
 from datetime import datetime, timezone
+from typing import Any, TypedDict
 
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
@@ -21,6 +18,26 @@ from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
+
+
+class IntelligenceContext(TypedDict, total=False):
+    """Expected shape of the context dict passed to ``IntelligenceSubagent.run``.
+
+    All keys are optional (``total=False``) — the subagent treats missing
+    keys as defaults. Annotation-only; runtime is a plain ``dict``.
+    """
+
+    account_id: str
+    recent_trades: list[dict[str, Any]]
+    account_summary: dict[str, Any]
+    pairs: list[str]
+
+
+class IntelligenceReport(TypedDict, total=False):
+    """Return shape of ``IntelligenceSubagent.run``. Empty dict on error."""
+
+    report: str
+    generated_at: str
 
 INTELLIGENCE_SYSTEM_PROMPT = """You are a senior forex market analyst for Lumitrade, an AI-powered forex trading system.
 You produce concise, actionable weekly intelligence reports for a systematic trader.

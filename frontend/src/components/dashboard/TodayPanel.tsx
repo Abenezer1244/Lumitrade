@@ -4,18 +4,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useAccount } from "@/hooks/useAccount";
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, Calendar } from "lucide-react";
 import { motion, useMotionValue, useTransform, animate, AnimatePresence } from "motion/react";
+import { formatSignedUsd } from "@/lib/formatters";
 
 /* ─── Animated P&L Counter ─── */
 function AnimatedPnlCounter({ value }: { value: number }) {
   const motionVal = useMotionValue(0);
-  const rounded = useTransform(motionVal, (latest) => {
-    const sign = latest >= 0 ? "+" : "";
-    return `${sign}$${Math.abs(latest).toFixed(2)}`;
-  });
-  const [displayText, setDisplayText] = useState(() => {
-    const sign = value >= 0 ? "+" : "";
-    return `${sign}$${Math.abs(value).toFixed(2)}`;
-  });
+  const rounded = useTransform(motionVal, (latest) => formatSignedUsd(latest));
+  const [displayText, setDisplayText] = useState(() => formatSignedUsd(value));
 
   useEffect(() => {
     const unsubscribe = rounded.on("change", (v) => setDisplayText(v));

@@ -13,48 +13,15 @@ import {
   AlertTriangle,
   FileBarChart,
 } from "lucide-react";
+import { formatSignedUsd } from "@/lib/formatters";
 
 /* ── Types (mirror the API response) ──────────────────────── */
 
-interface PairStat {
-  pair: string;
-  trades: number;
-  wins: number;
-  winRate: number;
-  pnlUsd: number;
-}
-
-interface SessionStat {
-  hour: number;
-  trades: number;
-  wins: number;
-  pnlUsd: number;
-}
-
-interface RiskAssessment {
-  maxDrawdownUsd: number;
-  maxConsecutiveLosses: number;
-  averageLossUsd: number;
-  riskRewardRatio: number;
-  largestWinUsd: number;
-  largestLossUsd: number;
-}
-
-interface WeeklyReport {
-  weekStart: string;
-  weekEnd: string;
-  totalTrades: number;
-  wins: number;
-  losses: number;
-  breakevens: number;
-  winRate: number;
-  totalPnlUsd: number;
-  totalPnlPips: number;
-  pairStats: PairStat[];
-  sessionStats: SessionStat[];
-  riskAssessment: RiskAssessment;
-  recommendations: string[];
-}
+import type {
+  PairStat,
+  SessionStat,
+  WeeklyReport,
+} from "@/types/intelligence";
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
@@ -84,8 +51,7 @@ function pnlClass(value: number): string {
 }
 
 function formatUsd(value: number): string {
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}$${Math.abs(value).toFixed(2)}`;
+  return formatSignedUsd(value);
 }
 
 /* ── Session Heatmap ──────────────────────────────────────── */

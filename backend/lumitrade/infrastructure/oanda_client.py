@@ -221,6 +221,92 @@ class OandaTradingClient(OandaClient):
         resp.raise_for_status()
         return resp.json()
 
+    async def lookup_order_status(self, client_request_id: str) -> dict | None:
+        """
+        Idempotent order lookup by client_request_id, used by OandaExecutor
+        to recover from network timeouts during order placement.
+
+        Per QTS spec 765: if place_market_order raises, the broker may have
+        accepted the order anyway. Without this lookup, a restart later
+        double-fills the position.
+
+        Behavior:
+          - Returns a response-shaped dict mimicking place_market_order's output
+            (with orderCreateTransaction / orderFillTransaction or
+            orderCancelTransaction) when the order is found in a terminal state.
+          - Returns None when the order never reached OANDA (404), is still
+            pending (caller must NOT proceed — let reconciler handle it later),
+            or when the lookup itself fails. The caller treats None as
+            'cannot confirm success — fail closed'.
+        """
+        url = (
+            f"{self._base_url}/v3/accounts/{self._account_id}"
+            f"/orders/@{client_request_id}"
+        )
+        try:
+            resp = await self._trading_client.get(url)
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
+            return None
+
+        if resp.status_code == 404:
+            return None
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            return None
+
+        order = resp.json().get("order") or {}
+        state = (order.get("state") or "").upper()
+
+        if state == "CANCELLED":
+            # Clean rejection — surface it through _parse_response's cancel path.
+            return {
+                "orderCreateTransaction": {"id": order.get("id", "")},
+                "orderCancelTransaction": {
+                    "reason": order.get("cancelledReason", "CANCELLED"),
+                    "rejectReason": order.get("rejectReason", ""),
+                },
+            }
+
+        if state == "FILLED":
+            # An OANDA order can resolve into one of three trade outcomes:
+            # tradeOpenedID (new position), tradeReducedID (reduced existing),
+            # or tradeClosedIDs (fully closed an existing). _parse_response
+            # already handles all three; lookup must synthesize them too so
+            # recovery isn't restricted to fresh-position fills.
+            trade_opened_id = order.get("tradeOpenedID", "") or ""
+            trade_reduced_id = order.get("tradeReducedID", "") or ""
+            trade_closed_ids = order.get("tradeClosedIDs", []) or []
+            trade_id = (
+                trade_opened_id
+                or trade_reduced_id
+                or (trade_closed_ids[0] if trade_closed_ids else "")
+            )
+            if not trade_id:
+                return None
+            try:
+                trade = await self.get_trade(trade_id)
+            except Exception:
+                return None
+
+            fill_tx: dict = {
+                "id": order.get("fillingTransactionID", trade_id),
+                "price": trade.get("price", "0"),
+                "units": trade.get("currentUnits", trade.get("initialUnits", "0")),
+            }
+            if trade_opened_id:
+                fill_tx["tradeOpened"] = {"tradeID": trade_opened_id}
+            if trade_reduced_id:
+                fill_tx["tradeReduced"] = {"tradeID": trade_reduced_id}
+            return {
+                "orderCreateTransaction": {"id": order.get("id", "")},
+                "orderFillTransaction": fill_tx,
+            }
+
+        # PENDING / TRIGGERED / unknown — order still in-flight or weird state.
+        # Return None so the caller fails closed; reconciler will pick it up.
+        return None
+
     async def modify_trade(
         self, broker_trade_id: str, sl: Decimal, tp: Decimal
     ) -> dict:

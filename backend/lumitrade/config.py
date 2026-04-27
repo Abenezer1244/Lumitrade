@@ -235,3 +235,17 @@ class LumitradeConfig(BaseSettings):
         env_file=".env",
         populate_by_name=True,
     )
+
+    @classmethod
+    def from_env(cls) -> "LumitradeConfig":
+        """Construct LumitradeConfig from environment variables.
+
+        Wraps the bare `LumitradeConfig()` call so the
+        `# type: ignore[call-arg]` lint-suppression that mypy requires
+        (Pydantic v2 BaseSettings infers required fields from env vars,
+        which mypy cannot see) lives on a single line in this module
+        instead of being copy-pasted at every call site. Behaviour is
+        identical to the no-arg constructor; this is a typing
+        convenience only.
+        """
+        return cls()  # type: ignore[call-arg]

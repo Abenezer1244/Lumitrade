@@ -12,25 +12,9 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { formatSignedUsd } from "@/lib/formatters";
 
-interface WeekSummary {
-  week_start: string;
-  week_end: string;
-  trades: number;
-  wins: number;
-  losses: number;
-  win_rate: number;
-  total_pnl: number;
-  avg_pnl_per_trade: number;
-  best_pair: string;
-  worst_pair: string;
-  best_trade: number;
-  worst_trade: number;
-  avg_confidence: number;
-  tp_hit_rate: number;
-  sl_hit_rate: number;
-  recommendation: string;
-}
+import type { WeekSummary } from "@/types/journal";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00Z");
@@ -80,7 +64,7 @@ function WeekCard({ week, index }: { week: WeekSummary; index: number }) {
               className="text-base font-mono font-bold"
               style={{ color: isProfit ? "var(--color-profit)" : "var(--color-loss)" }}
             >
-              {isProfit ? "+" : ""}${week.total_pnl.toFixed(2)}
+              {formatSignedUsd(week.total_pnl)}
             </p>
             <p className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
               {week.win_rate.toFixed(0)}% WR
@@ -176,12 +160,16 @@ function StatBox({ label, value, icon: Icon, color }: { label: string; value: st
 export default function JournalPage() {
   const [weeks, setWeeks] = useState<WeekSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/journal")
       .then((r) => r.json())
       .then((d) => setWeeks(d.weeks || []))
-      .catch(() => {})
+      .catch((e) => {
+        console.error("journal fetch failed", e);
+        setError("Could not load journal data");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -191,6 +179,18 @@ export default function JournalPage() {
         {[1, 2, 3].map((i) => (
           <div key={i} className="glass p-5 animate-pulse h-20" />
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-96 gap-4">
+        <div className="glass p-8 max-w-md text-center">
+          <AlertTriangle size={32} className="mx-auto mb-3" style={{ color: "var(--color-loss)" }} />
+          <h2 className="text-lg font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>Couldn&apos;t load journal</h2>
+          <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>{error}</p>
+        </div>
       </div>
     );
   }
@@ -230,7 +230,7 @@ export default function JournalPage() {
               className="text-xl font-mono font-bold"
               style={{ color: totalPnl >= 0 ? "var(--color-profit)" : "var(--color-loss)" }}
             >
-              {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+              {formatSignedUsd(totalPnl)}
             </p>
           </div>
           <div>

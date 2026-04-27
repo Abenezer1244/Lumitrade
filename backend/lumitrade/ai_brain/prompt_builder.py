@@ -359,10 +359,10 @@ class PromptBuilder:
         if not self.db:
             return "  No trade history available."
 
-        # All trade-history queries scoped to THIS account per Codex round-3
-        # review #2 — prompt explicitly tells Claude this is "your own trade
-        # history", so cross-account leakage would directly bias signal
-        # generation for the wrong account.
+        # All trade-history queries scoped to THIS account: the prompt
+        # explicitly tells Claude this is "your own trade history", so
+        # cross-account leakage would directly bias signal generation for
+        # the wrong account.
         base_filter = {"pair": pair, "status": "CLOSED"}
         if self.account_id:
             base_filter["account_id"] = self.account_id
@@ -388,7 +388,14 @@ class PromptBuilder:
                 order="closed_at",
                 limit=500,
             )
-        except Exception:
+        except Exception as e:
+            # Surface DB outages so the operator knows Claude is being
+            # asked to advise with no learned context. Without this log
+            # a Supabase blip silently degrades signal quality.
+            logger.warning(
+                "trade_history_fetch_failed_using_empty_context",
+                error=str(e),
+            )
             return "  No trade history available."
 
         if not all_trades:
@@ -462,8 +469,8 @@ class PromptBuilder:
         if not self.db:
             return "  No performance insights available."
 
-        # Account-scoped per Codex round-3 review #2 — analyzer writes
-        # account_id on insight rows but reader was ignoring it.
+        # Account-scoped: the analyzer writes account_id on insight rows,
+        # so an unscoped reader would surface another tenant's insights.
         pair_filter = {"pair": pair, "is_actionable": True}
         general_filter = {"pair": None, "is_actionable": True}
         if self.account_id:
@@ -486,7 +493,15 @@ class PromptBuilder:
                 limit=2,
             )
             insights = pair_insights + general_insights
-        except Exception:
+        except Exception as e:
+            # Surface DB outages — silently returning empty insights
+            # invalidates the entire learning loop with zero operator
+            # visibility (Claude advises with no historical context).
+            logger.warning(
+                "performance_insights_fetch_failed_using_empty_context",
+                pair=pair,
+                error=str(e),
+            )
             return "  No performance insights available."
 
         if not insights:

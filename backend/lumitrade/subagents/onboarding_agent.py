@@ -1,21 +1,39 @@
 """
 SA-05: Onboarding Agent
 =========================
-Guides new users through Lumitrade setup via conversational AI.
-Steps: (1) Connect OANDA account, (2) Set risk parameters, (3) Understand dashboard.
-
-Phase 2 TODO:
-- Persist onboarding_state in DB so progress survives page reloads
-- Add validation that OANDA credentials actually work before marking step 1 complete
-- Add interactive dashboard tour with frontend integration
-- Track onboarding completion analytics
+Guides new users through Lumitrade setup via conversational AI. Persists
+per-user step progress to the onboarding_state table so it survives page
+reloads. Steps: (1) Connect OANDA account, (2) Set risk parameters,
+(3) Understand the dashboard. Frontend tour integration is the only
+piece still pending and is tracked outside this module.
 """
+
+from typing import TypedDict
 
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
+
+
+class OnboardingContext(TypedDict, total=False):
+    """Expected shape of the context dict passed to ``OnboardingAgent.run``.
+
+    All keys are optional (``total=False``) — missing values fall back to
+    sensible defaults. Annotation-only; runtime is a plain ``dict``.
+    """
+
+    user_message: str
+    onboarding_state: str
+    account_id: str
+
+
+class OnboardingResponse(TypedDict):
+    """Return shape of ``OnboardingAgent.run``."""
+
+    response: str
+    completed: bool
 
 ONBOARDING_SYSTEM_PROMPT = """You are the Lumitrade onboarding assistant. You guide new users through setting up their AI-powered forex trading system.
 
@@ -72,7 +90,13 @@ class OnboardingAgent(BaseSubagent):
                 if rows:
                     context["onboarding_state"] = rows[0].get("current_step", "step_1_oanda")
             except Exception:
-                pass
+                # Fall back to step_1 default below; surface DB failure so a
+                # persistently broken onboarding_state table is visible in logs
+                # instead of every user appearing as a fresh signup forever.
+                logger.exception(
+                    "onboarding_state_load_failed",
+                    account_id=context.get("account_id", "default"),
+                )
 
         onboarding_state = context.get("onboarding_state", "step_1_oanda")
 

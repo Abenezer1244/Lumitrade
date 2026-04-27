@@ -4,12 +4,9 @@ import { useState, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { Brain } from "lucide-react";
 import EmptyState from "@/components/ui/EmptyState";
+import type { Trade as CanonicalTrade } from "@/types/trading";
 
-interface Trade {
-  confidence_score: string | null;
-  outcome: string | null;
-  pnl_usd: string | null;
-}
+type Trade = Pick<CanonicalTrade, "confidence_score" | "outcome" | "pnl_usd">;
 
 interface ConfidenceBucket {
   range: string;
@@ -53,7 +50,7 @@ export default function ConfidenceOutcome() {
 
     return ranges.map((r) => {
       const inRange = trades.filter((t) => {
-        const conf = parseFloat(t.confidence_score || "0");
+        const conf = Number(t.confidence_score) || 0;
         return conf >= r.min && conf < r.max;
       });
       const wins = inRange.filter((t) => t.outcome === "WIN").length;

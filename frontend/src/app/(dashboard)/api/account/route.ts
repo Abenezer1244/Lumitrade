@@ -36,6 +36,10 @@ export async function GET() {
     let unrealizedPnl = 0;
     let openTradeCount = 0;
     let mode = "PAPER";
+    // `stale` flips true the moment any of the live sources fails so the UI
+    // can render a "data may be stale" badge instead of pretending the
+    // fallback is the live OANDA balance.
+    let stale = false;
 
     // 1. Fetch REAL OANDA account data from backend /account endpoint
     //    This calls OANDA directly — balance, equity, margin, unrealized P&L
@@ -52,11 +56,18 @@ export async function GET() {
         marginUsed = acct.margin_used || 0;
         unrealizedPnl = acct.unrealized_pnl || 0;
         openTradeCount = acct.open_trade_count || 0;
+      } else {
+        stale = true;
+        console.error("account: backend /account non-ok", acctRes.status);
       }
-    } catch { /* continue to fallback */ }
+    } catch (e) {
+      stale = true;
+      console.error("account: backend /account fetch failed", e);
+    }
 
     // 2. Fallback: read from system_state if backend /account failed
     if (balance === 0) {
+      stale = true;
       try {
         const stateRes = await fetch(
           `${supabaseUrl}/rest/v1/system_state?id=eq.singleton&select=daily_opening_balance,weekly_opening_balance`,
@@ -70,7 +81,9 @@ export async function GET() {
             unrealizedPnl = equity - balance;
           }
         }
-      } catch { /* continue */ }
+      } catch (e) {
+        console.error("account: system_state fallback failed", e);
+      }
     }
 
     // 3. Fetch trading mode from health endpoint
@@ -82,8 +95,14 @@ export async function GET() {
       if (healthRes.ok) {
         const health = await healthRes.json();
         mode = health?.trading?.mode || "PAPER";
+      } else {
+        stale = true;
+        console.error("account: health endpoint non-ok", healthRes.status);
       }
-    } catch { /* continue */ }
+    } catch (e) {
+      stale = true;
+      console.error("account: health fetch failed", e);
+    }
 
     const marginAvailable = balance - marginUsed;
 
@@ -122,8 +141,10 @@ export async function GET() {
       daily_win_count: dailyWinCount,
       daily_win_rate: dailyWinRate,
       mode,
+      stale,
     });
-  } catch {
-    return NextResponse.json(FALLBACK);
+  } catch (e) {
+    console.error("account: outer handler failed", e);
+    return NextResponse.json({ ...FALLBACK, stale: true });
   }
 }

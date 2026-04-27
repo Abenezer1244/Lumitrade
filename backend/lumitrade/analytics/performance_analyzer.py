@@ -1,11 +1,13 @@
 """
 Lumitrade Performance Analyzer
 ================================
-Analyzes trade history to generate performance insights.
-Phase 2: 5 analysis methods implemented (session, pair, indicator accuracy,
-confidence calibration, prompt patterns / overall summary).
-Phase 3 TODO: _evolve_prompt_instructions, _update_session_filters,
-_update_confidence_thresholds remain as silent no-op stubs.
+Analyzes trade history to generate per-account performance insights and
+self-tuning recommendations. Eight analysis methods implemented: session
+breakdown, pair breakdown, indicator accuracy, confidence calibration,
+prompt-pattern review, plus the three Phase-3 self-tuning passes
+(_evolve_prompt_instructions, _update_session_filters,
+_update_confidence_thresholds) which write to performance_insights and
+config-override rows.
 
 Per Addition Set 1D.
 """
@@ -16,12 +18,51 @@ import json
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, TypedDict
 
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
+from ..utils.time_utils import parse_iso_utc
 
 logger = get_logger(__name__)
+
+
+class TradeRow(TypedDict, total=False):
+    """One row from the `trades` table (database/migrations/001).
+
+    Marked `total=False` because Supabase round-trips DECIMAL columns as
+    strings and nullable columns may be absent. All numeric fields
+    (`entry_price`, `pnl_pips`, `pnl_usd`, `confidence_score`, etc.) are
+    typed as `str` because Supabase returns them as strings — coerce
+    via `_to_decimal()` before arithmetic. Used for static documentation
+    of the row shape inside this module's internal helpers; the
+    public-facing analyzer methods continue to accept `list[dict]` to
+    preserve their signatures.
+    """
+
+    id: str
+    account_id: str
+    signal_id: str | None
+    broker_trade_id: str | None
+    pair: str
+    direction: str  # "BUY" | "SELL"
+    mode: str  # "PAPER" | "LIVE"
+    entry_price: str
+    exit_price: str | None
+    stop_loss: str
+    take_profit: str
+    position_size: int
+    confidence_score: str | None
+    slippage_pips: str | None
+    pnl_pips: str | None
+    pnl_usd: str | None
+    status: str  # "OPEN" | "CLOSED" | "CANCELLED"
+    exit_reason: str | None  # "SL_HIT" | "TP_HIT" | "AI_CLOSE" | "MANUAL" | "EMERGENCY" | "UNKNOWN"
+    outcome: str | None  # "WIN" | "LOSS" | "BREAKEVEN"
+    session: str | None
+    opened_at: str
+    closed_at: str | None
+    duration_minutes: int | None
 
 
 class PerformanceAnalyzer:
@@ -114,8 +155,13 @@ class PerformanceAnalyzer:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _date_range(trades: list[dict]) -> tuple[str, str]:
-        """Return (period_start, period_end) ISO date strings from trades."""
+    def _date_range(trades: list[TradeRow]) -> tuple[str, str]:
+        """Return (period_start, period_end) ISO date strings from trades.
+
+        Internal helper; `TradeRow` documents the expected row shape.
+        Callers pass `list[dict]` from Supabase — the runtime contract
+        is unchanged because TypedDicts are dicts at runtime.
+        """
         dates: list[str] = []
         for t in trades:
             opened = t.get("opened_at") or t.get("closed_at")
@@ -193,14 +239,8 @@ class PerformanceAnalyzer:
                 if not opened_at:
                     continue
 
-                if isinstance(opened_at, str):
-                    try:
-                        dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
-                    except ValueError:
-                        continue
-                elif isinstance(opened_at, datetime):
-                    dt = opened_at
-                else:
+                dt = parse_iso_utc(opened_at)
+                if dt is None:
                     continue
 
                 hour = dt.hour
@@ -983,14 +1023,8 @@ class PerformanceAnalyzer:
                 opened_at = trade.get("opened_at")
                 if not opened_at:
                     continue
-                if isinstance(opened_at, str):
-                    try:
-                        dt = datetime.fromisoformat(opened_at.replace("Z", "+00:00"))
-                    except ValueError:
-                        continue
-                elif isinstance(opened_at, datetime):
-                    dt = opened_at
-                else:
+                dt = parse_iso_utc(opened_at)
+                if dt is None:
                     continue
 
                 hour = dt.hour

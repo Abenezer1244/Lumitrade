@@ -14,6 +14,7 @@ from decimal import Decimal
 from ..core.models import PriceTick
 from ..infrastructure.oanda_client import OandaClient
 from ..infrastructure.secure_logger import get_logger
+from ..utils.time_utils import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -99,14 +100,15 @@ class PriceStreamManager:
             asks = data.get("asks", [])
             if not bids or not asks:
                 return None
-            time_str = data["time"]
-            if time_str.endswith("Z"):
-                time_str = time_str.replace("Z", "+00:00")
+            ts = parse_iso_utc(data["time"])
+            if ts is None:
+                # Preserve original ValueError surface for malformed timestamps.
+                ts = datetime.fromisoformat(data["time"])
             return PriceTick(
                 pair=data["instrument"],
                 bid=Decimal(bids[0]["price"]),
                 ask=Decimal(asks[0]["price"]),
-                timestamp=datetime.fromisoformat(time_str),
+                timestamp=ts,
             )
         except (KeyError, ValueError) as e:
             logger.warning("price_parse_failed", error=str(e))
@@ -119,18 +121,12 @@ class PriceStreamManager:
             asks = data.get("asks", [])
             if not bids or not asks:
                 return None
-            time_str = data.get("time", "")
-            if time_str.endswith("Z"):
-                time_str = time_str.replace("Z", "+00:00")
+            ts = parse_iso_utc(data.get("time", "")) or datetime.now(timezone.utc)
             return PriceTick(
                 pair=data["instrument"],
                 bid=Decimal(bids[0]["price"]),
                 ask=Decimal(asks[0]["price"]),
-                timestamp=(
-                    datetime.fromisoformat(time_str)
-                    if time_str
-                    else datetime.now(timezone.utc)
-                ),
+                timestamp=ts,
             )
         except (KeyError, ValueError) as e:
             logger.warning("rest_price_parse_failed", error=str(e))

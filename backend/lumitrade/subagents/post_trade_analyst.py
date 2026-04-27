@@ -14,6 +14,7 @@ Per BDS Section 16.3.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, TypedDict
 
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
@@ -21,6 +22,24 @@ from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
+
+
+class PostTradeContext(TypedDict, total=False):
+    """Expected shape of the context dict passed to ``PostTradeAnalystAgent.run``.
+
+    All keys are optional (``total=False``). Annotation-only; runtime is a
+    plain ``dict``.
+    """
+
+    recent_trades: list[dict[str, Any]]
+
+
+class PostTradeAnalysis(TypedDict, total=False):
+    """Return shape of ``PostTradeAnalystAgent.run``. Empty dict on error
+    or when fewer than ``MIN_TRADES`` trades are provided."""
+
+    analysis: str
+    trade_count: int
 
 SYSTEM_PROMPT = (
     "You are a quantitative trading performance analyst. "

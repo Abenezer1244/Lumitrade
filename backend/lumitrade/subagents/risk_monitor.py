@@ -13,6 +13,8 @@ Per BDS Section 16.4.
 
 from __future__ import annotations
 
+from typing import Any, TypedDict
+
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
@@ -20,6 +22,23 @@ from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
+
+
+class RiskMonitorContext(TypedDict, total=False):
+    """Expected shape of the context dict passed to ``RiskMonitorAgent.run``.
+
+    All keys are optional (``total=False``). Annotation-only; runtime is a
+    plain ``dict``.
+    """
+
+    open_trades: list[dict[str, Any]]
+
+
+class ThesisAssessment(TypedDict):
+    """Per-trade entry in the dict returned by ``RiskMonitorAgent.run``."""
+
+    thesis_valid: bool
+    assessment: str
 
 SYSTEM_PROMPT = (
     "You are a forex risk monitor. Assess whether a trade thesis is still valid. "

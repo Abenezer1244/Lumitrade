@@ -325,6 +325,41 @@ class OrchestratorService:
         logger.info("signal_to_trade_loop_started", pairs=self.config.pairs)
         try:
             while True:
+                # Kill-switch handling MUST be first — before market-hours and
+                # weekday-blackout early-continues. Otherwise an HTTP-initiated
+                # kill that lands during a market-closed or weekday-blackout
+                # window would be deferred until the next "live" tick, leaving
+                # positions open through the very condition the operator was
+                # responding to.
+                if self.state:
+                    try:
+                        await self.state.refresh_kill_switch_from_db()
+                    except Exception:
+                        logger.exception("kill_switch_db_refresh_failed")
+                if self.state and self.state.kill_switch_active:
+                    if not getattr(self, "_kill_switch_handled", False):
+                        logger.critical("kill_switch_transition_detected_closing_all")
+                        try:
+                            result = await self.exec_eng.close_all_positions(
+                                reason="kill_switch_activated"
+                            )
+                            logger.critical(
+                                "kill_switch_close_all_complete",
+                                attempted=result.get("attempted"),
+                                closed=result.get("closed"),
+                                failed_count=len(result.get("failed", [])),
+                            )
+                        except Exception as e:
+                            logger.exception(
+                                "kill_switch_close_all_raised", error=str(e)
+                            )
+                        self._kill_switch_handled = True
+                    logger.info("kill_switch_active_skipping_scan")
+                    await asyncio.sleep(self.config.signal_interval_minutes * 60)
+                    continue
+                else:
+                    self._kill_switch_handled = False
+
                 # Check market hours — skip scanning when forex is closed
                 if not self._is_market_open():
                     logger.info("market_closed_skipping_scan")
@@ -391,11 +426,10 @@ class OrchestratorService:
                     "NZD_USD": (0, 8),    # Asian only — best in early session
                 }
 
+                # (Kill-switch handling moved to the top of the loop body —
+                # before market-hours / weekday / session early-continues.)
+
                 for pair in self.config.pairs:
-                    # Kill switch check — skip all scanning if halted
-                    if self.state and self.state.kill_switch_active:
-                        logger.info("kill_switch_active_skipping_scan")
-                        break
 
                     # Per-pair session window check
                     pair_window = _pair_hours.get(pair, (0, 13))
@@ -584,7 +618,12 @@ class OrchestratorService:
                     # Get current prices for each pair
                     pairs_in_trades = list({t["pair"] for t in open_trades})
                     try:
-                        pricing = await self.oanda_data.get_pricing(pairs_in_trades)
+                        # Bug fix (Track 6 follow-up): was self.oanda_data which
+                        # is never assigned. The correct attribute is self.oanda
+                        # (the OandaClient instantiated in __init__). The typo
+                        # was masked by the broad except below — risk-monitor
+                        # subagent always ran with empty prices.
+                        pricing = await self.oanda.get_pricing(pairs_in_trades)
                         prices = {}
                         for p in pricing.get("prices", []):
                             inst = p.get("instrument", "")
@@ -593,7 +632,12 @@ class OrchestratorService:
                             if bids and asks:
                                 mid = (float(bids[0]["price"]) + float(asks[0]["price"])) / 2
                                 prices[inst] = mid
-                    except Exception:
+                    except Exception as e:
+                        logger.warning(
+                            "risk_monitor_pricing_fetch_failed",
+                            pairs=pairs_in_trades,
+                            error=str(e),
+                        )
                         prices = {}
 
                     # Enrich trades with current price
@@ -671,7 +715,7 @@ class OrchestratorService:
                 await asyncio.sleep(max(wait_seconds, 60))
 
                 # account_uuid (DB row identifier), not oanda_account_id
-                # — same fix as scanner.py per Codex round-4 finding #3.
+                # — same fix as scanner.py.
                 await self.subagents.run_weekly_intelligence(
                     self.config.account_uuid
                 )

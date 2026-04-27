@@ -14,14 +14,15 @@ from decimal import Decimal
 from ..ai_brain.lesson_analyzer import LessonAnalyzer
 from ..analytics.performance_analyzer import PerformanceAnalyzer
 from ..config import LumitradeConfig
-from ..core.enums import OrderStatus, TradingMode
+from ..core.enums import CircuitBreakerState, OrderStatus, TradingMode
 from ..core.exceptions import OrderExpiredError
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.oanda_client import OandaClient, OandaTradingClient
-from ..utils.pip_math import pips_between
+from ..utils.pip_math import pip_size as get_pip_size
+from ..utils.pip_math import pip_value_per_unit, pips_between
 from ..utils.time_utils import session_label_for_lesson
 from ..infrastructure.secure_logger import get_logger
 from .circuit_breaker import CircuitBreaker
@@ -74,6 +75,26 @@ class ExecutionEngine:
     async def execute_order(
         self, order: ApprovedOrder, current_price: Decimal
     ) -> OrderResult | None:
+        # Kill-switch guard: block any new order placement once the kill
+        # switch is active, even if a signal slipped through the loop's
+        # kill check. Refresh from DB first so we observe activations from
+        # the HTTP endpoint without waiting for the next loop tick.
+        if self._state is not None:
+            try:
+                if hasattr(self._state, "refresh_kill_switch_from_db"):
+                    await self._state.refresh_kill_switch_from_db()
+                if getattr(self._state, "kill_switch_active", False):
+                    logger.warning(
+                        "execute_order_blocked_kill_switch_active",
+                        order_ref=str(order.order_ref),
+                        pair=order.pair,
+                    )
+                    return None
+            except Exception:
+                # Don't crash the engine on a kill-check error — fall through
+                # to existing logic. The loop-level check is the primary gate.
+                logger.exception("execute_order_kill_switch_check_failed")
+
         machine = OrderStateMachine()
         try:
             machine.check_expiry(order)
@@ -88,13 +109,31 @@ class ExecutionEngine:
             effective_mode = self.config.effective_trading_mode()
 
             state = await self._circuit_breaker.check_and_transition()
-            from ..core.enums import CircuitBreakerState
             if state == CircuitBreakerState.OPEN:
                 logger.error(
                     "circuit_breaker_open_order_rejected",
                     order_ref=str(order.order_ref),
                 )
                 return None
+            # Final kill-switch recheck immediately before the broker call.
+            # The top-of-method check has a window: kill could activate during
+            # _circuit_breaker.check_and_transition() (which makes a DB call
+            # and may sleep). Refreshing once more here closes that window
+            # for live orders.
+            if effective_mode == "LIVE" and self._state is not None:
+                try:
+                    if hasattr(self._state, "refresh_kill_switch_from_db"):
+                        await self._state.refresh_kill_switch_from_db()
+                    if getattr(self._state, "kill_switch_active", False):
+                        logger.warning(
+                            "execute_order_blocked_kill_switch_active_pre_broker",
+                            order_ref=str(order.order_ref),
+                            pair=order.pair,
+                        )
+                        return None
+                except Exception:
+                    logger.exception("execute_order_pre_broker_kill_check_failed")
+
             try:
                 if effective_mode == "PAPER":
                     # Simulated fill — no broker call. Both env=LIVE+db=PAPER
@@ -187,6 +226,11 @@ class ExecutionEngine:
                     "mode": (order.mode.value if hasattr(order.mode, "value") else str(order.mode)),
                     "entry_price": str(result.fill_price),
                     "stop_loss": str(order.stop_loss),
+                    # Persist the original SL at open so the trailing-stop
+                    # logic can compute trail distance from a fixed value,
+                    # not the current SL (which collapses to entry after
+                    # breakeven).
+                    "initial_stop_loss": str(order.stop_loss),
                     "take_profit": str(order.take_profit),
                     "position_size": abs(order.units),
                     "confidence_score": str(order.confidence),
@@ -338,7 +382,6 @@ class ExecutionEngine:
                 pnl_pips = -abs(pnl_pips)
 
             units = int(trade.get("position_size", 0))
-            from ..utils.pip_math import pip_value_per_unit
             pv = pip_value_per_unit(pair, exit_price)
             pnl_usd = pnl_pips * Decimal(str(units)) * pv
 
@@ -382,7 +425,6 @@ class ExecutionEngine:
         # simulated fills (PaperExecutor) and must NOT trigger any OANDA
         # mutation calls — modify_trade() against PAPER-* would 404, waste API
         # calls, pollute logs, and potentially trip the circuit breaker.
-        # Per Codex review 2026-04-25 finding #3.
         trailable = [
             t for t in db_open
             if t.get("broker_trade_id", "").strip()
@@ -442,7 +484,6 @@ class ExecutionEngine:
             profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
         # Break-even stop: move SL to entry when +15 pips (gold: +300 pips)
-        from ..utils.pip_math import pip_size as get_pip_size
         ps = get_pip_size(pair)
         be_threshold = Decimal("300") if pair == "XAU_USD" else Decimal("15")
         sl_is_behind_entry = (direction == "BUY" and current_sl < entry) or (direction == "SELL" and current_sl > entry)
@@ -479,8 +520,28 @@ class ExecutionEngine:
         if profit_pips < activation:
             return
 
-        # Trail distance = original SL distance from entry
-        original_sl_distance = abs(entry - current_sl)
+        # Trail distance = ORIGINAL SL distance from entry. Computing this
+        # from current_sl is broken: after breakeven moves SL to entry,
+        # abs(entry - current_sl) collapses to zero and the next cycle moves
+        # SL onto the current price — exiting a winner on noise. Use the
+        # persisted initial_stop_loss from trade open. Fall back to
+        # current_sl only when initial is missing (legacy rows pre-migration
+        # 016 with no backfill).
+        initial_sl_raw = trade.get("initial_stop_loss")
+        if initial_sl_raw is not None and str(initial_sl_raw).strip():
+            initial_sl = Decimal(str(initial_sl_raw))
+        else:
+            initial_sl = current_sl
+        original_sl_distance = abs(entry - initial_sl)
+        if original_sl_distance == 0:
+            # Defensive: if initial_sl == entry (degenerate trade or backfill
+            # error), do not trail — would set SL onto the market price.
+            logger.warning(
+                "trailing_stop_skipped_zero_initial_distance",
+                pair=pair, broker_id=broker_id,
+                entry=str(entry), initial_sl=str(initial_sl),
+            )
+            return
 
         # Calculate new trailing SL
         if direction == "BUY":
@@ -570,7 +631,6 @@ class ExecutionEngine:
                 tp = Decimal(str(trade.get("take_profit", "0")))
                 sl_dist = abs(exit_price - sl)
                 tp_dist = abs(exit_price - tp)
-                from ..utils.pip_math import pip_size as get_pip_size
                 ps = get_pip_size(pair)
                 if sl_dist < ps * 5:  # Within 5 pips of SL
                     exit_reason = "SL_HIT"
@@ -589,7 +649,6 @@ class ExecutionEngine:
         # Use OANDA's realized P&L if available, otherwise calculate
         if realized_pnl == 0 and exit_price != entry:
             units = int(trade.get("position_size", 0))
-            from ..utils.pip_math import pip_value_per_unit
             pv = pip_value_per_unit(pair, exit_price)
             realized_pnl = pnl_pips * Decimal(str(units)) * pv
 
@@ -746,9 +805,9 @@ class ExecutionEngine:
         min_trades = 50
         every_n = 10
         try:
-            # Account-scoped count per Codex round-4 finding #4 — without
-            # this filter, another tenant's closed trades would spuriously
-            # trigger or suppress this account's analysis cadence.
+            # Account-scoped count — without this filter, another tenant's
+            # closed trades would spuriously trigger or suppress this
+            # account's analysis cadence.
             count = await self._db.count(
                 "trades",
                 {"status": "CLOSED", "account_id": self.config.account_uuid},
@@ -765,3 +824,127 @@ class ExecutionEngine:
                 )
         except Exception as e:
             logger.warning("insight_trigger_failed", error=str(e))
+
+    async def close_all_positions(self, reason: str) -> dict:
+        """
+        Emergency close-out of every open OANDA position. Implements PRD:579
+        kill-switch contract: "closes all positions at market".
+
+        Background: kill_switch previously only suppressed scanning; existing
+        positions stayed live and unmanaged through disorderly markets. This
+        method is the missing close-out.
+
+        Behavior:
+          - PAPER mode: no-op (no live broker positions to close).
+          - LIVE mode: fetch open trades from OANDA via the trading client,
+            close each via close_trade(), record the result, and emit a
+            CRITICAL severity event.
+          - Failures on individual closes are logged but do NOT stop the
+            sweep — best-effort close-as-many-as-possible.
+
+        Returns: {"attempted": N, "closed": N, "failed": [...broker_trade_ids]}
+        """
+        # In PAPER, the trading_client is the OANDA practice client but the
+        # ExecutionEngine never opens real positions on it — close-all is a
+        # no-op for safety.
+        if self.config.effective_trading_mode() != TradingMode.LIVE.value:
+            logger.info("kill_switch_close_all_skipped_not_live", reason=reason)
+            return {"attempted": 0, "closed": 0, "failed": []}
+
+        attempted = 0
+        closed = 0
+        failed: list[str] = []
+
+        # Sweep both brokers (OANDA forex + Capital.com metals). The original
+        # sweep only hit OANDA, leaving any live XAU_USD position on
+        # Capital.com unmanaged after kill.
+        broker_clients: list[tuple[str, object]] = [("oanda", self._oanda_trade)]
+        if self._capital_client is not None:
+            broker_clients.append(("capital", self._capital_client))
+
+        for broker_name, broker_client in broker_clients:
+            try:
+                open_trades = await broker_client.get_open_trades()  # type: ignore[attr-defined]
+            except Exception as e:
+                logger.error(
+                    "kill_switch_get_open_trades_failed",
+                    broker=broker_name,
+                    error=str(e),
+                    reason=reason,
+                )
+                failed.append(f"{broker_name}:fetch_failed")
+                continue
+
+            logger.critical(
+                "kill_switch_close_all_initiated",
+                broker=broker_name,
+                reason=reason,
+                open_trade_count=len(open_trades),
+            )
+
+            for trade in open_trades:
+                broker_trade_id = str(trade.get("id", "") or trade.get("dealId", ""))
+                if not broker_trade_id:
+                    continue
+                attempted += 1
+                try:
+                    await broker_client.close_trade(broker_trade_id)  # type: ignore[attr-defined]
+                    closed += 1
+                    logger.warning(
+                        "kill_switch_position_closed",
+                        broker=broker_name,
+                        broker_trade_id=broker_trade_id,
+                        instrument=trade.get("instrument") or trade.get("epic"),
+                        units=trade.get("currentUnits") or trade.get("size"),
+                        reason=reason,
+                    )
+                except Exception as e:
+                    failed.append(f"{broker_name}:{broker_trade_id}")
+                    logger.error(
+                        "kill_switch_close_failed",
+                        broker=broker_name,
+                        broker_trade_id=broker_trade_id,
+                        instrument=trade.get("instrument") or trade.get("epic"),
+                        error=str(e),
+                        reason=reason,
+                    )
+
+        if any(f.endswith(":fetch_failed") for f in failed):
+            await self._alerts.send_critical(
+                f"KILL SWITCH: one or more brokers failed get_open_trades — "
+                f"{[f for f in failed if f.endswith(':fetch_failed')]}. "
+                f"Manual intervention required."
+            )
+
+        await self._alerts.send_critical(
+            f"KILL SWITCH ACTIVATED ({reason}): closed {closed}/{attempted} "
+            f"positions. Failed: {len(failed)}."
+        )
+        if self._events:
+            try:
+                self._events.publish(
+                    "EXECUTION",
+                    "KILL_SWITCH",
+                    f"KILL SWITCH: closed {closed}/{attempted} positions ({reason})",
+                    severity="CRITICAL",
+                    metadata={
+                        "reason": reason,
+                        "attempted": attempted,
+                        "closed": closed,
+                        "failed_ids": failed,
+                    },
+                )
+            except Exception:
+                # Mission Control publish failure must NEVER propagate
+                # (observability is not critical path), but the kill-switch
+                # forensic trail must survive in the structured log so we
+                # can reconstruct what happened post-mortem.
+                logger.exception(
+                    "kill_switch_audit_log_failed",
+                    reason=reason,
+                    attempted=attempted,
+                    closed=closed,
+                    failed=failed,
+                )
+
+        return {"attempted": attempted, "closed": closed, "failed": failed}

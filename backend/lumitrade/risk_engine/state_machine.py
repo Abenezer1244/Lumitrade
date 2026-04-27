@@ -109,7 +109,15 @@ class RiskStateMachine:
         return new_state
 
     async def _is_emergency_halt(self) -> bool:
-        """Check if emergency kill switch is engaged via state manager."""
+        """Check if emergency kill switch is engaged via state manager.
+
+        On read failure: FAIL CLOSED (return True / EMERGENCY_HALT). The
+        kill switch is a SAFETY contract — a transient state-manager error
+        must NOT allow trading to continue. This harmonizes with
+        ``StateManager.refresh_kill_switch_from_db`` which already fails
+        closed on the same read. Recovery is automatic on the next
+        successful evaluate cycle once the state manager is healthy.
+        """
         if self._state_manager is None:
             return False
         try:
@@ -118,13 +126,12 @@ class RiskStateMachine:
                 return await kill_switch()
             return bool(kill_switch)
         except Exception:
-            # If state manager is unavailable, do NOT assume emergency.
-            # Log and continue — fail-open on kill switch read only.
-            logger.warning(
-                "kill_switch_check_failed",
-                msg="Could not read kill switch state from state manager",
+            # Fail-closed for safety — read failure must not allow trading.
+            logger.error(
+                "kill_switch_read_failed_blocking_trading",
+                exc_info=True,
             )
-            return False
+            return True
 
     def _transition(self, old: RiskState, new: RiskState) -> None:
         """Log state transitions and update internal state."""

@@ -1,37 +1,22 @@
 import { NextResponse } from "next/server";
+import type { Trade as CanonicalTrade } from "@/types/trading";
+import type { WeekSummary } from "@/types/journal";
+import { supabaseFetch } from "@/lib/api/supabase-rest";
 
 export const dynamic = "force-dynamic";
 
-interface Trade {
-  pair: string;
-  direction: string;
-  outcome: string;
-  pnl_usd: string;
-  pnl_pips: string;
-  confidence_score: string;
-  opened_at: string;
-  closed_at: string;
-  exit_reason: string;
-}
-
-interface WeekSummary {
-  week_start: string;
-  week_end: string;
-  trades: number;
-  wins: number;
-  losses: number;
-  win_rate: number;
-  total_pnl: number;
-  avg_pnl_per_trade: number;
-  best_pair: string;
-  worst_pair: string;
-  best_trade: number;
-  worst_trade: number;
-  avg_confidence: number;
-  tp_hit_rate: number;
-  sl_hit_rate: number;
-  recommendation: string;
-}
+type Trade = Pick<
+  CanonicalTrade,
+  | "pair"
+  | "direction"
+  | "outcome"
+  | "pnl_usd"
+  | "pnl_pips"
+  | "confidence_score"
+  | "opened_at"
+  | "closed_at"
+  | "exit_reason"
+>;
 
 function getWeekStart(dateStr: string): string {
   const d = new Date(dateStr);
@@ -74,94 +59,78 @@ function generateRecommendation(summary: WeekSummary): string {
 }
 
 export async function GET() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  const trades = await supabaseFetch<Trade[]>(
+    "/rest/v1/trades?select=pair,direction,outcome,pnl_usd,pnl_pips,confidence_score,opened_at,closed_at,exit_reason&status=eq.CLOSED&order=opened_at.asc"
+  );
+  if (!trades) return NextResponse.json({ weeks: [] });
 
-  if (!url || !key) {
-    return NextResponse.json({ weeks: [] });
+  // Group by week
+  const weekMap = new Map<string, Trade[]>();
+  for (const t of trades) {
+    if (!t.opened_at) continue;
+    const weekStart = getWeekStart(t.opened_at);
+    if (!weekMap.has(weekStart)) weekMap.set(weekStart, []);
+    weekMap.get(weekStart)!.push(t);
   }
 
-  try {
-    const headers = { apikey: key, Authorization: `Bearer ${key}` };
+  // Build summaries
+  const weeks: WeekSummary[] = [];
 
-    const res = await fetch(
-      `${url}/rest/v1/trades?select=pair,direction,outcome,pnl_usd,pnl_pips,confidence_score,opened_at,closed_at,exit_reason&status=eq.CLOSED&order=opened_at.asc`,
-      { headers, cache: "no-store" }
-    );
+  for (const [weekStart, weekTrades] of Array.from(weekMap.entries())) {
+    const wins = weekTrades.filter((t: Trade) => t.outcome === "WIN");
+    const losses = weekTrades.filter((t: Trade) => t.outcome === "LOSS");
+    const pnls = weekTrades.map((t: Trade) => parseFloat(t.pnl_usd || "0"));
+    const totalPnl = pnls.reduce((s: number, v: number) => s + v, 0);
 
-    if (!res.ok) return NextResponse.json({ weeks: [] });
-    const trades: Trade[] = await res.json();
-
-    // Group by week
-    const weekMap = new Map<string, Trade[]>();
-    for (const t of trades) {
-      if (!t.opened_at) continue;
-      const weekStart = getWeekStart(t.opened_at);
-      if (!weekMap.has(weekStart)) weekMap.set(weekStart, []);
-      weekMap.get(weekStart)!.push(t);
+    // Best/worst pair
+    const pairPnl: Record<string, number> = {};
+    for (const t of weekTrades) {
+      pairPnl[t.pair] = (pairPnl[t.pair] || 0) + parseFloat(t.pnl_usd || "0");
+    }
+    let bestPair = "";
+    let worstPair = "";
+    let bestPairPnl = -Infinity;
+    let worstPairPnl = Infinity;
+    for (const pair of Object.keys(pairPnl)) {
+      const pnl = pairPnl[pair];
+      if (pnl > bestPairPnl) { bestPairPnl = pnl; bestPair = pair; }
+      if (pnl < worstPairPnl) { worstPairPnl = pnl; worstPair = pair; }
     }
 
-    // Build summaries
-    const weeks: WeekSummary[] = [];
+    const tpHits = weekTrades.filter((t: Trade) => t.exit_reason === "TP_HIT").length;
+    const slHits = weekTrades.filter((t: Trade) => t.exit_reason === "SL_HIT").length;
+    const avgConf = weekTrades.reduce((s: number, t: Trade) => s + (Number(t.confidence_score) || 0), 0) / weekTrades.length;
+    void slHits; // Used in future analytics
 
-    for (const [weekStart, weekTrades] of Array.from(weekMap.entries())) {
-      const wins = weekTrades.filter((t: Trade) => t.outcome === "WIN");
-      const losses = weekTrades.filter((t: Trade) => t.outcome === "LOSS");
-      const pnls = weekTrades.map((t: Trade) => parseFloat(t.pnl_usd || "0"));
-      const totalPnl = pnls.reduce((s: number, v: number) => s + v, 0);
+    // Week end = week start + 6 days
+    const endDate = new Date(weekStart);
+    endDate.setUTCDate(endDate.getUTCDate() + 6);
 
-      // Best/worst pair
-      const pairPnl: Record<string, number> = {};
-      for (const t of weekTrades) {
-        pairPnl[t.pair] = (pairPnl[t.pair] || 0) + parseFloat(t.pnl_usd || "0");
-      }
-      let bestPair = "";
-      let worstPair = "";
-      let bestPairPnl = -Infinity;
-      let worstPairPnl = Infinity;
-      for (const pair of Object.keys(pairPnl)) {
-        const pnl = pairPnl[pair];
-        if (pnl > bestPairPnl) { bestPairPnl = pnl; bestPair = pair; }
-        if (pnl < worstPairPnl) { worstPairPnl = pnl; worstPair = pair; }
-      }
+    const summary: WeekSummary = {
+      week_start: weekStart,
+      week_end: endDate.toISOString().split("T")[0],
+      trades: weekTrades.length,
+      wins: wins.length,
+      losses: losses.length,
+      win_rate: weekTrades.length > 0 ? (wins.length / weekTrades.length) * 100 : 0,
+      total_pnl: totalPnl,
+      avg_pnl_per_trade: weekTrades.length > 0 ? totalPnl / weekTrades.length : 0,
+      best_pair: bestPair,
+      worst_pair: worstPair,
+      best_trade: Math.max(...pnls, 0),
+      worst_trade: Math.min(...pnls, 0),
+      avg_confidence: avgConf,
+      tp_hit_rate: weekTrades.length > 0 ? (tpHits / weekTrades.length) * 100 : 0,
+      sl_hit_rate: weekTrades.length > 0 ? (slHits / weekTrades.length) * 100 : 0,
+      recommendation: "",
+    };
 
-      const tpHits = weekTrades.filter((t: Trade) => t.exit_reason === "TP_HIT").length;
-      const slHits = weekTrades.filter((t: Trade) => t.exit_reason === "SL_HIT").length;
-      const avgConf = weekTrades.reduce((s: number, t: Trade) => s + parseFloat(t.confidence_score || "0"), 0) / weekTrades.length;
-      void slHits; // Used in future analytics
-
-      // Week end = week start + 6 days
-      const endDate = new Date(weekStart);
-      endDate.setUTCDate(endDate.getUTCDate() + 6);
-
-      const summary: WeekSummary = {
-        week_start: weekStart,
-        week_end: endDate.toISOString().split("T")[0],
-        trades: weekTrades.length,
-        wins: wins.length,
-        losses: losses.length,
-        win_rate: weekTrades.length > 0 ? (wins.length / weekTrades.length) * 100 : 0,
-        total_pnl: totalPnl,
-        avg_pnl_per_trade: weekTrades.length > 0 ? totalPnl / weekTrades.length : 0,
-        best_pair: bestPair,
-        worst_pair: worstPair,
-        best_trade: Math.max(...pnls, 0),
-        worst_trade: Math.min(...pnls, 0),
-        avg_confidence: avgConf,
-        tp_hit_rate: weekTrades.length > 0 ? (tpHits / weekTrades.length) * 100 : 0,
-        sl_hit_rate: weekTrades.length > 0 ? (slHits / weekTrades.length) * 100 : 0,
-        recommendation: "",
-      };
-
-      summary.recommendation = generateRecommendation(summary);
-      weeks.push(summary);
-    }
-
-    // Most recent first
-    weeks.reverse();
-
-    return NextResponse.json({ weeks });
-  } catch {
-    return NextResponse.json({ weeks: [] });
+    summary.recommendation = generateRecommendation(summary);
+    weeks.push(summary);
   }
+
+  // Most recent first
+  weeks.reverse();
+
+  return NextResponse.json({ weeks });
 }

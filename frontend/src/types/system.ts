@@ -13,7 +13,7 @@ export interface SystemHealth {
     database: { status: ComponentStatus; latency_ms: number };
     price_feed: { status: ComponentStatus; last_tick_ago_s: number };
     risk_engine: { status: ComponentStatus; state: RiskState };
-    circuit_breaker: { status: "closed" | "open" | "half_open" };
+    circuit_breaker: { status: "CLOSED" | "OPEN" | "HALF_OPEN" };
   };
   trading: {
     mode: "PAPER" | "LIVE";

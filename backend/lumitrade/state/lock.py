@@ -64,8 +64,8 @@ class DistributedLock:
             if row is None:
                 # No singleton row — bootstrap. Two cold-starting instances
                 # could race here, so after the upsert we must verify WE are
-                # the recorded primary. Per Codex follow-up review #1:
-                # bootstrap path must not blindly return True.
+                # the recorded primary. Bootstrap path must not blindly
+                # return True.
                 await self._db.upsert(
                     "system_state",
                     {
@@ -131,12 +131,11 @@ class DistributedLock:
             if current_holder is None or not row.get("is_primary_instance"):
                 # Vacant-row case: cannot CAS on instance_id == NULL via our
                 # current update primitive (filter does not support null
-                # predicates). Per Codex round-3 review #1: write-then-readback
-                # to detect race losers, same pattern as the cold-start
-                # bootstrap path. Two concurrent claimants both pass through
-                # the unconditional update, but only the last writer's
-                # instance_id stays recorded — the earlier writer reads back
-                # and discovers it lost.
+                # predicates). Use write-then-readback to detect race losers,
+                # same pattern as the cold-start bootstrap path. Two concurrent
+                # claimants both pass through the unconditional update, but
+                # only the last writer's instance_id stays recorded — the
+                # earlier writer reads back and discovers it lost.
                 await self._db.update(
                     "system_state",
                     {"id": LOCK_ROW_ID},
@@ -336,9 +335,9 @@ class DistributedLock:
                 return
 
             now = datetime.now(timezone.utc)
-            # CAS release per Codex follow-up review #1: filter by both id AND
-            # instance_id so a takeover that happened between the read above
-            # and this write doesn't get clobbered by the previous holder.
+            # CAS release: filter by both id AND instance_id so a takeover
+            # that happened between the read above and this write doesn't
+            # get clobbered by the previous holder.
             result = await self._db.update(
                 "system_state",
                 {"id": LOCK_ROW_ID, "instance_id": instance_id},

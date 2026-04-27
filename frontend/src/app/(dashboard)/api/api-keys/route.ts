@@ -43,8 +43,9 @@ export async function GET() {
     }));
 
     return NextResponse.json({ keys });
-  } catch {
-    return NextResponse.json({ keys: [] });
+  } catch (e) {
+    console.error("api-keys list failed", e);
+    return NextResponse.json({ error: "operation failed" }, { status: 500 });
   }
 }
 
@@ -100,8 +101,9 @@ export async function POST(req: NextRequest) {
       created_at: created.created_at,
       message: "Copy this key now. It will not be shown again.",
     });
-  } catch {
-    return NextResponse.json({ error: "Failed to create key" }, { status: 500 });
+  } catch (e) {
+    console.error("api-keys create failed", e);
+    return NextResponse.json({ error: "operation failed" }, { status: 500 });
   }
 }
 
@@ -117,7 +119,8 @@ export async function DELETE(req: NextRequest) {
     const body = (await req.json()) as { id?: string };
     if (!body.id) return NextResponse.json({ error: "Missing key id" }, { status: 400 });
     keyId = body.id;
-  } catch {
+  } catch (e) {
+    console.error("api-keys delete body parse failed", e);
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
@@ -144,7 +147,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, revoked: keyId });
-  } catch {
-    return NextResponse.json({ error: "Failed to revoke key" }, { status: 500 });
+  } catch (e) {
+    // Critical: silent revocation failure leaves the key valid in the DB
+    // even though the user thinks they revoked it. Log loudly and surface
+    // a 500 so the UI can prompt for retry.
+    console.error("api-keys revoke failed", e);
+    return NextResponse.json({ error: "operation failed" }, { status: 500 });
   }
 }

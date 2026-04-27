@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { BarChart3, RefreshCw } from "lucide-react";
+import { formatPrice } from "@/lib/formatters";
 
 interface Candle {
   time: number;
@@ -340,7 +341,7 @@ export default function PriceChart({ pair: initialPair, trades }: PriceChartProp
           {lastPrice !== null && (
             <div className="flex items-center gap-2">
               <span className="font-mono text-sm font-bold" style={{ color: "var(--color-text-primary)" }}>
-                {lastPrice.toFixed(selectedPair.includes("JPY") || selectedPair.includes("XAU") ? 3 : 5)}
+                {formatPrice(lastPrice, selectedPair)}
               </span>
               <span
                 className="text-[11px] font-mono font-bold"

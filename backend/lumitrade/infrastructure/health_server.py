@@ -35,11 +35,57 @@ Response JSON:
 import hmac
 import os
 from datetime import datetime, timezone
+from typing import Any, TypedDict
 
 from aiohttp import web
 
+from ..config import LumitradeConfig
 from ..infrastructure.db import DatabaseClient
+from ..infrastructure.oanda_client import OandaClient, OandaTradingClient
 from ..infrastructure.secure_logger import get_logger
+
+
+class ComponentHealth(TypedDict, total=False):
+    """Per-component health entry returned by `_check_components()`.
+
+    `status` is required (e.g. "ok", "error", "stale", "held",
+    "not_held", "offline", "CLOSED"). The remaining metric fields are
+    populated only when the corresponding measurement succeeded.
+    """
+
+    status: str
+    latency_ms: float
+    updated_ago_s: int
+    last_call_ago_s: int
+    last_tick_ago_s: int
+    state: str
+
+
+class TradingInfo(TypedDict, total=False):
+    """Trading-state snapshot embedded in the /health response."""
+
+    mode: str
+    risk_state: str
+    open_trades: int
+    daily_pnl_usd: float
+    signals_today: int
+
+
+class HealthResponse(TypedDict):
+    """JSON contract returned by `GET /health`.
+
+    The dashboard `/api/system/health` proxy depends on this shape.
+    `system_state_read_error=True` flips `status` to "degraded" so the
+    endpoint never claims "ok" while blind to the singleton state row.
+    """
+
+    status: str
+    instance_id: str
+    timestamp: str
+    uptime_seconds: float
+    system_state_read_error: bool
+    components: dict[str, Any]
+    trading: dict[str, Any]
 
 logger = get_logger(__name__)
 
@@ -111,13 +157,33 @@ class HealthServer:
     Reads system_state from DB to report engine health.
     """
 
-    def __init__(self, db: DatabaseClient, instance_id: str) -> None:
+    def __init__(
+        self,
+        db: DatabaseClient,
+        instance_id: str,
+        config: LumitradeConfig | None = None,
+    ) -> None:
         self._db = db
         self._instance_id = instance_id
         self._started_at = datetime.now(timezone.utc)
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
+        # Cached LumitradeConfig — injected if provided, else created lazily
+        # on first use. Construction reads env vars (cheap), but caching
+        # avoids re-parsing on every request.
+        self._config: LumitradeConfig | None = config
+
+    def _get_config(self) -> LumitradeConfig:
+        """Return cached LumitradeConfig, instantiating on first use.
+
+        Replaces the previous per-handler `from ..config import LumitradeConfig;
+        config = LumitradeConfig()` pattern (27 sites). Safe to memoize because
+        env vars do not change at runtime.
+        """
+        if self._config is None:
+            self._config = LumitradeConfig()  # type: ignore[call-arg]
+        return self._config
 
     async def start(self) -> None:
         """Start the health check HTTP server on HEALTH_PORT."""
@@ -135,6 +201,12 @@ class HealthServer:
         self._app.router.add_get("/trade/{trade_id}", self._handle_get_trade)
         self._app.router.add_get("/oanda-trades", self._handle_oanda_trades)
         self._app.router.add_post("/trade/{trade_id}/close", self._handle_close_trade)
+        # Kill switch (per PRD:579). Authenticated; the engine main loop
+        # detects the False->True transition in system_state and closes
+        # all open OANDA positions on its next tick.
+        self._app.router.add_post("/kill-switch", self._handle_kill_switch_activate)
+        self._app.router.add_delete("/kill-switch", self._handle_kill_switch_deactivate)
+        self._app.router.add_get("/kill-switch", self._handle_kill_switch_status)
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
         self._app.router.add_get("/calendar", self._handle_calendar)
@@ -176,6 +248,10 @@ class HealthServer:
         components = await self._check_components(now)
         trading_info = await self._get_trading_info()
 
+        # Pull the system_state read flag out of components so it does
+        # not skew the per-component "is this status ok?" tally below.
+        system_state_read_error = bool(components.pop("system_state_read_error", False))
+
         # Determine overall status — healthy if DB is ok (other components may still be starting)
         db_status = components.get("database", {})
         db_ok = (db_status.get("status") if isinstance(db_status, dict) else db_status) == "ok"
@@ -187,24 +263,39 @@ class HealthServer:
         )
         total = len(components)
 
-        # Healthy if DB is up (core requirement). Degraded only if DB is down.
-        is_healthy = db_ok
-        status = "healthy" if ok_count == total else ("degraded" if db_ok else "down")
-        http_status = 200 if db_ok else 503
+        # Healthy if DB is up AND the singleton system_state row was readable.
+        # Without that row, every other component below DB defaults to "ok"
+        # despite the server being blind, so a successful DB ping alone is
+        # not enough to claim health.
+        is_healthy = db_ok and not system_state_read_error
+        if not db_ok:
+            status = "down"
+        elif system_state_read_error or ok_count != total:
+            status = "degraded"
+        else:
+            status = "healthy"
+        http_status = 200 if is_healthy else 503
 
-        body = {
+        body: HealthResponse = {
             "status": status,
             "instance_id": self._instance_id,
             "timestamp": now.isoformat(),
             "uptime_seconds": round(uptime, 1),
+            "system_state_read_error": system_state_read_error,
             "components": components,
             "trading": trading_info,
         }
 
         return web.json_response(body, status=http_status)
 
-    async def _check_components(self, now: datetime) -> dict:
-        """Check health of individual components with real latency."""
+    async def _check_components(self, now: datetime) -> dict[str, Any]:
+        """Check health of individual components with real latency.
+
+        Each entry in the returned dict matches `ComponentHealth` (status
+        plus optional metric fields). The reserved
+        `system_state_read_error` key is a bool, not a `ComponentHealth`,
+        and is popped by the caller before iteration.
+        """
         import time
 
         components = {
@@ -219,6 +310,12 @@ class HealthServer:
         }
 
         row = None
+        # Tracks whether the singleton system_state read succeeded. When
+        # it fails, every downstream component below stays at its default
+        # (often "ok"/"NORMAL") despite the server being blind to real
+        # state. Surfaced on the response so /health does not silently
+        # claim "ok" while the state row is unreadable.
+        system_state_read_error = False
 
         # Database check with real latency measurement
         try:
@@ -237,7 +334,13 @@ class HealthServer:
                 "system_state", {"id": STATE_ROW_ID}
             )
         except Exception:
-            pass
+            system_state_read_error = True
+            logger.warning(
+                "health_server_system_state_read_failed",
+                exc_info=True,
+            )
+
+        components["system_state_read_error"] = system_state_read_error
 
         if row:
             # State freshness
@@ -297,8 +400,11 @@ class HealthServer:
 
         return components
 
-    async def _get_trading_info(self) -> dict:
-        """Extract trading info from persisted state (flat columns)."""
+    async def _get_trading_info(self) -> dict[str, Any]:
+        """Extract trading info from persisted state (flat columns).
+
+        Returned dict matches `TradingInfo`.
+        """
         try:
             row = await self._db.select_one(
                 "system_state", {"id": STATE_ROW_ID}
@@ -324,12 +430,10 @@ class HealthServer:
     # User-adjustable settings (stored in Supabase system_state id='settings')
     SETTINGS_ROW_ID = "settings"
 
-    @staticmethod
-    def _get_settings_defaults() -> dict:
+    def _get_settings_defaults(self) -> dict:
         """Derive defaults from config — always in sync, never hardcoded."""
         try:
-            from ..config import LumitradeConfig
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             return {
                 "riskPct": float(config.max_risk_pct) * 100,
                 "maxPositions": config.max_open_trades,
@@ -376,9 +480,8 @@ class HealthServer:
             user_settings = dict(self.SETTINGS_DEFAULTS)
 
         # Merge guardrails + dual-switch mode visibility from config
-        from ..config import LumitradeConfig
         try:
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             guardrails = {
                 "maxPositionUnits": config.max_position_units,
                 "dailyLossLimitPct": float(config.daily_loss_limit_pct) * 100,
@@ -444,10 +547,9 @@ class HealthServer:
             return web.json_response({"error": "Missing 'message'"}, status=400)
 
         try:
-            from ..config import LumitradeConfig
             from ..subagents.onboarding_agent import OnboardingAgent
 
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             agent = OnboardingAgent(config, self._db)
             result = await agent.run({
                 "user_message": message,
@@ -467,10 +569,7 @@ class HealthServer:
         Returns balance, equity, margin, unrealized P&L directly from OANDA.
         """
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
             try:
                 acct = await oanda.get_account_summary()
@@ -500,10 +599,7 @@ class HealthServer:
         if not trade_id:
             return web.json_response({"error": "Missing trade_id"}, status=400)
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
             try:
                 trade = await oanda.get_trade(trade_id)
@@ -517,10 +613,7 @@ class HealthServer:
     async def _handle_oanda_trades(self, request: web.Request) -> web.Response:
         """GET /oanda-trades — return all open trades from OANDA with per-trade P&L."""
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
             try:
                 trades = await oanda.get_open_trades()
@@ -531,16 +624,83 @@ class HealthServer:
             logger.error("oanda_trades_error", error=str(e))
             return web.json_response({"trades": []})
 
+    async def _handle_kill_switch_status(self, request: web.Request) -> web.Response:
+        """GET /kill-switch — return current kill-switch flag state."""
+        try:
+            row = await self._db.select_one("system_state", {"id": STATE_ROW_ID})
+            active = bool((row or {}).get("kill_switch_active", False))
+            return web.json_response({"active": active})
+        except Exception as e:
+            logger.error("kill_switch_status_error", error=str(e))
+            return web.json_response({"error": "Internal server error"}, status=500)
+
+    async def _handle_kill_switch_activate(self, request: web.Request) -> web.Response:
+        """
+        POST /kill-switch — activate kill switch.
+
+        Per PRD:579. Sets kill_switch_active=True on the singleton state
+        row. The engine main loop detects the False->True transition on
+        its next tick and closes every open OANDA position via
+        ExecutionEngine.close_all_positions().
+
+        Authenticated route (private). Operator-initiated only.
+        """
+        try:
+            body: dict = {}
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            reason = (body.get("reason") or "").strip() or "operator_invoked"
+
+            await self._db.upsert("system_state", {
+                "id": STATE_ROW_ID,
+                "kill_switch_active": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.critical(
+                "kill_switch_activated_via_api",
+                reason=reason,
+                remote=request.remote,
+            )
+            return web.json_response({
+                "active": True,
+                "reason": reason,
+                "note": "Engine will close all open positions on next signal-loop tick.",
+            })
+        except Exception as e:
+            logger.error("kill_switch_activate_error", error=str(e))
+            return web.json_response({"error": "Internal server error"}, status=500)
+
+    async def _handle_kill_switch_deactivate(self, request: web.Request) -> web.Response:
+        """
+        DELETE /kill-switch — clear the kill switch flag (operator-initiated).
+
+        Does NOT reopen any closed positions; just allows the engine to resume
+        scanning. Authenticated route.
+        """
+        try:
+            await self._db.upsert("system_state", {
+                "id": STATE_ROW_ID,
+                "kill_switch_active": False,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.warning(
+                "kill_switch_deactivated_via_api",
+                remote=request.remote,
+            )
+            return web.json_response({"active": False})
+        except Exception as e:
+            logger.error("kill_switch_deactivate_error", error=str(e))
+            return web.json_response({"error": "Internal server error"}, status=500)
+
     async def _handle_close_trade(self, request: web.Request) -> web.Response:
         """POST /trade/{trade_id}/close — close a specific trade on OANDA."""
         trade_id = request.match_info.get("trade_id", "")
         if not trade_id:
             return web.json_response({"error": "Missing trade_id"}, status=400)
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaTradingClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             client = OandaTradingClient(config)
             try:
                 result = await client.close_trade(trade_id)
@@ -554,12 +714,10 @@ class HealthServer:
     async def _handle_reconcile(self, request: web.Request) -> web.Response:
         """POST /reconcile — trigger position reconciliation on demand."""
         try:
-            from ..config import LumitradeConfig
             from ..infrastructure.alert_service import AlertService
-            from ..infrastructure.oanda_client import OandaClient
             from ..state.reconciler import PositionReconciler
 
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
             try:
                 alerts = AlertService(config, self._db)
@@ -594,16 +752,14 @@ class HealthServer:
     async def _handle_fix_breakeven(self, request: web.Request) -> web.Response:
         """POST /fix-breakeven — retroactively fix BREAKEVEN trades with real OANDA P&L."""
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
             from ..utils.pip_math import pips_between, pip_size as get_pip_size
 
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
 
             # Find all CLOSED trades with BREAKEVEN outcome FOR THIS ACCOUNT.
-            # Account scoping per Codex round-3 review #4 — without it, this
-            # endpoint would rewrite another tenant's closed trade history.
+            # Account-scoped: without this filter, the endpoint would
+            # rewrite another tenant's closed trade history.
             breakeven_trades = await self._db.select(
                 "trades",
                 {"status": "CLOSED", "outcome": "BREAKEVEN",
@@ -688,11 +844,10 @@ class HealthServer:
 
     async def _handle_purge_ghosts(self, request: web.Request) -> web.Response:
         """POST /purge-ghosts — remove BREAKEVEN trades with no broker_trade_id (never executed).
-        Account-scoped per Codex round-3 review #4 — this endpoint hard-deletes
-        rows by id, so unscoped queries could destroy another tenant's history."""
+        Account-scoped because this endpoint hard-deletes rows by id;
+        an unscoped query could destroy another tenant's history."""
         try:
-            from ..config import LumitradeConfig
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             # Find all CLOSED BREAKEVEN trades FOR THIS ACCOUNT
             breakeven_trades = await self._db.select(
                 "trades",
@@ -738,14 +893,11 @@ class HealthServer:
     async def _handle_fix_timestamps(self, request: web.Request) -> web.Response:
         """POST /fix-timestamps — correct closed_at on all closed trades using OANDA closeTime."""
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
 
-            # Account-scoped per Codex round-3 review #4 — this endpoint
-            # rewrites closed_at on every row it touches.
+            # Account-scoped because this endpoint rewrites closed_at on
+            # every row it touches.
             closed_trades = await self._db.select(
                 "trades",
                 {"status": "CLOSED", "account_id": config.account_uuid},
@@ -799,11 +951,9 @@ class HealthServer:
         pair = request.query.get("pair", "EUR_USD")
 
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
             import httpx
 
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             stream_env = "fxpractice" if config.oanda_environment != "live" else "fxtrade"
             stream_base = f"https://stream-{stream_env}.oanda.com"
             url = f"{stream_base}/v3/accounts/{config.oanda_account_id}/pricing/stream?instruments={pair}"
@@ -942,10 +1092,7 @@ class HealthServer:
         count = request.query.get("count", "100")
 
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             oanda = OandaClient(config)
             try:
                 candles = await oanda.get_candles(pair, granularity, int(count))
@@ -983,10 +1130,7 @@ class HealthServer:
             return web.json_response({"prices": {}}, status=400)
 
         try:
-            from ..config import LumitradeConfig
-            from ..infrastructure.oanda_client import OandaClient
-
-            config = LumitradeConfig()  # type: ignore[call-arg]
+            config = self._get_config()
             client = OandaClient(config)
             try:
                 raw = await client.get_pricing(pairs)
@@ -1009,13 +1153,11 @@ class HealthServer:
 
 async def _run_standalone() -> None:
     """Entry point when run as a standalone process via supervisord."""
-    from ..config import LumitradeConfig
-
     config = LumitradeConfig()  # type: ignore[call-arg]
     db = DatabaseClient(config)
     await db.connect()
 
-    server = HealthServer(db, config.instance_id)
+    server = HealthServer(db, config.instance_id, config=config)
     await server.start()
 
     # Run forever until interrupted

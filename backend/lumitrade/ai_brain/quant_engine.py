@@ -16,9 +16,21 @@ Strategies implemented:
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TypedDict
 
 from ..core.models import MarketSnapshot
 from ..infrastructure.secure_logger import get_logger
+from ..utils.pip_math import pip_size
+
+
+class StrategyVote(TypedDict):
+    """Result of a single quant strategy evaluation. Shape is invariant
+    across all strategy methods on QuantEngine — see _ema_trend_crossover,
+    _bollinger_mean_reversion, _momentum_breakout."""
+    name: str       # Strategy name: "EMA_TREND" | "BB_REVERT" | "MOMENTUM"
+    action: str     # "BUY" | "SELL" | "HOLD"
+    score: float    # 0.0-1.0 confidence
+    reason: str     # human-readable explanation
 
 logger = get_logger(__name__)
 
@@ -157,7 +169,7 @@ class QuantEngine:
 
     # ── Strategy 1: EMA Trend Crossover ──────────────────────────
 
-    def _ema_trend_crossover(self, ind, price, pair) -> dict:
+    def _ema_trend_crossover(self, ind, price, pair) -> StrategyVote:
         """
         BUY: EMA20 > EMA50 AND price > EMA200 (trend confirmed)
         SELL: EMA20 < EMA50 AND price < EMA200
@@ -201,7 +213,7 @@ class QuantEngine:
 
     # ── Strategy 2: Bollinger Mean Reversion ─────────────────────
 
-    def _bollinger_mean_reversion(self, ind, price, pair) -> dict:
+    def _bollinger_mean_reversion(self, ind, price, pair) -> StrategyVote:
         """
         BUY: Price at/below lower BB + RSI < 35 (oversold bounce)
         SELL: Price at/above upper BB + RSI > 65 (overbought rejection)
@@ -243,7 +255,7 @@ class QuantEngine:
 
     # ── Strategy 3: Momentum Breakout ────────────────────────────
 
-    def _momentum_breakout(self, ind, price, pair) -> dict:
+    def _momentum_breakout(self, ind, price, pair) -> StrategyVote:
         """
         BUY: MACD histogram positive + RSI 50-70 (rising momentum, not exhausted)
         SELL: MACD histogram negative + RSI 30-50 (falling momentum, not exhausted)
@@ -282,7 +294,6 @@ class QuantEngine:
         """
         atr = ind.atr_14
         if atr == 0:
-            from ..utils.pip_math import pip_size
             ps = pip_size(pair)
             atr = Decimal("500") * ps if "XAU" in pair else Decimal("25") * ps
 

@@ -12,6 +12,7 @@ from decimal import Decimal
 from ..core.models import Candle
 from ..infrastructure.oanda_client import OandaClient
 from ..infrastructure.secure_logger import get_logger
+from ..utils.time_utils import parse_iso_utc
 
 logger = get_logger(__name__)
 
@@ -61,11 +62,12 @@ class CandleFetcher:
     def _parse_candle(self, raw: dict, granularity: str) -> Candle:
         """Parse OANDA candle JSON to Candle dataclass."""
         mid = raw["mid"]
-        time_str = raw["time"]
-        # Handle OANDA timestamp format
-        if time_str.endswith("Z"):
-            time_str = time_str.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(time_str)
+        # Handle OANDA timestamp format (centralised Z->+00:00 in time_utils)
+        dt = parse_iso_utc(raw["time"])
+        if dt is None:
+            # Caller relies on a valid timestamp; fall back to naive parse to
+            # surface the original ValueError instead of silently dropping it.
+            dt = datetime.fromisoformat(raw["time"])
 
         return Candle(
             time=dt,

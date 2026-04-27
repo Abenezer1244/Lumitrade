@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
+from ..utils.pip_math import pip_size as get_pip_size
 from .enums import (
     Action,
     CurrencySentiment,
@@ -60,7 +61,6 @@ class PriceTick:
 
     @property
     def spread_pips(self) -> Decimal:
-        from ..utils.pip_math import pip_size as get_pip_size
         return (self.ask - self.bid) / get_pip_size(self.pair)
 
 

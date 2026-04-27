@@ -13,10 +13,30 @@ Calls Claude to produce a 200-word briefing covering:
 Per BDS Section 16.2.
 """
 
+from typing import Any, TypedDict
+
 from ..infrastructure.secure_logger import get_logger
 from .base_agent import BaseSubagent
 
 logger = get_logger(__name__)
+
+
+class MarketAnalystContext(TypedDict, total=False):
+    """Expected shape of the context dict passed to ``MarketAnalystAgent.run``.
+
+    All keys are optional (``total=False``). Annotation-only; runtime is a
+    plain ``dict``.
+    """
+
+    pair: str
+    indicators: dict[str, Any]
+    candles: list[dict[str, Any]]
+
+
+class MarketBriefing(TypedDict):
+    """Return shape of ``MarketAnalystAgent.run``. ``briefing`` is "" on error."""
+
+    briefing: str
 
 SYSTEM_PROMPT = (
     "You are a senior forex market analyst for an automated trading system. "
