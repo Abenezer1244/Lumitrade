@@ -136,7 +136,10 @@ class ExecutionEngine:
 
             try:
                 pair_is_live_approved = order.pair in self.config.live_pairs
-                if effective_mode == "PAPER" or not pair_is_live_approved:
+                # Shadow: pair scanned for telemetry but not eligible for live execution.
+                # Stored as PAPER_SHADOW so position counts and daily_pnl stay clean.
+                is_shadow = effective_mode == "LIVE" and not pair_is_live_approved
+                if effective_mode == "PAPER" or is_shadow:
                     # Simulated fill — no broker call. Lands here when:
                     # - effective_mode is PAPER (either switch is PAPER), OR
                     # - pair is not in live_pairs (shadow-scan pairs like USD_JPY
@@ -167,28 +170,44 @@ class ExecutionEngine:
             machine.transition(OrderStatus.FILLED)
 
             verified = await self._fill_verifier.verify(order, result)
-            await self._save_trade(order, verified)
-            await self._alerts.send_info(
-                f"Trade opened: {order.pair} {(order.direction.value if hasattr(order.direction, "value") else str(order.direction))} "
-                f"{abs(order.units)} units at {verified.fill_price}"
-            )
+            await self._save_trade(order, verified, is_shadow=is_shadow)
+
+            direction_str = order.direction.value if hasattr(order.direction, "value") else str(order.direction)
+            if is_shadow:
+                # Shadow fills: log only, no Slack/email alert. These are not
+                # real broker positions and must not be confused with live exposure.
+                logger.info(
+                    "paper_shadow_fill_opened",
+                    pair=order.pair,
+                    direction=direction_str,
+                    units=abs(order.units),
+                    fill_price=str(verified.fill_price),
+                )
+            else:
+                await self._alerts.send_info(
+                    f"Trade opened: {order.pair} {direction_str} "
+                    f"{abs(order.units)} units at {verified.fill_price}"
+                )
 
             # Publish order event to Mission Control
+            execution_mode_str = "PAPER_SHADOW" if is_shadow else (
+                order.mode.value if hasattr(order.mode, "value") else str(order.mode)
+            )
             if self._events:
                 self._events.publish(
                     "EXECUTION",
                     "ORDER",
-                    f"ORDER PLACED: {(order.direction.value if hasattr(order.direction, "value") else str(order.direction))} {abs(order.units)} {order.pair} @ {verified.fill_price}",
-                    severity="SUCCESS",
+                    f"{'SHADOW ' if is_shadow else ''}ORDER PLACED: {direction_str} {abs(order.units)} {order.pair} @ {verified.fill_price}",
+                    severity="INFO" if is_shadow else "SUCCESS",
                     pair=order.pair,
                     metadata={
-                        "direction": (order.direction.value if hasattr(order.direction, "value") else str(order.direction)),
+                        "direction": direction_str,
                         "units": abs(order.units),
                         "fill_price": str(verified.fill_price),
                         "stop_loss": str(order.stop_loss),
                         "take_profit": str(order.take_profit),
                         "slippage_pips": str(verified.slippage_pips),
-                        "mode": (order.mode.value if hasattr(order.mode, "value") else str(order.mode)),
+                        "mode": execution_mode_str,
                         "signal_id": str(order.signal_id),
                     },
                 )
@@ -202,7 +221,7 @@ class ExecutionEngine:
             )
             return None
 
-    async def _save_trade(self, order: ApprovedOrder, result: OrderResult) -> None:
+    async def _save_trade(self, order: ApprovedOrder, result: OrderResult, *, is_shadow: bool = False) -> None:
         # CRITICAL: Never save a trade without a valid broker_trade_id.
         # Empty broker_trade_id creates ghost trades that can't be matched
         # to OANDA and will never be cleaned up by position monitor.
@@ -219,6 +238,12 @@ class ExecutionEngine:
             )
             return
 
+        # Shadow trades are stored with mode=PAPER_SHADOW so position-count
+        # queries and daily_pnl can exclude them from the live book.
+        stored_mode = "PAPER_SHADOW" if is_shadow else (
+            order.mode.value if hasattr(order.mode, "value") else str(order.mode)
+        )
+
         try:
             await self._db.insert(
                 "trades",
@@ -228,7 +253,7 @@ class ExecutionEngine:
                     "broker_trade_id": result.broker_trade_id,
                     "pair": order.pair,
                     "direction": (order.direction.value if hasattr(order.direction, "value") else str(order.direction)),
-                    "mode": (order.mode.value if hasattr(order.mode, "value") else str(order.mode)),
+                    "mode": stored_mode,
                     "entry_price": str(result.fill_price),
                     "stop_loss": str(order.stop_loss),
                     # Persist the original SL at open so the trailing-stop
@@ -754,8 +779,10 @@ class ExecutionEngine:
                     },
                 )
 
-            # Update state
-            if self._state:
+            # Update state — skip shadow trades so simulated P&L doesn't
+            # affect daily_pnl limits or consecutive_loss counts on the live book.
+            trade_mode = trade.get("mode", "")
+            if self._state and trade_mode != "PAPER_SHADOW":
                 state = self._state
                 if outcome == "LOSS":
                     current = state._state.get("consecutive_losses", 0)

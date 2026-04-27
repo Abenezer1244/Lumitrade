@@ -283,13 +283,14 @@ class RiskEngine:
     async def _check_position_count(self) -> CheckResult:
         """Check 2: Max open positions not exceeded.
         Scoped to this account_id — prevents one account's open trades from
-        blocking another account."""
+        blocking another account. In LIVE mode, shadow trades (PAPER_SHADOW)
+        are excluded — they have no broker exposure and must not consume slots."""
         max_positions = self._config.max_open_trades
         try:
-            current_count = await self._db.count(
-                "trades",
-                {"status": "OPEN", "account_id": self._config.account_uuid},
-            )
+            filters: dict = {"status": "OPEN", "account_id": self._config.account_uuid}
+            if self._config.effective_trading_mode() == "LIVE":
+                filters["mode"] = "LIVE"
+            current_count = await self._db.count("trades", filters)
         except Exception:
             # Fail-CLOSED: if DB unavailable, block trading
             logger.warning(
@@ -308,13 +309,14 @@ class RiskEngine:
         )
 
     async def _check_position_count_per_pair(self, pair: str) -> CheckResult:
-        """Check 2b: Max positions per pair not exceeded (this account only)."""
+        """Check 2b: Max positions per pair not exceeded (this account only).
+        In LIVE mode, shadow trades are excluded from the count."""
         max_per_pair = self._config.max_positions_per_pair
         try:
-            pair_count = await self._db.count(
-                "trades",
-                {"status": "OPEN", "pair": pair, "account_id": self._config.account_uuid},
-            )
+            filters: dict = {"status": "OPEN", "pair": pair, "account_id": self._config.account_uuid}
+            if self._config.effective_trading_mode() == "LIVE":
+                filters["mode"] = "LIVE"
+            pair_count = await self._db.count("trades", filters)
         except Exception:
             logger.warning(
                 "pair_position_count_db_error",
