@@ -257,10 +257,71 @@ class OrchestratorService:
             ),
         ]
 
+        await self._log_startup_diagnostics()
         logger.info("lumitrade_running", mode=self.config.trading_mode)
         await self.alerts.send_info(
             f"Lumitrade started ({self.config.trading_mode} mode) "
             f"on {self.config.instance_id}"
+        )
+
+    async def _log_startup_diagnostics(self) -> None:
+        """One-shot snapshot of dual-switch + OANDA wiring at boot.
+
+        The risk engine loads `db_mode_override` lazily on first scan, so
+        a fresh process always reports `effective_mode=PAPER` from
+        `config.effective_trading_mode()` until then. This handler reads
+        the dashboard toggle directly from the settings row so the
+        operator sees what mode the FIRST SCAN will actually use, not
+        the safe-default returned mid-boot.
+        """
+        env_mode = self.config.trading_mode
+
+        db_dashboard_mode: str = "unknown"
+        settings_row_present = False
+        try:
+            row = await self.db.select_one(
+                "system_state", {"id": "settings"}
+            )
+            if row and isinstance(row.get("open_trades"), dict):
+                settings_row_present = True
+                db_dashboard_mode = row["open_trades"].get("mode", "PAPER")
+            else:
+                db_dashboard_mode = "missing_or_malformed"
+        except Exception as e:
+            db_dashboard_mode = f"fetch_failed: {type(e).__name__}"
+
+        will_be_effective = (
+            "LIVE"
+            if (env_mode == "LIVE" and db_dashboard_mode == "LIVE")
+            else "PAPER"
+        )
+
+        balance: str = "unknown"
+        try:
+            acct = await self.oanda.get_account_summary()
+            balance = str(acct.get("balance", "0"))
+        except Exception as e:
+            balance = f"fetch_failed: {type(e).__name__}"
+
+        kill_switch = bool(
+            self.state
+            and self.state._state.get("kill_switch_active", False)
+        )
+
+        logger.info(
+            "startup_diagnostics",
+            env_trading_mode=env_mode,
+            db_dashboard_mode=db_dashboard_mode,
+            settings_row_present=settings_row_present,
+            effective_mode_at_first_scan=will_be_effective,
+            oanda_environment=self.config.oanda_environment,
+            oanda_endpoint=self.config.oanda_base_url,
+            oanda_account_id=self.config.oanda_account_id,
+            oanda_balance=balance,
+            pairs=self.config.pairs,
+            live_pairs=self.config.live_pairs,
+            kill_switch_active=kill_switch,
+            signal_interval_min=self.config.signal_interval_minutes,
         )
 
     async def _validate_tradeable_instruments(self) -> set[str]:

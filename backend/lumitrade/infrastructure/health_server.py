@@ -210,6 +210,7 @@ class HealthServer:
         self._app.router.add_get("/candles", self._handle_candles)
         self._app.router.add_get("/ws/prices", self._handle_ws_prices)
         self._app.router.add_get("/calendar", self._handle_calendar)
+        self._app.router.add_get("/preflight", self._handle_preflight)
         self._app.router.add_get("/", self._handle_root)
 
         self._runner = web.AppRunner(self._app, access_log=None)
@@ -235,6 +236,118 @@ class HealthServer:
     async def _handle_root(self, request: web.Request) -> web.Response:
         """Redirect root to /health."""
         raise web.HTTPFound("/health")
+
+    async def _handle_preflight(self, request: web.Request) -> web.Response:
+        """Pre-market demo-readiness check. Aggregates the 5 operational
+        risks identified in the 2026-04-27 audit so an operator can
+        confirm \"will the engine actually trade today\" with one HTTP call.
+
+        Auth: required (admin-private). Returns 200 with `ready=true|false`
+        plus per-check booleans and the actual values for debugging.
+        """
+        config = self._get_config()
+
+        # 1. env TRADING_MODE
+        env_mode = config.trading_mode
+        env_mode_live = env_mode == "LIVE"
+
+        # 2. dashboard mode toggle (db_mode_override source of truth)
+        db_dashboard_mode: str = "unknown"
+        settings_row_present = False
+        try:
+            row = await self._db.select_one(
+                "system_state", {"id": self.SETTINGS_ROW_ID}
+            )
+            if row and isinstance(row.get("open_trades"), dict):
+                settings_row_present = True
+                db_dashboard_mode = row["open_trades"].get("mode", "PAPER")
+            else:
+                db_dashboard_mode = "missing_or_malformed"
+        except Exception as e:
+            db_dashboard_mode = f"fetch_failed: {type(e).__name__}"
+
+        db_mode_live = db_dashboard_mode == "LIVE"
+
+        # 3. effective mode (the gate the execution engine actually uses)
+        effective_mode = "LIVE" if (env_mode_live and db_mode_live) else "PAPER"
+
+        # 4. OANDA reachability + balance
+        oanda_reachable = False
+        oanda_balance: float | None = None
+        oanda_error: str | None = None
+        try:
+            oanda = OandaClient(config)
+            try:
+                acct = await oanda.get_account_summary()
+                oanda_reachable = True
+                try:
+                    oanda_balance = float(acct.get("balance", 0))
+                except (TypeError, ValueError):
+                    oanda_balance = None
+            finally:
+                await oanda.close()
+        except Exception as e:
+            oanda_error = f"{type(e).__name__}: {str(e)[:120]}"
+
+        balance_sufficient = (
+            oanda_balance is not None and oanda_balance >= 1200.0
+        )
+
+        # 5. kill switch
+        kill_switch_off = True
+        try:
+            kr = await self._db.select_one(
+                "system_state", {"id": STATE_ROW_ID}
+            )
+            if kr and bool(kr.get("kill_switch_active", False)):
+                kill_switch_off = False
+        except Exception:
+            kill_switch_off = False
+
+        # Composite: ready when every box is checked. Demo can run in
+        # PAPER mode (PaperExecutor) too — `ready_for_live_demo` only
+        # gates the LIVE-on-practice path.
+        ready_for_live_demo = (
+            env_mode_live
+            and db_mode_live
+            and settings_row_present
+            and oanda_reachable
+            and balance_sufficient
+            and kill_switch_off
+        )
+        ready_for_paper_demo = (
+            oanda_reachable and balance_sufficient and kill_switch_off
+        )
+
+        body = {
+            "ready_for_live_demo": ready_for_live_demo,
+            "ready_for_paper_demo": ready_for_paper_demo,
+            "effective_mode": effective_mode,
+            "checks": {
+                "env_mode_is_LIVE": env_mode_live,
+                "dashboard_mode_is_LIVE": db_mode_live,
+                "settings_row_present": settings_row_present,
+                "oanda_reachable": oanda_reachable,
+                "balance_sufficient_for_forex_min": balance_sufficient,
+                "kill_switch_off": kill_switch_off,
+            },
+            "values": {
+                "env_trading_mode": env_mode,
+                "db_dashboard_mode": db_dashboard_mode,
+                "oanda_environment": config.oanda_environment,
+                "oanda_account_id": config.oanda_account_id,
+                "oanda_balance": oanda_balance,
+                "oanda_error": oanda_error,
+                "pairs": config.pairs,
+                "live_pairs": config.live_pairs,
+                "min_forex_units": 1000,
+                "max_confidence_ceiling": float(config.max_confidence),
+                "min_confidence_floor": float(config.min_confidence),
+                "session_window_utc": "08-17 USD_CAD, 00-17 USD_JPY",
+            },
+        }
+        # Always 200 — preflight is informational, not a liveness probe.
+        return web.json_response(body)
 
     async def _handle_health(self, request: web.Request) -> web.Response:
         """
