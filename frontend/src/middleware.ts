@@ -45,6 +45,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Authenticated dashboard pages must not be cached at the edge.
+  // Without this, Railway/Fastly was serving year-old (s-maxage=31536000)
+  // HTML shells back to logged-in users, so new component additions
+  // (e.g. MissionControl restored 2026-04-27) never appeared even after
+  // a successful redeploy. Per-user dynamic content + edge cache = stale.
+  response.headers.set(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, max-age=0"
+  );
+  response.headers.set("CDN-Cache-Control", "no-store");
+  response.headers.set("Vercel-CDN-Cache-Control", "no-store");
+
   return response;
 }
 
