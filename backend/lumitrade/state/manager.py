@@ -190,21 +190,16 @@ class StateManager:
             except (ValueError, TypeError):
                 pass
 
-        # 2. Fetch account balance.
-        # In paper mode use PAPER_BALANCE env var so the dashboard shows a
-        # realistic demo balance instead of the live account's $3.50.
-        # In live mode read the real balance from OANDA.
+        # 2. Fetch live account data from OANDA
         try:
-            if self._config.effective_trading_mode() != "LIVE":
-                paper_bal = str(self._config.paper_balance)
-                self._state["account_balance"] = paper_bal
-                self._state["account_equity"] = paper_bal
-                logger.info("state_account_fetched", balance=paper_bal, equity=paper_bal, source="paper_balance_env")
-            else:
-                account = await self._oanda.get_account_summary()
-                self._state["account_balance"] = account.get("balance", "0")
-                self._state["account_equity"] = account.get("NAV", "0")
-                logger.info("state_account_fetched", balance=account.get("balance"), equity=account.get("NAV"), source="oanda_live")
+            account = await self._oanda.get_account_summary()
+            self._state["account_balance"] = account.get("balance", "0")
+            self._state["account_equity"] = account.get("NAV", "0")
+            logger.info(
+                "state_account_fetched",
+                balance=account.get("balance"),
+                equity=account.get("NAV"),
+            )
         except Exception:
             logger.exception("state_account_fetch_failed")
 
@@ -316,24 +311,17 @@ class StateManager:
                 self._state["_last_daily_reset"] = today_str
                 logger.info("daily_pnl_reset_midnight", date=today_str)
 
-            # Refresh balance every persist cycle.
-            # Paper mode: use PAPER_BALANCE so dashboard shows demo balance.
-            # Live mode: fetch from OANDA (stale balance = position sizer risk).
+            # Refresh OANDA balance every persist cycle.
+            # Track consecutive failures: stale balance == position sizer
+            # computes risk on outdated equity == real money risk.
             if self._oanda:
                 try:
-                    if self._config.effective_trading_mode() != "LIVE":
-                        paper_bal = str(self._config.paper_balance)
-                        self._state["account_balance"] = paper_bal
-                        self._state["account_equity"] = paper_bal
-                        self._consecutive_balance_refresh_failures = 0
-                        self._balance_stale_alert_sent = False
-                    else:
-                        acct = await self._oanda.get_account_summary()
-                        if acct:
-                            self._state["account_balance"] = str(acct.get("balance", "0"))
-                            self._state["account_equity"] = str(
-                                acct.get("equity", acct.get("NAV", "0"))
-                            )
+                    acct = await self._oanda.get_account_summary()
+                    if acct:
+                        self._state["account_balance"] = str(acct.get("balance", "0"))
+                        self._state["account_equity"] = str(
+                            acct.get("equity", acct.get("NAV", "0"))
+                        )
                         # Refresh succeeded — reset failure counter and
                         # allow a future alert if we breach again.
                         if self._consecutive_balance_refresh_failures > 0:
