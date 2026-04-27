@@ -53,11 +53,12 @@ export default function KillSwitchButton() {
           <span className="text-sm font-bold text-loss">Trading Halted</span>
         </div>
         <p className="text-xs text-secondary mt-2">
-          All open positions preserved. System will not open new trades.
+          Engine will close all open positions on its next loop tick (typically
+          within 1 minute). New trades blocked until kill switch is cleared.
         </p>
         <p className="text-[11px] text-tertiary mt-2">
-          To resume trading, re-arm Live mode in Settings. Dismissing this card
-          does <span className="font-bold">not</span> resume trading.
+          To resume, clear the kill switch via the backend <code>DELETE /kill-switch</code> endpoint
+          and re-arm Live mode in Settings. Dismissing this card does <span className="font-bold">not</span> resume trading.
         </p>
         <button
           onClick={() => { setState("idle"); setInput(""); }}
@@ -97,7 +98,8 @@ export default function KillSwitchButton() {
     <div className="glass p-4" style={{ borderColor: "var(--color-loss)", borderWidth: 1 }}>
       <p className="text-label text-loss mb-2">Confirm Emergency Halt</p>
       <p className="text-xs text-secondary mb-3">
-        This will immediately halt all trading activity. Open positions will be preserved.
+        This will immediately halt all trading activity AND close every open position
+        at market on the engine&apos;s next loop tick. Use only in true emergencies.
       </p>
       <div className="space-y-3">
         <div>

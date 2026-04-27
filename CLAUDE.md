@@ -377,4 +377,12 @@ Key routing rules:
 - Save progress, checkpoint, resume → invoke checkpoint
 - Code quality, health check → invoke health
 
+## graphify (advisory only)
 
+This project has a graphify knowledge graph at graphify-out/. Treat it as a **discovery aid, not a source of truth.** As of 2026-04-25 the graph corpus is ~0 words and 72% of edges are INFERRED at avg confidence 0.55 — strong enough to suggest where to look, not strong enough to answer architecture questions on its own.
+
+Rules:
+- **Always verify against raw source.** Use `graphify query`, `graphify path`, or `graphify explain` only as a starting hypothesis, then confirm with Read/Grep on the actual files before answering or making changes.
+- Prefer raw file reads over `graphify-out/wiki/` for any answer that affects code.
+- Only treat graphify output as authoritative once `graphify-out/GRAPH_REPORT.md` shows ≥50% EXTRACTED edges. Below that threshold, the PreToolUse hook intentionally stays silent.
+- After modifying code files in this session, run `graphify update .` to keep AST-derived edges current (no API cost). If `graphify update` fails, do not push — the graph is now stale.

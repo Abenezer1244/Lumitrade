@@ -2,8 +2,9 @@
 Lumitrade OANDA Executor
 ==========================
 Places real orders via OandaTradingClient. Idempotent via order_ref.
-Per BDS Section 7.
+Per BDS Section 7 + QTS Section 765 (idempotent recovery on timeout).
 """
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -15,6 +16,10 @@ from ..infrastructure.secure_logger import get_logger
 
 logger = get_logger(__name__)
 FILL_VERIFY_TIMEOUT_SEC = 2
+
+# Time to wait before lookup_order_status to give OANDA a chance to commit
+# the order to durable storage before we query for it.
+RECOVERY_LOOKUP_DELAY_SEC = 2.0
 
 
 class OandaExecutor:
@@ -36,6 +41,44 @@ class OandaExecutor:
             )
             return self._parse_response(order, response)
         except Exception as e:
+            # Codex 2026-04-25 audit finding [critical] #3: place_market_order
+            # may have raised AFTER OANDA committed the order. Without an
+            # idempotent status lookup, a restart-and-rescan creates a duplicate
+            # live position. Try to recover via client_request_id before
+            # declaring failure.
+            logger.warning(
+                "oanda_order_attempt_error_attempting_recovery",
+                error=str(e),
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+            )
+            try:
+                await asyncio.sleep(RECOVERY_LOOKUP_DELAY_SEC)
+                recovered = await self._client.lookup_order_status(client_request_id)
+            except Exception as lookup_err:
+                logger.error(
+                    "oanda_order_recovery_lookup_failed",
+                    error=str(lookup_err),
+                    order_ref=str(order.order_ref),
+                )
+                recovered = None
+
+            if recovered is not None:
+                logger.warning(
+                    "oanda_order_recovered_via_client_id",
+                    order_ref=str(order.order_ref),
+                    pair=order.pair,
+                    has_fill=bool(recovered.get("orderFillTransaction")),
+                    has_cancel=bool(recovered.get("orderCancelTransaction")),
+                )
+                # _parse_response handles both FILLED and CANCELLED branches —
+                # it raises ExecutionError on cancellation, otherwise returns
+                # an OrderResult exactly as if the original POST had succeeded.
+                return self._parse_response(order, recovered)
+
+            # No recovery — order either never reached OANDA or is still
+            # in-flight. Failing closed is the only safe choice; reconciler
+            # will sweep up any orphaned trade on the next cycle.
             logger.error(
                 "oanda_order_failed",
                 error=str(e),

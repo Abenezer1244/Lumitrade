@@ -1,0 +1,256 @@
+{
+  "total_closed": 112,
+  "total_open": 0,
+  "wins": 49,
+  "losses": 58,
+  "win_rate_pct": 43.75,
+  "total_pnl_usd": 126.84,
+  "profit_factor": 1.0034414684466941,
+  "avg_win_usd": 754.7591836734694,
+  "avg_loss_usd": 635.4544827586207,
+  "max_drawdown_usd": 15064.9,
+  "max_win_streak": 16,
+  "max_loss_streak": 11,
+  "by_pair": {
+    "USD_JPY": {
+      "key": "USD_JPY",
+      "wins": 15,
+      "losses": 12,
+      "total": 28,
+      "wr": 53.57142857142857,
+      "pnl_usd": 5834.99,
+      "pnl_pips": 218.4
+    },
+    "USD_CHF": {
+      "key": "USD_CHF",
+      "wins": 4,
+      "losses": 7,
+      "total": 11,
+      "wr": 36.36363636363637,
+      "pnl_usd": -1219.32,
+      "pnl_pips": -75.1
+    },
+    "USD_CAD": {
+      "key": "USD_CAD",
+      "wins": 20,
+      "losses": 11,
+      "total": 32,
+      "wr": 62.5,
+      "pnl_usd": 5011.92,
+      "pnl_pips": 179.7
+    },
+    "EUR_USD": {
+      "key": "EUR_USD",
+      "wins": 4,
+      "losses": 8,
+      "total": 13,
+      "wr": 30.76923076923077,
+      "pnl_usd": -2398.02,
+      "pnl_pips": -91.1
+    },
+    "GBP_USD": {
+      "key": "GBP_USD",
+      "wins": 1,
+      "losses": 11,
+      "total": 14,
+      "wr": 7.142857142857143,
+      "pnl_usd": -5752.73,
+      "pnl_pips": -230.5
+    },
+    "NZD_USD": {
+      "key": "NZD_USD",
+      "wins": 2,
+      "losses": 5,
+      "total": 7,
+      "wr": 28.571428571428573,
+      "pnl_usd": -905.58,
+      "pnl_pips": -18.5
+    },
+    "AUD_USD": {
+      "key": "AUD_USD",
+      "wins": 3,
+      "losses": 4,
+      "total": 7,
+      "wr": 42.857142857142854,
+      "pnl_usd": -444.42,
+      "pnl_pips": -20.8
+    }
+  },
+  "by_direction": {
+    "BUY": {
+      "key": "BUY",
+      "wins": 40,
+      "losses": 39,
+      "total": 82,
+      "wr": 48.78048780487805,
+      "pnl_usd": 7154.23,
+      "pnl_pips": 109.4
+    },
+    "SELL": {
+      "key": "SELL",
+      "wins": 9,
+      "losses": 19,
+      "total": 30,
+      "wr": 30.0,
+      "pnl_usd": -7027.39,
+      "pnl_pips": -147.3
+    }
+  },
+  "by_session": {
+    "NY_OVERLAP": {
+      "key": "NY_OVERLAP",
+      "wins": 10,
+      "losses": 18,
+      "total": 30,
+      "wr": 33.333333333333336,
+      "pnl_usd": -6353.61,
+      "pnl_pips": -151.0
+    },
+    "NY_LATE": {
+      "key": "NY_LATE",
+      "wins": 2,
+      "losses": 13,
+      "total": 16,
+      "wr": 12.5,
+      "pnl_usd": -6636.8,
+      "pnl_pips": -262.8
+    },
+    "ASIAN": {
+      "key": "ASIAN",
+      "wins": 21,
+      "losses": 14,
+      "total": 35,
+      "wr": 60.0,
+      "pnl_usd": 7663.83,
+      "pnl_pips": 235.0
+    },
+    "LONDON": {
+      "key": "LONDON",
+      "wins": 16,
+      "losses": 13,
+      "total": 31,
+      "wr": 51.61290322580645,
+      "pnl_usd": 5453.42,
+      "pnl_pips": 140.9
+    }
+  },
+  "by_pair_dir": {
+    "USD_JPY BUY": {
+      "key": "USD_JPY BUY",
+      "wins": 14,
+      "losses": 10,
+      "total": 24,
+      "wr": 58.333333333333336,
+      "pnl_usd": 5499.02,
+      "pnl_pips": 207.5
+    },
+    "USD_CHF BUY": {
+      "key": "USD_CHF BUY",
+      "wins": 4,
+      "losses": 7,
+      "total": 11,
+      "wr": 36.36363636363637,
+      "pnl_usd": -1219.32,
+      "pnl_pips": -75.1
+    },
+    "USD_CAD BUY": {
+      "key": "USD_CAD BUY",
+      "wins": 12,
+      "losses": 6,
+      "total": 18,
+      "wr": 66.66666666666667,
+      "pnl_usd": 3738.18,
+      "pnl_pips": 134.6
+    },
+    "EUR_USD SELL": {
+      "key": "EUR_USD SELL",
+      "wins": 0,
+      "losses": 4,
+      "total": 4,
+      "wr": 0.0,
+      "pnl_usd": -3203.6,
+      "pnl_pips": -65.4
+    },
+    "GBP_USD SELL": {
+      "key": "GBP_USD SELL",
+      "wins": 0,
+      "losses": 4,
+      "total": 4,
+      "wr": 0.0,
+      "pnl_usd": -3032.38,
+      "pnl_pips": -83.3
+    },
+    "NZD_USD SELL": {
+      "key": "NZD_USD SELL",
+      "wins": 0,
+      "losses": 3,
+      "total": 3,
+      "wr": 0.0,
+      "pnl_usd": -1547.68,
+      "pnl_pips": -32.2
+    },
+    "USD_JPY SELL": {
+      "key": "USD_JPY SELL",
+      "wins": 1,
+      "losses": 2,
+      "total": 4,
+      "wr": 25.0,
+      "pnl_usd": 335.97,
+      "pnl_pips": 10.9
+    },
+    "NZD_USD BUY": {
+      "key": "NZD_USD BUY",
+      "wins": 2,
+      "losses": 2,
+      "total": 4,
+      "wr": 50.0,
+      "pnl_usd": 642.1,
+      "pnl_pips": 13.7
+    },
+    "EUR_USD BUY": {
+      "key": "EUR_USD BUY",
+      "wins": 4,
+      "losses": 4,
+      "total": 9,
+      "wr": 44.44444444444444,
+      "pnl_usd": 805.58,
+      "pnl_pips": -25.7
+    },
+    "GBP_USD BUY": {
+      "key": "GBP_USD BUY",
+      "wins": 1,
+      "losses": 7,
+      "total": 10,
+      "wr": 10.0,
+      "pnl_usd": -2720.35,
+      "pnl_pips": -147.2
+    },
+    "AUD_USD BUY": {
+      "key": "AUD_USD BUY",
+      "wins": 3,
+      "losses": 3,
+      "total": 6,
+      "wr": 50.0,
+      "pnl_usd": 409.02,
+      "pnl_pips": 1.6
+    },
+    "USD_CAD SELL": {
+      "key": "USD_CAD SELL",
+      "wins": 8,
+      "losses": 5,
+      "total": 14,
+      "wr": 57.142857142857146,
+      "pnl_usd": 1273.74,
+      "pnl_pips": 45.1
+    },
+    "AUD_USD SELL": {
+      "key": "AUD_USD SELL",
+      "wins": 0,
+      "losses": 1,
+      "total": 1,
+      "wr": 0.0,
+      "pnl_usd": -853.44,
+      "pnl_pips": -22.4
+    }
+  }
+}

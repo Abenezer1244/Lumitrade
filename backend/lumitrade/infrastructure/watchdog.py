@@ -164,8 +164,15 @@ class Watchdog:
                         f"{heartbeat_age:.0f}s ago. "
                         "Engine may be unresponsive."
                     )
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as exc:
+            # Malformed timestamps would otherwise silently disable
+            # heartbeat-stale alerting — surface so we can repair state shape.
+            logger.warning(
+                "heartbeat_check_parse_failed",
+                started_at=started_at_str,
+                last_persisted=state.get("last_persisted_at"),
+                error=str(exc),
+            )
 
     async def _check_trading_anomalies(
         self, state: dict, now: datetime

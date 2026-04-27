@@ -6,8 +6,42 @@ All times in UTC. Per BDS Section 10.2.
 """
 
 from datetime import datetime, time, timezone
+from typing import Union
 
 from ..core.enums import Session
+
+
+def parse_iso_utc(value: Union[str, datetime, None]) -> datetime | None:
+    """Parse an ISO-8601 timestamp into a timezone-aware datetime.
+
+    Accepts the OANDA / Supabase variants we see in practice:
+      - ``"2026-04-25T12:34:56Z"``        (trailing Z)
+      - ``"2026-04-25T12:34:56+00:00"``   (explicit offset)
+      - ``"2026-04-25T12:34:56"``         (naive, treated as UTC)
+      - an existing ``datetime`` instance (returned as-is, naive promoted to UTC)
+      - ``None`` / empty string -> ``None``
+
+    Centralises the ``s.replace("Z", "+00:00")`` idiom that was duplicated
+    across analytics, ai_brain, data_engine, and execution paths. Returns
+    ``None`` instead of raising on malformed input so callers can keep
+    their existing "skip on parse failure" semantics.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if not isinstance(value, str) or not value:
+        return None
+    s = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    try:
+        dt = datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 # All times in UTC
 LONDON_OPEN = time(7, 0)  # 08:00 BST = 07:00 UTC

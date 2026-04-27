@@ -14,7 +14,11 @@ export async function POST() {
   }
 
   try {
-    // Update the singleton system_state row to EMERGENCY_HALT
+    // Patch the singleton system_state row with BOTH risk_state and
+    // kill_switch_active. Per Codex post-fix audit: the engine's close-out
+    // path (PRD:579 + audit finding #4) watches kill_switch_active. Setting
+    // only risk_state leaves an "operator says halted but engine never
+    // closes positions" gap. Both must move together.
     const res = await fetch(
       `${supabaseUrl}/rest/v1/system_state?id=eq.singleton`,
       {
@@ -27,6 +31,7 @@ export async function POST() {
         },
         body: JSON.stringify({
           risk_state: "EMERGENCY_HALT",
+          kill_switch_active: true,
           updated_at: new Date().toISOString(),
         }),
         cache: "no-store",

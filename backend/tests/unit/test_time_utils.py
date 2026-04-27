@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from lumitrade.utils.time_utils import session_label_for_lesson
+from lumitrade.utils.time_utils import parse_iso_utc, session_label_for_lesson
 
 
 @pytest.mark.parametrize(
@@ -33,6 +33,44 @@ from lumitrade.utils.time_utils import session_label_for_lesson
 def test_session_label_boundaries(hour: int, want: str) -> None:
     dt = datetime(2026, 4, 15, hour, 30, tzinfo=timezone.utc)
     assert session_label_for_lesson(dt) == want
+
+
+class TestParseIsoUtc:
+    """parse_iso_utc consolidates the s.replace('Z','+00:00') idiom that
+    was duplicated across analytics, ai_brain, and data_engine paths."""
+
+    def test_z_suffix_is_treated_as_utc(self) -> None:
+        dt = parse_iso_utc("2026-04-25T12:34:56Z")
+        assert dt is not None
+        assert dt.tzinfo is timezone.utc
+        assert (dt.year, dt.month, dt.day, dt.hour) == (2026, 4, 25, 12)
+
+    def test_explicit_offset_preserved(self) -> None:
+        dt = parse_iso_utc("2026-04-25T12:34:56+00:00")
+        assert dt is not None
+        assert dt.utcoffset().total_seconds() == 0
+
+    def test_naive_string_promoted_to_utc(self) -> None:
+        dt = parse_iso_utc("2026-04-25T12:34:56")
+        assert dt is not None
+        assert dt.tzinfo is timezone.utc
+
+    def test_passthrough_aware_datetime(self) -> None:
+        original = datetime(2026, 4, 25, 12, tzinfo=timezone.utc)
+        assert parse_iso_utc(original) is original
+
+    def test_naive_datetime_promoted(self) -> None:
+        naive = datetime(2026, 4, 25, 12)
+        out = parse_iso_utc(naive)
+        assert out is not None and out.tzinfo is timezone.utc
+
+    def test_none_and_empty(self) -> None:
+        assert parse_iso_utc(None) is None
+        assert parse_iso_utc("") is None
+
+    def test_malformed_returns_none(self) -> None:
+        # Callers in analytics/lesson_analyzer rely on None to skip the row.
+        assert parse_iso_utc("not-a-timestamp") is None
 
 
 def test_session_label_matches_lesson_analyzer_ranges() -> None:

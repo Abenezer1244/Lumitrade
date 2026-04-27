@@ -151,7 +151,7 @@ class CalendarFetcher:
                     title=title,
                     impact=impact,
                     currencies_affected=[currency],
-                    event_time=event_time,
+                    scheduled_at=event_time,
                     minutes_until=max(minutes_until, 0),
                 ))
 
