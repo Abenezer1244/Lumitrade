@@ -566,11 +566,35 @@ class OrchestratorService:
                         )
                         result = await self.risk_eng.evaluate(proposal, balance)
                         if not isinstance(result, ApprovedOrder):
+                            rule = getattr(result, "rule_violated", "unknown")
+                            current = getattr(result, "current_value", "")
+                            threshold = getattr(result, "threshold", "")
+                            rejection_text = (
+                                f"{rule}: {current} vs {threshold}"
+                                if current or threshold
+                                else rule
+                            )
                             logger.info(
                                 "signal_risk_rejected",
                                 pair=pair,
-                                reason=getattr(result, "rule_violated", "unknown"),
+                                reason=rule,
+                                detail=rejection_text,
                             )
+                            # Persist rejection reason on the signal row so
+                            # the dashboard "Rejected" badge has a why. Without
+                            # this, every reject looks identical in the UI.
+                            # Codex observability review 2026-04-28.
+                            try:
+                                await self.db.update(
+                                    "signals",
+                                    {"id": str(proposal.signal_id)},
+                                    {"rejection_reason": rejection_text},
+                                )
+                            except Exception:
+                                logger.warning(
+                                    "signal_rejection_reason_save_failed",
+                                    signal_id=str(proposal.signal_id),
+                                )
                             continue
                         approved = result
 

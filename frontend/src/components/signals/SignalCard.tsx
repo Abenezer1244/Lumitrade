@@ -58,8 +58,17 @@ export default function SignalCard({ signal }: Props) {
         )}
       </div>
 
-      {/* Summary Line */}
-      <p className="text-xs text-secondary mt-1.5 line-clamp-1">{signal.summary}</p>
+      {/* Summary Line — HOLD signals get full text (no clamp) so the
+          operator can distinguish regime-disabled from missing-data
+          from no-setup. Directional signals stay clamped to one line
+          since their detail panel expands on click. */}
+      <p
+        className={`text-xs text-secondary mt-1.5 ${
+          isHold ? "whitespace-pre-wrap break-words" : "line-clamp-1"
+        }`}
+      >
+        {signal.summary}
+      </p>
 
       {/* Expanded Detail Panel */}
       {canExpand && (

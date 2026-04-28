@@ -138,8 +138,24 @@ class QuantEngine:
                 reasoning = f"SOLO({best['name']}): {best['reason']}"
 
         if action == "HOLD":
-            reasons = [f"{s['name']}={s['action']}({s['score']:.2f})" for s in signals]
-            reasoning = f"No signal: {', '.join(reasons)}"
+            # Preserve each strategy's per-reason text so the dashboard /
+            # signals table can distinguish "regime-disabled EMA" from
+            # "missing data" from "ran-but-no-setup". Without this every
+            # HOLD looked identical and the operator could not tell the
+            # protective gate from a silent bug. Joint Claude+Codex review
+            # 2026-04-28.
+            regime_label = (
+                "TRENDING" if is_trending
+                else ("RANGING" if is_ranging else "REGIME=UNKNOWN")
+            )
+            detail_lines = [
+                f"[{s['name']}] {s['action']}({s['score']:.2f}) — {s.get('reason', 'no reason')}"
+                for s in signals
+            ]
+            reasoning = (
+                f"No signal | ADX={adx:.1f} {regime_label} | "
+                + " | ".join(detail_lines)
+            )
 
         result = QuantSignal(
             action=action,
