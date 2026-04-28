@@ -244,34 +244,59 @@ class ExecutionEngine:
             order.mode.value if hasattr(order.mode, "value") else str(order.mode)
         )
 
+        # Persist the original SL at open so the trailing-stop logic can
+        # compute trail distance from a fixed value, not the current SL
+        # (which collapses to entry after breakeven). Migration 016 added
+        # the `initial_stop_loss` column. If the column is not present in
+        # the deployed schema yet, retry without it so the trade row still
+        # saves and the dashboard can show the position. Trailing-stop
+        # logic already has a legacy-row fallback for this case
+        # (test_trailing_stop_breakeven.py:113-123 covers no-initial-SL).
+        trade_row = {
+            "account_id": self.config.account_uuid,
+            "signal_id": str(order.signal_id),
+            "broker_trade_id": result.broker_trade_id,
+            "pair": order.pair,
+            "direction": (
+                order.direction.value
+                if hasattr(order.direction, "value")
+                else str(order.direction)
+            ),
+            "mode": stored_mode,
+            "entry_price": str(result.fill_price),
+            "stop_loss": str(order.stop_loss),
+            "initial_stop_loss": str(order.stop_loss),
+            "take_profit": str(order.take_profit),
+            "position_size": abs(order.units),
+            "confidence_score": str(order.confidence),
+            "slippage_pips": str(result.slippage_pips),
+            "status": "OPEN",
+            "session": session_label_for_lesson(),
+            "opened_at": datetime.now(timezone.utc).isoformat(),
+        }
+
         try:
-            await self._db.insert(
-                "trades",
-                {
-                    "account_id": self.config.account_uuid,
-                    "signal_id": str(order.signal_id),
-                    "broker_trade_id": result.broker_trade_id,
-                    "pair": order.pair,
-                    "direction": (order.direction.value if hasattr(order.direction, "value") else str(order.direction)),
-                    "mode": stored_mode,
-                    "entry_price": str(result.fill_price),
-                    "stop_loss": str(order.stop_loss),
-                    # Persist the original SL at open so the trailing-stop
-                    # logic can compute trail distance from a fixed value,
-                    # not the current SL (which collapses to entry after
-                    # breakeven).
-                    "initial_stop_loss": str(order.stop_loss),
-                    "take_profit": str(order.take_profit),
-                    "position_size": abs(order.units),
-                    "confidence_score": str(order.confidence),
-                    "slippage_pips": str(result.slippage_pips),
-                    "status": "OPEN",
-                    "session": session_label_for_lesson(),
-                    "opened_at": datetime.now(timezone.utc).isoformat(),
-                },
-            )
+            await self._db.insert("trades", trade_row)
         except Exception as e:
-            logger.error("trade_save_failed", error=str(e))
+            err_str = str(e)
+            # PostgREST PGRST204 — column missing from schema cache.
+            # Strip the post-016 columns and retry once before giving up.
+            if "initial_stop_loss" in err_str or "PGRST204" in err_str:
+                logger.warning(
+                    "trade_save_schema_fallback",
+                    detail="initial_stop_loss column missing; "
+                    "saving without it (migration 016 not applied)",
+                )
+                trade_row.pop("initial_stop_loss", None)
+                try:
+                    await self._db.insert("trades", trade_row)
+                except Exception as retry_e:
+                    logger.error(
+                        "trade_save_failed_after_fallback",
+                        error=str(retry_e),
+                    )
+            else:
+                logger.error("trade_save_failed", error=err_str)
 
     async def position_monitor(self) -> None:
         """Monitor open positions — detect closes, trail stops."""
