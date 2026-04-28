@@ -72,7 +72,16 @@ class LumitradeConfig(BaseSettings):
     #            backtest under a tuned-for-JPY filter stack passes, or (b) ~50+
     #            additional paper trades sustain the edge. PRD §3.4.
     pairs: list[str] = ["USD_CAD", "USD_JPY"]
-    live_pairs: list[str] = ["USD_CAD"]
+    # 2026-04-28: User added USD_JPY to live_pairs for demo-week
+    # observability on OANDA practice. Joint Claude+Codex review
+    # recommended against it (USD_JPY backtest fails 4/5 live thresholds:
+    # PF 1.04 vs 1.5, Sharpe 0.10 vs 1.0, MC P(profit) 55% vs 85%, MAR
+    # 0.07 vs 0.5). Override accepted because we are on OANDA practice
+    # (no real money at risk) and the operator wants visibility on both
+    # pairs in OANDA's web UI. Revert to ["USD_CAD"] before going to a
+    # real-money OANDA account; otherwise USD_JPY losses will eat into
+    # real capital with no validated edge.
+    live_pairs: list[str] = ["USD_CAD", "USD_JPY"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
