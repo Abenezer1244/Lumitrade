@@ -664,7 +664,21 @@ class RiskEngine:
         Confidence tiers (capped by max_confidence=0.80):
           * confidence >= 0.80 -> 1.0%
           * else               -> 0.5%
+
+        BTC exception: hard-capped at 0.5% until N>=20 live trades accumulate
+        under the D1 filter (N=16 backtest, below 20-trade confidence threshold).
         """
+        # BTC risk cap: 0.5%/trade regardless of confidence until validated
+        if proposal.pair == "BTC_USD":
+            risk_pct = Decimal("0.005")
+            logger.info(
+                "risk_pct_btc_capped",
+                pair=proposal.pair,
+                risk_pct=str(risk_pct),
+                reason="N=16_backtest_below_20_trade_threshold",
+            )
+            return risk_pct
+
         confidence = proposal.confidence_adjusted
         if confidence >= Decimal("0.80"):
             risk_pct = Decimal("0.01")   # 1.0%

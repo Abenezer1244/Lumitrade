@@ -453,8 +453,8 @@ class OrchestratorService:
                     if acct and self.state:
                         self.state._state["account_balance"] = str(acct.get("balance", "0"))
                         self.state._state["account_equity"] = str(acct.get("equity", acct.get("NAV", "0")))
-                except Exception:
-                    pass  # Non-critical — balance stays at last known value
+                except Exception as _bal_err:
+                    logger.debug("balance_refresh_failed", error=str(_bal_err))
 
                 # Daily loss circuit breaker — stop trading if daily P&L < -$2000
                 # Prevents catastrophic days like Mar 31 (-$11,081)
@@ -696,8 +696,8 @@ class OrchestratorService:
                     settings_row = await self.db.select_one("system_state", {"id": "settings"})
                     if settings_row and settings_row.get("open_trades") and isinstance(settings_row["open_trades"], dict):
                         scan_minutes = int(settings_row["open_trades"].get("scanInterval", scan_minutes))
-                except Exception:
-                    pass
+                except Exception as _si_err:
+                    logger.debug("scan_interval_settings_fetch_failed", error=str(_si_err))
                 await asyncio.sleep(scan_minutes * 60)
         except asyncio.CancelledError:
             logger.info("signal_to_trade_loop_cancelled")
