@@ -771,15 +771,15 @@ class RiskEngine:
     async def _get_current_risk_state(self) -> RiskState:
         """Read current risk state from state manager."""
         if self._state_manager is None:
-            return RiskState.NORMAL
+            return RiskState.CAUTIOUS
         try:
-            state = getattr(self._state_manager, "risk_state", RiskState.NORMAL)
+            state = getattr(self._state_manager, "risk_state", RiskState.CAUTIOUS)
             if callable(state):
                 return await state()
             return state
         except Exception:
-            logger.warning("risk_state_read_failed", msg="Defaulting to NORMAL")
-            return RiskState.NORMAL
+            logger.warning("risk_state_read_failed_defaulting_cautious")
+            return RiskState.CAUTIOUS
 
     async def _reject(
         self,

@@ -435,10 +435,10 @@ class ExecutionEngine:
 
         if direction == "BUY":
             hit_sl = current_price <= sl
-            hit_tp = current_price >= tp
+            hit_tp = tp != Decimal("0") and current_price >= tp
         else:  # SELL
             hit_sl = current_price >= sl
-            hit_tp = current_price <= tp
+            hit_tp = tp != Decimal("0") and current_price <= tp
 
         if hit_sl or hit_tp:
             exit_price = sl if hit_sl else tp
@@ -691,8 +691,6 @@ class ExecutionEngine:
                 if real_pl and float(real_pl) != 0:
                     realized_pnl = Decimal(str(real_pl))
 
-                # Determine exit reason from OANDA close reason
-                close_reason = oanda_trade.get("closingTransactionIDs", [])
                 # Check SL/TP by comparing exit price to expected levels
                 sl = Decimal(str(trade.get("stop_loss", "0")))
                 tp = Decimal(str(trade.get("take_profit", "0")))

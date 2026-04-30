@@ -601,13 +601,3 @@ def _format_news(events: list[NewsEvent]) -> str:
     return "\n".join(lines)
 
 
-def _format_recent_trades(trades: list[TradeSummary]) -> str:
-    """Format recent trade context."""
-    if not trades:
-        return "  No recent trades on this pair."
-    lines = []
-    for t in trades:
-        outcome_str = t.outcome.value if hasattr(t.outcome, "value") else str(t.outcome or "OPEN")
-        direction_str = t.direction.value if hasattr(t.direction, "value") else str(t.direction)
-        lines.append(f"  {direction_str} | {outcome_str} | {t.pnl_pips} pips")
-    return "\n".join(lines)
