@@ -29,6 +29,7 @@ MAX_SPREAD_PIPS: dict[str, Decimal] = {
     "USD_CAD": Decimal("5.0"),
     "NZD_USD": Decimal("5.0"),
     "XAU_USD": Decimal("200"),   # Gold spread wider on practice account
+    "BTC_USD": Decimal("200"),   # BTC pip=$1; $200 ceiling catches pathological spreads only
 }
 DEFAULT_MAX_SPREAD = Decimal("5.0")
 
