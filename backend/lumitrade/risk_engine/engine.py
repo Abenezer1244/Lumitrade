@@ -145,6 +145,12 @@ class RiskEngine:
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
 
+        # ── Check 7b: BTC SL Width ───────────────────────────────
+        result = self._check_btc_sl_pct(proposal)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
         # ── Check 8: Action ──────────────────────────────────────
         result = self._check_action(proposal)
         checks.append(result)
@@ -521,9 +527,12 @@ class RiskEngine:
         )
 
     # Per-instrument max spread for risk check (in pips)
+    # BTC_USD reduced from 500 → 50 (2026-04-29): ablation shows $50 spread is the
+    # dominant loss driver (-$1,512 over 2yr). Gate at 50 pips ($50) to avoid
+    # trading when spread is wide; normal BTC spread on OANDA is ~$20-30.
     _MAX_SPREAD_BY_PAIR: dict[str, Decimal] = {
         "XAU_USD": Decimal("200"),
-        "BTC_USD": Decimal("500"),  # BTC spread is $50-200 wide; 500-pip tolerance
+        "BTC_USD": Decimal("50"),
     }
 
     def _check_spread(self, proposal: SignalProposal) -> CheckResult:
@@ -555,8 +564,13 @@ class RiskEngine:
         )
 
     def _check_rr_ratio(self, proposal: SignalProposal) -> CheckResult:
-        """Check 7: Minimum risk/reward ratio. Skip if TP=0 (trailing stop mode)."""
-        min_rr = self._config.min_rr_ratio
+        """Check 7: Minimum risk/reward ratio. Skip if TP=0 (trailing stop mode).
+        BTC_USD uses btc_min_rr_ratio (3.0) — backtest shows 3:1 R:R required for edge."""
+        min_rr = (
+            self._config.btc_min_rr_ratio
+            if proposal.pair == "BTC_USD"
+            else self._config.min_rr_ratio
+        )
 
         entry = proposal.entry_price
         sl = proposal.stop_loss
@@ -603,6 +617,24 @@ class RiskEngine:
             "OK" if passed else f"R:R {rr_ratio:.2f} < min {min_rr}",
             f"{rr_ratio:.2f}",
             str(min_rr),
+        )
+
+    def _check_btc_sl_pct(self, proposal: SignalProposal) -> CheckResult:
+        """Check 7b: BTC-only — SL must not exceed btc_max_sl_pct of entry price.
+        Wide SL (>2%) means high ATR noise environment; risk/reward degrades badly."""
+        if proposal.pair != "BTC_USD":
+            return ("BTC_SL_PCT", True, "OK — not BTC", "N/A", "N/A")
+        if proposal.entry_price == Decimal("0"):
+            return ("BTC_SL_PCT", False, "Entry price is zero", "0", str(self._config.btc_max_sl_pct))
+        sl_pct = abs(proposal.entry_price - proposal.stop_loss) / proposal.entry_price
+        max_pct = self._config.btc_max_sl_pct
+        passed = sl_pct <= max_pct
+        return (
+            "BTC_SL_PCT",
+            passed,
+            "OK" if passed else f"BTC SL {sl_pct*100:.2f}% of price > max {max_pct*100:.0f}%",
+            f"{sl_pct*100:.2f}%",
+            f"{max_pct*100:.0f}%",
         )
 
     def _check_action(self, proposal: SignalProposal) -> CheckResult:

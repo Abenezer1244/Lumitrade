@@ -138,7 +138,12 @@ class LumitradeConfig(BaseSettings):
     # want >24h. USD_JPY ablation went the opposite way (−$1,250 without cap),
     # so JPY keeps the 24h default.
     max_hold_hours: int = 24
-    max_hold_hours_overrides: dict[str, int] = {"USD_CAD": 96}
+    max_hold_hours_overrides: dict[str, int] = {"USD_CAD": 96, "BTC_USD": 96}
+    # BTC-specific risk gates (backtest 2026-04-29 findings):
+    # 1.5×ATR + 3:1 RR is the only config that pushed PF > 1.0 (1.09).
+    # The wider 3×ATR SL was letting losses run to $343 avg vs $156 avg win.
+    btc_min_rr_ratio: Decimal = Decimal("3.0")   # require 3:1 R:R minimum on BTC
+    btc_max_sl_pct: Decimal = Decimal("0.02")    # reject BTC SL wider than 2% of price
 
     def max_hold_hours_for(self, pair: str) -> int:
         """Per-pair max hold time. Falls back to `max_hold_hours` if no override."""
