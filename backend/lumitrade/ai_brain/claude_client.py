@@ -30,7 +30,7 @@ class ClaudeClient:
             response = await self._client.messages.create(
                 model=self.config.claude_model,
                 max_tokens=self.config.claude_max_tokens,
-                system=system,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user}],
             )
             text = response.content[0].text
@@ -69,7 +69,7 @@ class ClaudeClient:
             response = await self._client.messages.create(
                 model=self.config.claude_model,
                 max_tokens=self.config.claude_max_tokens,
-                system=system,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=[{
                     "role": "user",
                     "content": [

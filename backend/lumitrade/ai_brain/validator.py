@@ -52,7 +52,7 @@ OPTIONAL_FIELDS_WITH_DEFAULTS: dict[str, object] = {
 class AIOutputValidator:
     """Validates raw Claude API JSON output before it enters the pipeline."""
 
-    def validate(self, raw: str, live_price: Decimal) -> ValidationResult:
+    def validate(self, raw: str, live_price: Decimal, pair: str = "") -> ValidationResult:
         """
         Run full 8-step validation pipeline.
         Returns ValidationResult with passed=True and parsed data, or
@@ -151,7 +151,6 @@ class AIOutputValidator:
         # TAKE_PROFIT_ON_FILL_LOSS rejections.
         if action != "HOLD":
             from ..utils.pip_math import pips_between
-            pair = data.get("pair", "")
             tp_pips = abs(float(pips_between(entry, tp, pair)))
             sl_pips = abs(float(pips_between(entry, sl, pair)))
             try:

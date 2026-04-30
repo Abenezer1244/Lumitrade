@@ -295,8 +295,20 @@ class ExecutionEngine:
                         "trade_save_failed_after_fallback",
                         error=str(retry_e),
                     )
+                    if not is_shadow:
+                        await self._alerts.send_critical(
+                            f"CRITICAL: Live trade {order.pair} broker_id={result.broker_trade_id} "
+                            f"NOT SAVED to DB after fallback — manual OANDA reconciliation required. "
+                            f"Error: {retry_e}"
+                        )
             else:
                 logger.error("trade_save_failed", error=err_str)
+                if not is_shadow:
+                    await self._alerts.send_critical(
+                        f"CRITICAL: Live trade {order.pair} broker_id={result.broker_trade_id} "
+                        f"NOT SAVED to DB — manual OANDA reconciliation required. "
+                        f"Error: {err_str}"
+                    )
 
     async def position_monitor(self) -> None:
         """Monitor open positions — detect closes, trail stops."""

@@ -72,9 +72,12 @@ class ConfidenceAdjuster:
         adjustments["spread_penalty"] = float(spread_adj)
         adjusted += spread_adj
 
-        # Factor 5: Consecutive losses (threshold shift)
+        # Factor 5: Consecutive losses — lower adjusted confidence so it's
+        # harder to pass the min_confidence gate after a losing streak.
+        # Previously computed but never applied (dead code — Codex 2026-04-29).
         loss_adj = self._consecutive_loss_adjustment(consecutive_losses)
-        adjustments["consecutive_losses"] = float(loss_adj)
+        adjustments["consecutive_losses"] = float(-loss_adj)
+        adjusted -= loss_adj
 
         # Factor 6: Recent pair performance
         # With chart: halve the penalty — chart gives fresh context

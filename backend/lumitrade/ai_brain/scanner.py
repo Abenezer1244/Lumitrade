@@ -387,7 +387,7 @@ class SignalScanner:
                 await self._log_ai_interaction(prompt_hash, raw_response, attempt)
 
                 # Validate output
-                result = self._validator.validate(raw_response, live_price)
+                result = self._validator.validate(raw_response, live_price, pair=pair)
                 if result.passed and result.data:
                     # H4 trend enforcement — skip when Claude has chart
                     # With chart: Claude sees the trend and decides
@@ -542,9 +542,19 @@ class SignalScanner:
         """Build SignalProposal from validated AI output."""
         raw_conf = Decimal(str(data["confidence"]))
 
-        # Adjust confidence — reduced penalties when chart is present
+        # Count consecutive losses from recent trade history
+        consecutive_losses = 0
+        for t in reversed(snapshot.recent_trades or []):
+            outcome = t.outcome.value if hasattr(t.outcome, "value") else str(t.outcome)
+            if outcome == "LOSS":
+                consecutive_losses += 1
+            else:
+                break
+
         adjusted_conf, adj_log = self._adjuster.adjust(
-            raw_conf, snapshot, data["action"], has_chart=has_chart,
+            raw_conf, snapshot, data["action"],
+            consecutive_losses=consecutive_losses,
+            has_chart=has_chart,
         )
 
         return SignalProposal(
