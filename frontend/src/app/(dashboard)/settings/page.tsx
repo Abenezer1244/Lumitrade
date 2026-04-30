@@ -8,9 +8,9 @@ import { useToast } from "@/components/ui/Toast";
 
 const DEFAULT_SETTINGS: TradingSettingsData = {
   riskPct: 0.5,
-  maxPositions: 3,
-  maxPerPair: 1,
-  confidence: 65,
+  maxPositions: 5,
+  maxPerPair: 5,
+  confidence: 70,
   scanInterval: 15,
 };
 

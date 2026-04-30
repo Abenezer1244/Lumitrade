@@ -4,10 +4,10 @@ import { backendAuthHeaders } from "@/lib/backend-auth";
 export const dynamic = "force-dynamic";
 
 const DEFAULTS = {
-  riskPct: 1.0,
-  maxPositions: 3,
-  maxPerPair: 1,
-  confidence: 65,
+  riskPct: 0.5,
+  maxPositions: 5,
+  maxPerPair: 5,
+  confidence: 70,
   mode: "PAPER" as const,
   guardrails: {
     maxPositionUnits: 500_000,

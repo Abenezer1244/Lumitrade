@@ -598,7 +598,7 @@ class HealthServer:
             }
         except Exception:
             return {
-                "riskPct": 1.5, "maxPositions": 100, "maxPerPair": 1,
+                "riskPct": 0.5, "maxPositions": 5, "maxPerPair": 5,
                 "confidence": 70, "scanInterval": 15, "mode": "PAPER",
             }
 
@@ -692,10 +692,10 @@ class HealthServer:
 
         # Validate and clamp values
         clamped = {
-            "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 1.0)))),
-            "maxPositions": max(1, min(100, int(body.get("maxPositions", 100)))),
-            "maxPerPair": max(1, min(10, int(body.get("maxPerPair", 1)))),
-            "confidence": max(50, min(90, int(body.get("confidence", 65)))),
+            "riskPct": max(0.25, min(2.0, float(body.get("riskPct", 0.5)))),
+            "maxPositions": max(1, min(100, int(body.get("maxPositions", 5)))),
+            "maxPerPair": max(1, min(10, int(body.get("maxPerPair", 5)))),
+            "confidence": max(50, min(90, int(body.get("confidence", 70)))),
             "scanInterval": max(5, min(60, int(body.get("scanInterval", 15)))),
             "mode": persisted_mode,
         }

@@ -86,7 +86,7 @@ class LumitradeConfig(BaseSettings):
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
     signal_interval_minutes: int = 15
-    max_risk_pct: Decimal = Decimal("0.02")
+    max_risk_pct: Decimal = Decimal("0.005")  # Default 0.5% — matches dashboard conservative default
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
     # 106-trade audit (2026-04-21): 0.80+ confidence bucket WR collapsed to
     # 27.3% (−$5,620 over 22 trades). Confidence model is currently inverted
@@ -104,8 +104,8 @@ class LumitradeConfig(BaseSettings):
     # only 6 trades. Leaving empty by default — re-enable with [1] if
     # Tuesday drawdowns recur on USD_CAD / USD_JPY specifically.
     blocked_weekdays_utc: list[int] = []
-    max_open_trades: int = 100
-    max_positions_per_pair: int = 10
+    max_open_trades: int = 5  # Default 5 — matches dashboard conservative default
+    max_positions_per_pair: int = 5  # Default 5 — matches dashboard conservative default
     max_position_units: int = 500_000
     # Two-gate position sizing (Claude + Codex review 2026-04-27):
     # `min_position_units_forex` is the BROKER floor — OANDA accepts ≥1 unit.
