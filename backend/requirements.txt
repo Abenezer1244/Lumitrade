@@ -101,6 +101,8 @@ markupsafe==3.0.3
     # via werkzeug
 matplotlib==3.10.8
     # via -r requirements.in
+mplfinance==0.12.10b0
+    # via -r requirements.in (chart_generator professional candlestick renderer)
 mdurl==0.1.2
     # via markdown-it-py
 mmh3==5.2.1
