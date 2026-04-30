@@ -63,27 +63,17 @@ class LumitradeConfig(BaseSettings):
     # `pairs`: the trading universe (used in PAPER mode).
     # `live_pairs`: the subset that may trade in LIVE mode.
     #
-    # 2-year backtest under current filter stack + partial close 67%@1.5xRR (2026-04-29):
+    # Backtest results under current filter stack + partial close 67%@1.5xRR (2026-04-29):
     #   USD_CAD: PF 2.00, Sharpe 1.94, MAR 2.18, MC P(profit) 95.2%, MaxDD 1.09%
-    #            — passes all 5 live thresholds. Approved for LIVE.
-    #   USD_JPY: PF 1.26, Sharpe 0.59, MAR 0.58, MC P(profit) 78%, MaxDD 2.8%
-    #            — 2/5 gates. Exhaustively tested: EMA200 filter, SL mult sweep
-    #            (1.5x/2x/2.5x/3x), ADX threshold (20/25/30) all fail. Root cause:
-    #            39-45% win rate structural incompatibility with momentum signal stack.
-    #            PAPER ONLY. Do not add to live_pairs without a new signal approach.
+    #            — 5/5 gates. LIVE approved.
+    #   USD_JPY: H4 MTF filter (H4 EMA5>EMA10 AND H4 ADX>=25) — 5/5 gates.
+    #            33 trades | PF 4.19 | Sharpe 3.46 | MAR 5.71 | MaxDD 0.68% | MC 99.8%
+    #            Walk-forward OOS (30%): PF 6.82, MC 99.7%. ADX plateau stable ADX 23-29.
+    #            Filter: data_engine/h4_trend_filter.py, wired in scanner.py step 2.5.
+    #            LIVE approved (2026-04-29).
     #   BTC_USD: PF 1.10, Sharpe 0.28, MAR 0.20, MC P(profit) 65%, MaxDD 4.8%
-    #            — 1/5 gates. Current EMA+BB+Momentum signals insufficient for BTC.
-    #            PAPER ONLY.
+    #            — 1/5 gates. EMA+BB+Momentum signals insufficient for BTC. PAPER ONLY.
     pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
-    # 2026-04-28: User added USD_JPY to live_pairs for demo-week
-    # observability on OANDA practice. Joint Claude+Codex review
-    # recommended against it (USD_JPY backtest fails 4/5 live thresholds:
-    # PF 1.04 vs 1.5, Sharpe 0.10 vs 1.0, MC P(profit) 55% vs 85%, MAR
-    # 0.07 vs 0.5). Override accepted because we are on OANDA practice
-    # (no real money at risk) and the operator wants visibility on both
-    # pairs in OANDA's web UI. Revert to ["USD_CAD"] before going to a
-    # real-money OANDA account; otherwise USD_JPY losses will eat into
-    # real capital with no validated edge.
     live_pairs: list[str] = ["USD_CAD", "USD_JPY"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.

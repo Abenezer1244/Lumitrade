@@ -16,6 +16,7 @@ from ..config import LumitradeConfig
 from ..core.enums import Action, GenerationMethod, TradeDuration
 from ..core.models import SignalProposal
 from ..data_engine.engine import DataEngine
+from ..data_engine.h4_trend_filter import compute_h4_trend_filter
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.secure_logger import get_logger
@@ -250,6 +251,22 @@ class SignalScanner:
                 )
             # Still save as HOLD signal for tracking
             await self._save_hold_signal(pair, quant_signal)
+            return None
+
+        # ── STEP 2.5: H4 MULTI-TIMEFRAME FILTER ──
+        # USD_JPY only. Requires H4 EMA5>EMA10 AND H4 ADX>=25.
+        # Runs before chart/Claude to avoid burning tokens on blocked signals.
+        h4_block = compute_h4_trend_filter(
+            snapshot.candles_h4, quant_signal.action, pair
+        )
+        if h4_block:
+            logger.info("h4_mtf_filter_blocked", pair=pair, reason=h4_block)
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} — H4 MTF filter: {h4_block}",
+                    pair=pair, severity="WARNING",
+                )
             return None
 
         # ── STEP 3: CHART SCREENSHOT — visual context for Claude's review ──
