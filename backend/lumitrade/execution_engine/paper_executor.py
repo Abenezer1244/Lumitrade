@@ -11,7 +11,7 @@ from uuid import uuid4
 from ..core.enums import OrderStatus
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.secure_logger import get_logger
-from ..utils.pip_math import pips_between
+from ..utils.pip_math import pip_size, pips_between
 
 logger = get_logger(__name__)
 
@@ -20,7 +20,12 @@ class PaperExecutor:
     async def execute(
         self, order: ApprovedOrder, current_price: Decimal,
     ) -> OrderResult:
-        fill_price = current_price
+        # Simulate realistic fill: current_price is the bid.
+        # BUY orders execute at ask (bid + ~1 pip spread).
+        # SELL orders execute at bid (current_price as-is).
+        direction_str = order.direction.value if hasattr(order.direction, "value") else str(order.direction)
+        ps = pip_size(order.pair)
+        fill_price = current_price + ps if direction_str == "BUY" else current_price
         slippage = pips_between(order.entry_price, fill_price, order.pair)
         logger.info(
             "paper_trade_executed",

@@ -31,6 +31,16 @@ class OandaExecutor:
         # OANDA uses negative units for SELL orders
         direction_str = order.direction.value if hasattr(order.direction, "value") else str(order.direction)
         units = -abs(order.units) if direction_str == "SELL" else abs(order.units)
+
+        # Defense-in-depth: SL must be non-zero before a live broker call.
+        # RiskEngine enforces R:R which requires a valid SL, but a malformed
+        # ApprovedOrder or future refactor could bypass that path.
+        if not order.stop_loss or order.stop_loss <= Decimal("0"):
+            raise ExecutionError(
+                f"Order rejected pre-broker: stop_loss is zero or missing for {order.pair} "
+                f"(order_ref={order.order_ref})"
+            )
+
         try:
             response = await self._client.place_market_order(
                 pair=order.pair,

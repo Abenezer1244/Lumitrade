@@ -101,6 +101,10 @@ class StateManager:
         # _BALANCE_STALE_ALERT_THRESHOLD. Reset to 0 on success.
         self._consecutive_balance_refresh_failures: int = 0
         self._balance_stale_alert_sent: bool = False
+        # Set to True by mark_as_primary() after the distributed lock is
+        # acquired. restore() checks this to catch misuse where state mutations
+        # are attempted before lock ownership is confirmed.
+        self._is_primary_instance: bool = False
 
         # In-memory state. Annotated as SystemState for IDE/type-checker
         # support; runtime is a plain dict so no behavior change.
@@ -124,6 +128,13 @@ class StateManager:
             "confidence_threshold_override": None,
         }
 
+    def mark_as_primary(self) -> None:
+        """Called by OrchestratorService immediately after acquiring the
+        distributed lock. Guards restore() and save() against misuse on
+        standby instances that never won the lock race."""
+        self._is_primary_instance = True
+        logger.info("state_manager_marked_primary", instance_id=self._config.instance_id)
+
     async def restore(self) -> None:
         """
         Restore system state from DB and reconcile with OANDA.
@@ -134,6 +145,13 @@ class StateManager:
           3. Run position reconciliation.
           4. Merge results into in-memory state.
         """
+        if not self._is_primary_instance:
+            logger.critical(
+                "restore_called_without_primary_lock",
+                instance_id=self._config.instance_id,
+                msg="restore() called before mark_as_primary() — state mutations "
+                    "are not safe; primary lock may not be held by this instance",
+            )
         logger.info("state_restore_started", instance_id=self._config.instance_id)
 
         # 1. Read persisted state from DB (flat columns, not key-value)

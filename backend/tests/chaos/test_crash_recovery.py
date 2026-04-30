@@ -71,7 +71,11 @@ class TestCrashRecovery:
     async def test_cr002_lock_acquired_empty_system(self):
         """CR-002: When no lock row exists, acquire succeeds via upsert."""
         db = AsyncMock()
-        db.select_one.return_value = None  # No existing lock
+        # Double-readback: first call returns None (no row); verification reads
+        # must return a row owned by this instance so the race-check passes.
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=120)
+        verification_row = _make_lock_row("instance-A", future_expiry)
+        db.select_one.side_effect = [None, verification_row, verification_row]
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -108,6 +112,8 @@ class TestCrashRecovery:
         # Lock expired 10 seconds ago
         expired = datetime.now(timezone.utc) - timedelta(seconds=10)
         db.select_one.return_value = _make_lock_row("dead-instance", expired)
+        # _update_lock checks len(result) == 1 for CAS success
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -148,7 +154,9 @@ class TestCrashRecovery:
         }
         oanda.get_open_trades.return_value = []
 
-        # DB returns persisted state as flat columns
+        # DB returns persisted state as flat columns.
+        # updated_at must be today so the daily P&L reset logic doesn't fire
+        # and wipe daily_pnl_usd back to "0".
         db.select_one.return_value = {
             "id": STATE_ROW_ID,
             "risk_state": "NORMAL",
@@ -158,7 +166,7 @@ class TestCrashRecovery:
             "consecutive_losses": 2,
             "last_signal_time": {"EUR_USD": "2025-01-06T12:00:00+00:00"},
             "confidence_threshold_override": None,
-            "updated_at": "2025-01-06T12:30:00+00:00",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
         save_path = (
@@ -233,6 +241,8 @@ class TestCrashRecovery:
         db = AsyncMock()
         future_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
         db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
+        # _update_lock checks len(result) == 1 for CAS success
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
@@ -264,7 +274,11 @@ class TestCrashRecovery:
     async def test_cr010_lock_acquire_empty_table(self):
         """CR-010: Lock acquire when no row exists creates new lock and returns True."""
         db = AsyncMock()
-        db.select_one.return_value = None
+        # Double-readback: first call returns None (empty table); verification reads
+        # must return a row owned by this instance so the race-check passes.
+        future_expiry = datetime.now(timezone.utc) + timedelta(seconds=120)
+        verification_row = _make_lock_row("fresh-instance", future_expiry)
+        db.select_one.side_effect = [None, verification_row, verification_row]
 
         lock = DistributedLock(db)
         result = await lock.acquire("fresh-instance")

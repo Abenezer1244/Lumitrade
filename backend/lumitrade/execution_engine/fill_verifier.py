@@ -36,12 +36,22 @@ class FillVerifier:
                 f"HIGH SLIPPAGE: {slippage:.1f} pips on {order.pair} "
                 f"(intended {order.entry_price}, filled {result.fill_price})"
             )
-            logger.warning(
-                "high_slippage_detected",
-                slippage_pips=str(slippage),
-                pair=order.pair,
-            )
-            await self.alerts.send_warning(msg)
+            # Extreme slippage (>10 pips) escalates to CRITICAL
+            if slippage > Decimal("10.0"):
+                logger.critical(
+                    "extreme_slippage_detected",
+                    slippage_pips=str(slippage),
+                    pair=order.pair,
+                    order_ref=str(order.order_ref),
+                )
+                await self.alerts.send_critical(f"EXTREME {msg}")
+            else:
+                logger.warning(
+                    "high_slippage_detected",
+                    slippage_pips=str(slippage),
+                    pair=order.pair,
+                )
+                await self.alerts.send_warning(msg)
 
         if result.fill_units != abs(order.units):
             logger.warning(
@@ -54,9 +64,10 @@ class FillVerifier:
             logger.error(
                 "sl_tp_not_confirmed",
                 order_ref=str(order.order_ref),
+                broker_trade_id=result.broker_trade_id or "unknown",
             )
             await self.alerts.send_critical(
-                f"SL/TP NOT CONFIRMED on trade {result.broker_trade_id}!"
+                f"SL/TP NOT CONFIRMED on trade {result.broker_trade_id or str(order.order_ref)}!"
             )
 
         logger.info(

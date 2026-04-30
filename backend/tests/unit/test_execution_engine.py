@@ -193,9 +193,17 @@ class TestPaperExecutor:
     def executor(self):
         return PaperExecutor()
 
-    async def test_ex_011_fills_at_current_price(self, executor):
-        """EX-011: Paper executor fills at the provided current price."""
-        order = _make_order(entry=Decimal("1.08430"))
+    async def test_ex_011_fills_at_ask_for_buy(self, executor):
+        """EX-011: BUY paper fills at current_price + 1 pip (simulated ask)."""
+        from lumitrade.utils.pip_math import pip_size
+        order = _make_order(entry=Decimal("1.08430"), direction=Direction.BUY)
+        current_price = Decimal("1.08450")
+        result = await executor.execute(order, current_price)
+        assert result.fill_price == current_price + pip_size("EUR_USD")
+
+    async def test_ex_011b_fills_at_bid_for_sell(self, executor):
+        """EX-011b: SELL paper fills at current_price (bid — no spread added)."""
+        order = _make_order(entry=Decimal("1.08430"), direction=Direction.SELL)
         current_price = Decimal("1.08450")
         result = await executor.execute(order, current_price)
         assert result.fill_price == current_price
@@ -213,15 +221,15 @@ class TestPaperExecutor:
         assert result.fill_units == 5000
 
     async def test_ex_014_slippage_calculated_in_pips(self, executor):
-        """EX-014: Slippage is correctly computed as pip difference."""
-        order = _make_order(entry=Decimal("1.08430"), pair="EUR_USD")
-        current_price = Decimal("1.08450")  # 2 pips away
+        """EX-014: BUY slippage includes 1-pip spread (fill at ask = bid+1pip)."""
+        order = _make_order(entry=Decimal("1.08430"), pair="EUR_USD", direction=Direction.BUY)
+        current_price = Decimal("1.08450")  # 2 pips from entry; +1 pip spread → 3 pips total
         result = await executor.execute(order, current_price)
-        assert result.slippage_pips == Decimal("2.0")
+        assert result.slippage_pips == Decimal("3.0")
 
-    async def test_ex_015_zero_slippage_at_entry(self, executor):
-        """EX-015: Slippage is 0 when fill price equals entry price."""
-        order = _make_order(entry=Decimal("1.08430"))
+    async def test_ex_015_sell_no_spread_slippage(self, executor):
+        """EX-015: SELL fills at bid (no spread added), so slippage is 0 at entry."""
+        order = _make_order(entry=Decimal("1.08430"), direction=Direction.SELL)
         result = await executor.execute(order, Decimal("1.08430"))
         assert result.slippage_pips == Decimal("0.0")
 
@@ -240,14 +248,14 @@ class TestPaperExecutor:
         assert result.take_profit_confirmed == Decimal("1.08800")
 
     async def test_ex_018_jpy_pair_slippage(self, executor):
-        """EX-018: JPY pair slippage uses 0.01 pip size."""
+        """EX-018: JPY BUY fills at bid+1pip; slippage from entry=149.500, bid=149.530, fill=149.540 → 4 pips."""
         order = _make_order(
             pair="USD_JPY", entry=Decimal("149.500"), sl=Decimal("149.300"),
-            tp=Decimal("149.800"),
+            tp=Decimal("149.800"), direction=Direction.BUY,
         )
-        current_price = Decimal("149.530")  # 3 pips away for JPY
+        current_price = Decimal("149.530")  # bid; BUY fill = 149.530 + 0.01 = 149.540
         result = await executor.execute(order, current_price)
-        assert result.slippage_pips == Decimal("3.0")
+        assert result.slippage_pips == Decimal("4.0")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -437,8 +445,15 @@ class TestExecutionEngine:
     def mock_deps(self):
         """Create all mocked dependencies for ExecutionEngine."""
         config = _make_config(trading_mode="PAPER")
+        # effective_trading_mode() must return "PAPER" so execute_order routes
+        # to PaperExecutor instead of OandaExecutor (which needs a real response).
+        config.effective_trading_mode = MagicMock(return_value="PAPER")
+        config.live_pairs = ["EUR_USD", "GBP_USD"]
         trading_client = AsyncMock()
         state_manager = MagicMock()
+        # kill_switch_active must be False (plain MagicMock is truthy → kills every order)
+        state_manager.kill_switch_active = False
+        state_manager.refresh_kill_switch_from_db = AsyncMock(return_value=False)
         db = AsyncMock()
         db.insert = AsyncMock()
         alert_service = AsyncMock()
@@ -533,6 +548,8 @@ class TestExecutionEngine:
         from lumitrade.execution_engine.engine import ExecutionEngine
 
         mock_deps["config"].trading_mode = "LIVE"
+        # Override fixture default ("PAPER") so routing reaches OandaExecutor
+        mock_deps["config"].effective_trading_mode = MagicMock(return_value="LIVE")
         mock_deps["trading_client"].place_market_order = AsyncMock(
             side_effect=Exception("Connection refused")
         )

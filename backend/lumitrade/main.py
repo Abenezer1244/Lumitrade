@@ -141,6 +141,7 @@ class OrchestratorService:
 
         # 4. Initialize state manager — safe now that we hold the lock
         self.state = StateManager(self.config, self.db, self.oanda)
+        self.state.mark_as_primary()
 
         # 5. Restore persisted system state — performs reconciliation +
         # writes; only safe to run as the verified primary.
