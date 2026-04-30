@@ -22,7 +22,7 @@ from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
 from ..infrastructure.oanda_client import OandaClient, OandaTradingClient
 from ..utils.pip_math import pip_size as get_pip_size
-from ..utils.pip_math import pip_value_per_unit, pips_between
+from ..utils.pip_math import pip_value_per_unit, pips_between, _FRACTIONAL_UNIT_PAIRS
 from ..utils.time_utils import session_label_for_lesson
 from ..infrastructure.secure_logger import get_logger
 from .circuit_breaker import CircuitBreaker
@@ -430,6 +430,14 @@ class ExecutionEngine:
         tp = Decimal(str(trade.get("take_profit", "0")))
         direction = trade.get("direction", "BUY")
 
+        # ── Partial scale-out (paper mode) ───────────────────────────────
+        if (self.config.partial_close_enabled
+                and not trade.get("partial_closed")
+                and trade.get("initial_stop_loss")):
+            fired = await self._try_paper_partial_close(trade, current_price, entry, direction)
+            if fired:
+                return  # SL/TP re-evaluated on next monitor cycle
+
         hit_sl = False
         hit_tp = False
 
@@ -458,6 +466,93 @@ class ExecutionEngine:
             await self._update_closed_trade(
                 trade, exit_price, pnl_pips, pnl_usd, outcome, exit_reason
             )
+
+    async def _try_paper_partial_close(
+        self,
+        trade: dict,
+        current_price: Decimal,
+        entry: Decimal,
+        direction: str,
+    ) -> bool:
+        """Fire partial scale-out for a paper trade if price has reached the target.
+        Reduces position_size, moves SL to entry (breakeven), marks partial_closed=True.
+        Returns True if partial close executed, False otherwise."""
+        from decimal import ROUND_DOWN
+
+        initial_sl = Decimal(str(trade.get("initial_stop_loss", "0")))
+        if initial_sl == 0 or entry == 0:
+            return False
+
+        initial_sl_dist = abs(entry - initial_sl)
+        if initial_sl_dist == 0:
+            return False
+
+        rr = self.config.partial_close_rr_trigger
+        target = (entry + initial_sl_dist * rr) if direction == "BUY" else (entry - initial_sl_dist * rr)
+
+        reached = (current_price >= target) if direction == "BUY" else (current_price <= target)
+        if not reached:
+            return False
+
+        pair = trade.get("pair", "")
+        position_size = Decimal(str(trade.get("position_size", "0")))
+        pc_pct = self.config.partial_close_pct
+
+        if pair in _FRACTIONAL_UNIT_PAIRS:
+            pc_units = (position_size * pc_pct).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            min_remain = Decimal("0.01")
+        else:
+            pc_units = Decimal(int(position_size * pc_pct))
+            min_remain = Decimal("1")
+
+        remaining = position_size - pc_units
+        if pc_units <= 0 or remaining < min_remain:
+            logger.info(
+                "partial_close_skipped_min_units",
+                pair=pair,
+                position_size=str(position_size),
+                pc_units=str(pc_units),
+                remaining=str(remaining),
+            )
+            return False
+
+        try:
+            await self._db.update(
+                "trades",
+                {"id": trade.get("id")},
+                {
+                    "partial_closed": True,
+                    "partial_close_price": str(current_price),
+                    "partial_close_units": str(pc_units),
+                    "position_size": str(remaining),
+                    "stop_loss": str(entry),   # move to breakeven
+                },
+            )
+            logger.info(
+                "paper_partial_close_executed",
+                pair=pair,
+                direction=direction,
+                pc_units=str(pc_units),
+                remaining_units=str(remaining),
+                close_price=str(current_price),
+                target=str(target),
+            )
+            if self._events:
+                self._events.publish(
+                    "EXECUTION", "PARTIAL_CLOSE",
+                    f"PARTIAL CLOSE: {pair} {direction} closed {pc_units} units @ {current_price} (BE locked)",
+                    pair=pair, severity="SUCCESS",
+                    metadata={
+                        "pc_units": str(pc_units),
+                        "remaining": str(remaining),
+                        "close_price": str(current_price),
+                        "rr_trigger": str(rr),
+                    },
+                )
+            return True
+        except Exception as e:
+            logger.warning("paper_partial_close_db_error", pair=pair, error=str(e))
+            return False
 
     # ── Trailing Stop Loss ──────────────────────────────────────
     # Trail distance = original SL distance (entry to SL).

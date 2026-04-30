@@ -149,6 +149,7 @@ class FilterToggles:
     use_trailing_stop: bool = True
     use_breakeven: bool = True
     use_cooldown: bool = True              # 5 min between trades on same pair
+    use_partial_close: bool = False        # partial scale-out at cfg.partial_close_rr
 
 
 @dataclass
@@ -172,6 +173,8 @@ class BacktestConfig:
     risk_pct_low_conf: Decimal = Decimal("0.005")    # < 0.80
     risk_pct_mid_conf: Decimal = Decimal("0.01")     # >= 0.80 (effectively the only tier given 0.80 cap)
     risk_pct_high_conf: Decimal = Decimal("0.02")    # >= 0.90 (dead branch under 0.80 cap)
+    partial_close_rr: Decimal = Decimal("1.5")       # take partial at this R:R multiple
+    partial_close_pct: Decimal = Decimal("0.50")     # fraction of position to close early
 
 
 @dataclass
@@ -197,6 +200,10 @@ class Trade:
     spread_cost_usd: Decimal = Decimal("0")
     slippage_cost_usd: Decimal = Decimal("0")
     swap_pnl_usd: Decimal = Decimal("0")
+    # Partial scale-out (set at open; accumulates on partial close event)
+    initial_sl_distance: Decimal = Decimal("0")
+    partial_closed: bool = False
+    partial_close_pnl_usd: Decimal = Decimal("0")
 
 
 @dataclass
@@ -555,6 +562,55 @@ def round_price(price: Decimal, pair: str) -> Decimal:
     return price.quantize(Decimal("0.00001"))
 
 
+# ─── Partial Scale-Out Helper ────────────────────────────────────────────────
+
+
+def _do_partial_close(
+    t: Trade,
+    trigger_price: Decimal,
+    direction: str,
+    pair: str,
+    cfg: BacktestConfig,
+    toggles: FilterToggles,
+    spread_pips: Decimal,
+    pip: Decimal,
+) -> Decimal:
+    """Close cfg.partial_close_pct of the position at trigger_price.
+    Modifies trade in-place (reduces units, sets partial_closed, moves SL to entry).
+    Returns the P&L booked (including friction). Returns 0 if skip conditions met."""
+    pc_pct = cfg.partial_close_pct
+    if pair in _FRACTIONAL_UNIT_PAIRS:
+        pc_units = (t.units * pc_pct).quantize(Decimal("0.01"))
+        min_remain = Decimal("0.01")
+    else:
+        pc_units = Decimal(int(t.units * pc_pct))
+        min_remain = Decimal("1000")
+
+    remaining = t.units - pc_units
+    if pc_units <= 0 or remaining < min_remain:
+        return Decimal("0")
+
+    if toggles.use_friction:
+        slip = cfg.slippage_pips * pip
+        exit_p = trigger_price - slip if direction == "BUY" else trigger_price + slip
+    else:
+        exit_p = trigger_price
+
+    pnl_pips = (exit_p - t.entry_price) / pip if direction == "BUY" else (t.entry_price - exit_p) / pip
+    pv = pip_value_per_unit(pair, exit_p)
+    pnl_usd = pnl_pips * pc_units * pv
+
+    if toggles.use_friction:
+        pnl_usd -= spread_pips * pc_units * pv
+
+    t.units = remaining
+    t.partial_closed = True
+    t.partial_close_pnl_usd = pnl_usd
+    t.stop_loss = t.entry_price   # breakeven on remaining
+    t.breakeven_set = True
+    return pnl_usd
+
+
 # ─── Backtest Engine ──────────────────────────────────────────────────────────
 
 
@@ -614,6 +670,14 @@ def run_backtest(
                     exit_price = open_trade.stop_loss
                     exit_reason = "TRAILING_STOP" if open_trade.trailing_active else "SL_HIT"
                 else:
+                    # ── Partial scale-out ──────────────────────────────────────
+                    if (toggles.use_partial_close and not open_trade.partial_closed
+                            and open_trade.initial_sl_distance > 0):
+                        pt = open_trade.entry_price + open_trade.initial_sl_distance * cfg.partial_close_rr
+                        if candle.high >= pt:
+                            pc_pnl = _do_partial_close(open_trade, pt, "BUY", pair, cfg, toggles, spread_pips, pip)
+                            balance += pc_pnl
+                            daily_pnl[date_key] += pc_pnl
                     profit_pips = (candle.close - open_trade.entry_price) / tr_pip
                     if toggles.use_breakeven and not open_trade.breakeven_set and profit_pips >= BREAKEVEN_PIPS[pair]:
                         open_trade.stop_loss = open_trade.entry_price
@@ -646,6 +710,14 @@ def run_backtest(
                     exit_price = open_trade.stop_loss
                     exit_reason = "TRAILING_STOP" if open_trade.trailing_active else "SL_HIT"
                 else:
+                    # ── Partial scale-out ──────────────────────────────────────
+                    if (toggles.use_partial_close and not open_trade.partial_closed
+                            and open_trade.initial_sl_distance > 0):
+                        pt = open_trade.entry_price - open_trade.initial_sl_distance * cfg.partial_close_rr
+                        if candle.low <= pt:
+                            pc_pnl = _do_partial_close(open_trade, pt, "SELL", pair, cfg, toggles, spread_pips, pip)
+                            balance += pc_pnl
+                            daily_pnl[date_key] += pc_pnl
                     profit_pips = (open_trade.entry_price - candle.close) / tr_pip
                     if toggles.use_breakeven and not open_trade.breakeven_set and profit_pips >= BREAKEVEN_PIPS[pair]:
                         open_trade.stop_loss = open_trade.entry_price
@@ -759,6 +831,7 @@ def run_backtest(
             confidence_score=score,
             strategies_fired="+".join(strategies),
             regime=regime,
+            initial_sl_distance=sl_distance,
         )
 
     # Close any still-open trade at last close
@@ -814,10 +887,10 @@ def _close_trade(
     t.exit_time = exit_time
     t.exit_reason = exit_reason
     t.pnl_pips = pnl_pips
-    t.pnl_usd = pnl_usd
+    t.pnl_usd = pnl_usd + t.partial_close_pnl_usd   # add any partial close P&L booked earlier
     t.spread_cost_usd = spread_cost
     t.swap_pnl_usd = swap_pnl
-    t.outcome = "WIN" if pnl_usd > 1 else ("LOSS" if pnl_usd < -1 else "BREAKEVEN")
+    t.outcome = "WIN" if t.pnl_usd > 1 else ("LOSS" if t.pnl_usd < -1 else "BREAKEVEN")
 
 
 # ─── Metrics ──────────────────────────────────────────────────────────────────

@@ -145,6 +145,18 @@ class LumitradeConfig(BaseSettings):
     btc_min_rr_ratio: Decimal = Decimal("3.0")   # require 3:1 R:R minimum on BTC
     btc_max_sl_pct: Decimal = Decimal("0.02")    # reject BTC SL wider than 2% of price
 
+    # ── Partial scale-out (win big, lose small) ────────────────────
+    # Sweep 2026-04-29 across USD_CAD + USD_JPY + BTC_USD (12k H1 candles each):
+    # Best config: partial_close_rr_trigger=1.5, partial_close_pct=0.67
+    #   USD_CAD: PF 1.96→2.00, Sharpe 1.76→1.94, MAR 2.09→2.18, MC 94.5%→95.0%
+    #   USD_JPY: PF 1.04→1.23, Sharpe 0.10→0.49, MAR 0.07→0.50 (threshold!)
+    # Disabled by default — enable after migration 018 is applied to Supabase.
+    partial_close_enabled: bool = Field(
+        validation_alias="PARTIAL_CLOSE_ENABLED", default=False
+    )
+    partial_close_rr_trigger: Decimal = Decimal("1.5")  # close at 1.5×R:R
+    partial_close_pct: Decimal = Decimal("0.67")        # close 67% of position
+
     def max_hold_hours_for(self, pair: str) -> int:
         """Per-pair max hold time. Falls back to `max_hold_hours` if no override."""
         return self.max_hold_hours_overrides.get(pair, self.max_hold_hours)
