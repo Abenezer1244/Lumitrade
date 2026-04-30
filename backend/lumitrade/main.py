@@ -155,11 +155,14 @@ class OrchestratorService:
         except Exception as e:
             logger.error("oanda_connection_failed", error=str(e))
 
-        # 6b. Validate which instruments are tradeable on this account
+        # 6b. Validate which instruments are tradeable on this account.
+        # live_pairs are explicitly approved (backtest-validated) and must not
+        # be silently removed — BTC_USD is a CFD not listed on OANDA practice.
         try:
             tradeable = await self._validate_tradeable_instruments()
+            live_approved = set(self.config.live_pairs)
             original = self.config.pairs[:]
-            self.config.pairs = [p for p in self.config.pairs if p in tradeable]
+            self.config.pairs = [p for p in self.config.pairs if p in tradeable or p in live_approved]
             removed = set(original) - set(self.config.pairs)
             if removed:
                 logger.warning(
