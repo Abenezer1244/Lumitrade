@@ -581,8 +581,21 @@ class RiskEngine:
         tp = proposal.take_profit
 
         # TP=0 means no fixed TP — trailing stop manages exit (Turtle strategy).
-        # Still enforce minimum SL distance so the stop isn't trivially tight.
         if tp == Decimal("0"):
+            # BTC_USD: trailing-stop mode is not permitted. The D1 filter edge was
+            # validated exclusively with a fixed 3:1 R:R TP. TP=0 silently bypasses
+            # btc_min_rr_ratio (3.0) and has no validated backtest coverage.
+            # Codex+Claude audit 2026-04-30 — P0 fix.
+            if proposal.pair == "BTC_USD":
+                return (
+                    "RR_RATIO",
+                    False,
+                    "BTC_USD requires a fixed take-profit — trailing-stop mode bypasses "
+                    "the required 3:1 R:R gate and has no validated edge",
+                    "TP=0",
+                    f"{min_rr}:1 R:R required",
+                )
+            # Non-BTC: still enforce minimum SL distance so the stop isn't trivially tight.
             sl_pips = pips_between(entry, sl, proposal.pair)
             min_sl = self._config.min_sl_pips
             if sl_pips < min_sl:

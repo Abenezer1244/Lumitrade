@@ -166,6 +166,10 @@ class LumitradeConfig(BaseSettings):
     confidence_penalty: Decimal = Decimal("0.05")
     lesson_block_threshold: Decimal = Decimal("0.35")
     lesson_boost_threshold: Decimal = Decimal("0.65")
+    # Lesson rules older than this many days are ignored — prevents a bad patch
+    # from permanently starving a pair via accumulated BLOCK rules.
+    # Codex+Claude audit 2026-04-30 — P3 fix.
+    lesson_max_age_days: int = 90
 
     # Defense-in-depth dual-switch for live trading. Both must agree on "LIVE"
     # for actual broker calls to fire. Any mismatch falls back to paper.

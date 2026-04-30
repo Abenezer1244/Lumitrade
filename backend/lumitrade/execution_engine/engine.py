@@ -91,9 +91,17 @@ class ExecutionEngine:
                     )
                     return None
             except Exception:
-                # Don't crash the engine on a kill-check error — fall through
-                # to existing logic. The loop-level check is the primary gate.
                 logger.exception("execute_order_kill_switch_check_failed")
+                # Refresh failed — honour cached state rather than proceeding blind.
+                # If kill was active before the refresh, block. Unknown = allow
+                # (loop-level check is the primary gate). Codex+Claude audit 2026-04-30 — P2 fix.
+                if getattr(self._state, "kill_switch_active", False):
+                    logger.warning(
+                        "execute_order_blocked_kill_switch_cached",
+                        order_ref=str(order.order_ref),
+                        pair=order.pair,
+                    )
+                    return None
 
         machine = OrderStateMachine()
         try:
@@ -133,6 +141,16 @@ class ExecutionEngine:
                         return None
                 except Exception:
                     logger.exception("execute_order_pre_broker_kill_check_failed")
+                    # Pre-broker, LIVE mode: any cached active state blocks.
+                    # Safer to miss one trade than fire a live order through a
+                    # broken kill check. Codex+Claude audit 2026-04-30 — P2 fix.
+                    if getattr(self._state, "kill_switch_active", False):
+                        logger.warning(
+                            "execute_order_blocked_kill_switch_cached_pre_broker",
+                            order_ref=str(order.order_ref),
+                            pair=order.pair,
+                        )
+                        return None
 
             try:
                 pair_is_live_approved = order.pair in self.config.live_pairs

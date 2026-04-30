@@ -58,13 +58,22 @@ def compute_h4_trend_filter(
     if action == "HOLD":
         return None
 
-    if not candles_h4 or len(candles_h4) < _H4_MIN_CANDLES:
+    candle_count = len(candles_h4) if candles_h4 else 0
+    if not candles_h4:
+        # Empty list = fetch failure, not a warm-up case. Fail-closed to protect
+        # live USD_JPY from unfiltered entries during OANDA data outages.
+        # Codex+Claude audit 2026-04-30 — P1 fix.
+        logger.warning("h4_trend_filter_fail_closed_no_data", pair=pair)
+        return f"H4 candle data unavailable — {action} blocked (fail-closed on empty fetch)"
+    if candle_count < _H4_MIN_CANDLES:
+        # Below threshold but non-empty: engine warm-up, not a fetch failure.
+        # Fail-open so the pair isn't silently dead for the first ~20 candles.
         logger.debug(
             "h4_trend_filter_skip_insufficient_data",
             pair=pair,
-            candle_count=len(candles_h4) if candles_h4 else 0,
+            candle_count=candle_count,
         )
-        return None  # fail open — don't block on missing data
+        return None  # fail open — warm-up period
 
     closes = pd.Series([float(c.close) for c in candles_h4])
     highs  = pd.Series([float(c.high)  for c in candles_h4])

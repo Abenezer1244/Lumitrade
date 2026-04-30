@@ -13,6 +13,8 @@ Pattern matching supports wildcards ("*") on pair, direction, and session fields
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from ..config import LumitradeConfig
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.secure_logger import get_logger
@@ -71,11 +73,14 @@ class LessonFilter:
             logger.warning("lesson_filter_boost_query_failed", error=str(e))
             boost_rules = []
 
+        cutoff = datetime.now(timezone.utc) - timedelta(days=self._config.lesson_max_age_days)
         matching_blocks = [
-            r for r in block_rules if self._matches(r, pair, direction, session)
+            r for r in block_rules
+            if self._matches(r, pair, direction, session) and self._is_fresh(r, cutoff)
         ]
         matching_boosts = [
-            r for r in boost_rules if self._matches(r, pair, direction, session)
+            r for r in boost_rules
+            if self._matches(r, pair, direction, session) and self._is_fresh(r, cutoff)
         ]
 
         # ── Specificity precedence ───────────────────────────────
@@ -147,6 +152,24 @@ class LessonFilter:
             for field in ("pair", "direction", "session")
             if rule.get(field, "*") != "*"
         )
+
+    @staticmethod
+    def _is_fresh(rule: dict, cutoff: datetime) -> bool:
+        """Return True if the rule was created/updated within the max-age window.
+        Rules without a timestamp are treated as fresh (legacy rows).
+        Codex+Claude audit 2026-04-30 — P3 fix."""
+        for ts_field in ("updated_at", "created_at"):
+            raw = rule.get(ts_field)
+            if not raw:
+                continue
+            try:
+                ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                return ts >= cutoff
+            except (ValueError, TypeError):
+                continue
+        return True  # no timestamp — treat as fresh (legacy row)
 
     def _matches(
         self,

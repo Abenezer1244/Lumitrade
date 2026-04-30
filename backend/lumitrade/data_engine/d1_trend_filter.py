@@ -63,13 +63,21 @@ def compute_d1_trend_filter(
     if action == "HOLD":
         return None
 
-    if not candles_d1 or len(candles_d1) < _D1_MIN_CANDLES:
+    candle_count = len(candles_d1) if candles_d1 else 0
+    if not candles_d1:
+        # Empty list = fetch failure. Fail-closed to protect live BTC_USD from
+        # entering without the D1 trend-alignment gate during data outages.
+        # Codex+Claude audit 2026-04-30 — P1 fix.
+        logger.warning("d1_trend_filter_fail_closed_no_data", pair=pair)
+        return f"D1 candle data unavailable -- {action} blocked (fail-closed on empty fetch)"
+    if candle_count < _D1_MIN_CANDLES:
+        # Below threshold but non-empty: engine warm-up, not a fetch failure.
         logger.debug(
             "d1_trend_filter_skip_insufficient_data",
             pair=pair,
-            candle_count=len(candles_d1) if candles_d1 else 0,
+            candle_count=candle_count,
         )
-        return None  # fail open
+        return None  # fail open — warm-up period
 
     closes = pd.Series([float(c.close) for c in candles_d1])
 
