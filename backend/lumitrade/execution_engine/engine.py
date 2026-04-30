@@ -562,7 +562,7 @@ class ExecutionEngine:
             else:
                 be_sl = be_sl.quantize(Decimal("0.00001"))
 
-            await self._oanda_trade.modify_trade(broker_id, be_sl, tp)
+            await self._oanda_trade.modify_trade(broker_id, be_sl, tp, pair=pair)
             await self._db.update(
                 "trades",
                 {"id": trade.get("id")},
@@ -626,8 +626,26 @@ class ExecutionEngine:
         else:
             new_sl = new_sl.quantize(Decimal("0.00001"))
 
+        # Guard: never set SL past TP — OANDA rejects and the trade is likely
+        # already at or past TP (should be closed by _check_closed_positions).
+        if tp and tp > Decimal("0"):
+            if direction == "BUY" and new_sl >= tp:
+                logger.warning(
+                    "trailing_stop_skipped_sl_past_tp",
+                    pair=pair, broker_id=broker_id,
+                    new_sl=str(new_sl), tp=str(tp), current_price=str(current_price),
+                )
+                return
+            if direction == "SELL" and new_sl <= tp:
+                logger.warning(
+                    "trailing_stop_skipped_sl_past_tp",
+                    pair=pair, broker_id=broker_id,
+                    new_sl=str(new_sl), tp=str(tp), current_price=str(current_price),
+                )
+                return
+
         # Update SL on OANDA
-        await self._oanda_trade.modify_trade(broker_id, new_sl, tp)
+        await self._oanda_trade.modify_trade(broker_id, new_sl, tp, pair=pair)
 
         # Update SL in DB
         await self._db.update(

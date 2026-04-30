@@ -308,18 +308,46 @@ class OandaTradingClient(OandaClient):
         return None
 
     async def modify_trade(
-        self, broker_trade_id: str, sl: Decimal, tp: Decimal
+        self, broker_trade_id: str, sl: Decimal, tp: Decimal, pair: str = ""
     ) -> dict:
-        """Modify SL/TP on an existing open trade."""
+        """Modify SL/TP on an existing open trade.
+
+        Uses same price precision as place_market_order (JPY=3dp, XAU=2dp,
+        others=5dp) and omits takeProfit when tp is zero so OANDA never
+        receives an invalid price. Logs the response body on 4xx so the
+        exact OANDA errorCode is visible in structured logs.
+        """
         url = (
             f"{self._base_url}/v3/accounts/{self._account_id}"
             f"/trades/{broker_trade_id}/orders"
         )
-        body = {
-            "stopLoss": {"price": str(sl)},
-            "takeProfit": {"price": str(tp)},
-        }
+        # Match precision formatting from place_market_order
+        if pair and "JPY" in pair:
+            fmt_sl = f"{float(sl):.3f}"
+            fmt_tp = f"{float(tp):.3f}" if tp and float(tp) > 0 else None
+        elif pair and "XAU" in pair:
+            fmt_sl = f"{float(sl):.2f}"
+            fmt_tp = f"{float(tp):.2f}" if tp and float(tp) > 0 else None
+        else:
+            fmt_sl = f"{float(sl):.5f}"
+            fmt_tp = f"{float(tp):.5f}" if tp and float(tp) > 0 else None
+
+        body: dict = {"stopLoss": {"price": fmt_sl}}
+        if fmt_tp is not None:
+            body["takeProfit"] = {"price": fmt_tp}
+
         resp = await self._trading_client.put(url, json=body)
+        if resp.status_code >= 400:
+            from ..infrastructure.secure_logger import get_logger
+            get_logger(__name__).error(
+                "oanda_modify_trade_error_detail",
+                status=resp.status_code,
+                body=resp.text[:500],
+                broker_trade_id=broker_trade_id,
+                pair=pair,
+                sl=fmt_sl,
+                tp=fmt_tp,
+            )
         resp.raise_for_status()
         return resp.json()
 
