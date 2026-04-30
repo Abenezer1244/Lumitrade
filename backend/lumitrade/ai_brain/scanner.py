@@ -173,8 +173,13 @@ class SignalScanner:
                 "trades",
                 {"status": "OPEN", "pair": pair, "account_id": self.config.account_uuid},
             )
-            if open_trades:
-                logger.info("already_in_position_skip", pair=pair, open_count=len(open_trades))
+            if len(open_trades) >= self.config.max_positions_per_pair:
+                logger.info(
+                    "already_at_max_positions_skip",
+                    pair=pair,
+                    open_count=len(open_trades),
+                    max_per_pair=self.config.max_positions_per_pair,
+                )
                 return None
         except Exception as e:
             # Non-critical — risk engine will re-check before execution.
