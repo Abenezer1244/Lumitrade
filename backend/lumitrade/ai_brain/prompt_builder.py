@@ -214,12 +214,11 @@ class PromptBuilder:
                 "Step 2: Look at H1 panel — is price at support/resistance?",
                 "Step 3: Look at M15 panel — is there an entry pattern?",
                 "",
-                "You may BUY or SELL in any trend direction if the chart shows:",
-                "  - A clear reversal pattern (double bottom, head & shoulders, etc.)",
-                "  - A support/resistance bounce with confirmation",
-                "  - A breakout with volume",
-                "Trading WITH the trend is preferred but NOT mandatory.",
-                "If you see a high-probability counter-trend setup, take it.",
+                "MANDATORY: Trade WITH the H4 trend direction you identified in Step 1.",
+                "  - H4 BULLISH → BUY only. SELL requires all three: major S/R + confirmed reversal pattern + 3/5 indicators agree.",
+                "  - H4 BEARISH → SELL only. BUY requires all three: major S/R + confirmed reversal pattern + 3/5 indicators agree.",
+                "  - H4 NEUTRAL → HOLD only. No trades in directionless markets.",
+                "If counter-trend conditions are not ALL met, return HOLD. Counter-trend trades without confirmation lose consistently.",
             ])
         else:
             # Text-only mode: enforce H4 trend rule (no chart to verify reversals)
@@ -336,11 +335,11 @@ class PromptBuilder:
                 "pin bars, engulfing candles, breakouts, RSI divergence."
             )
             sections.append(
-                "The chart is your primary evidence. The numeric indicators "
-                "above are supplementary confirmation. If the chart shows a "
-                "clear pattern that contradicts the indicators, TRUST THE "
-                "CHART — price action is king. Base your BUY/SELL/HOLD "
-                "decision primarily on what you see in the chart."
+                "The chart and the numeric indicators are BOTH required evidence. "
+                "Do not trade if the chart and indicators contradict each other — "
+                "contradiction means the setup is ambiguous. Return HOLD when "
+                "chart direction and indicator alignment disagree. Only trade when "
+                "both the chart pattern AND at least 3/5 indicators confirm the direction."
             )
 
         return "\n".join(sections)

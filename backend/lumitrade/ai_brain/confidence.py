@@ -36,22 +36,26 @@ class ConfidenceAdjuster:
         adjusted = raw_confidence
 
         # Factor 1: Indicator alignment
-        # With chart: Claude SAW the indicators on the TradingView chart —
-        # no penalty for numeric disagreement (chart is the truth)
-        # Without chart: apply alignment penalty as before
-        if has_chart:
-            adjustments["indicator_alignment"] = 0.0
+        # Always computed — chart mode no longer bypasses this.
+        # Chart gives Claude visual context but indicators are measurable ground
+        # truth. Codex review 2026-04-29: bypassing alignment in chart mode let
+        # Claude's self-reported confidence pass the min_confidence gate even
+        # when all 5 indicators disagreed with the proposed direction.
+        alignment = self._indicator_alignment(snapshot, action)
+        if alignment >= 0.6:
+            multiplier = Decimal("1.0")
+        elif alignment >= 0.4:
+            multiplier = Decimal("0.90")
         else:
-            alignment = self._indicator_alignment(snapshot, action)
-            if alignment >= 0.6:
-                multiplier = Decimal("1.0")
-            elif alignment >= 0.4:
-                multiplier = Decimal("0.90")
-            else:
-                multiplier = Decimal("0.75")
-            factor = adjusted * multiplier - adjusted
-            adjustments["indicator_alignment"] = float(factor)
-            adjusted = adjusted * multiplier
+            multiplier = Decimal("0.75")
+        factor = adjusted * multiplier - adjusted
+        adjustments["indicator_alignment"] = float(factor)
+        adjusted = adjusted * multiplier
+
+        # Hard cap: if fewer than 2/5 indicators agree, cap adjusted confidence
+        # below the minimum threshold regardless of Claude's self-reported score.
+        if alignment < 0.4:
+            adjusted = min(adjusted, Decimal("0.64"))
 
         # Factor 2: News proximity — always apply (chart doesn't show news)
         news_adj = self._news_proximity(snapshot)

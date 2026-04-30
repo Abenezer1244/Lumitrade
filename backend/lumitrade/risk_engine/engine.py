@@ -73,6 +73,12 @@ class RiskEngine:
 
         checks: list[CheckResult] = []
 
+        # ── Check 0: Pair Allowlist ──────────────────────────────
+        result = self._check_pair_allowlist(proposal.pair)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
         # ── Check 1: Risk State ──────────────────────────────────
         result = self._check_risk_state(risk_state)
         checks.append(result)
@@ -111,6 +117,12 @@ class RiskEngine:
 
         # ── Check 4c: No-Trade Hours ────────────────────────────
         result = self._check_no_trade_hours(now)
+        checks.append(result)
+        if not result[1]:
+            return await self._reject(proposal, result, risk_state, now)
+
+        # ── Check 4d: Weekday Block ──────────────────────────────
+        result = self._check_weekday(now)
         checks.append(result)
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
@@ -402,7 +414,14 @@ class RiskEngine:
                             str(cooldown_minutes),
                         )
         except Exception:
-            logger.warning("cooldown_check_db_error", pair=pair)
+            logger.warning("cooldown_check_db_error_fail_closed", pair=pair)
+            return (
+                "COOLDOWN",
+                False,
+                "DB error reading cooldown — fail closed to prevent burst trades",
+                "DB_ERROR",
+                str(cooldown_minutes),
+            )
 
         return (
             "COOLDOWN",
@@ -467,6 +486,35 @@ class RiskEngine:
             str(blocked),
         )
 
+    def _check_pair_allowlist(self, pair: str) -> CheckResult:
+        """Check 0: Pair must be in the configured trading universe for this mode."""
+        mode = self._config.effective_trading_mode()
+        allowed = self._config.live_pairs if mode == "LIVE" else self._config.pairs
+        passed = pair in allowed
+        return (
+            "PAIR_ALLOWLIST",
+            passed,
+            "OK" if passed else f"{pair} not in {mode} allowlist {allowed}",
+            pair,
+            str(allowed),
+        )
+
+    def _check_weekday(self, now: datetime) -> CheckResult:
+        """Check 4d: Block trading on historically loss-making weekdays (UTC)."""
+        blocked = self._config.blocked_weekdays_utc
+        if not blocked:
+            return ("WEEKDAY_BLOCK", True, "OK — no weekdays blocked", str(now.weekday()), "[]")
+        current_weekday = now.weekday()
+        passed = current_weekday not in blocked
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        return (
+            "WEEKDAY_BLOCK",
+            passed,
+            "OK" if passed else f"{day_names[current_weekday]} is in blocked weekdays {blocked}",
+            str(current_weekday),
+            str(blocked),
+        )
+
     # Per-instrument max spread for risk check (in pips)
     _MAX_SPREAD_BY_PAIR: dict[str, Decimal] = {
         "XAU_USD": Decimal("200"),
@@ -508,14 +556,25 @@ class RiskEngine:
         sl = proposal.stop_loss
         tp = proposal.take_profit
 
-        # TP=0 means no fixed TP — trailing stop manages exit (Turtle strategy)
+        # TP=0 means no fixed TP — trailing stop manages exit (Turtle strategy).
+        # Still enforce minimum SL distance so the stop isn't trivially tight.
         if tp == Decimal("0"):
+            sl_pips = pips_between(entry, sl, proposal.pair)
+            min_sl = self._config.min_sl_pips
+            if sl_pips < min_sl:
+                return (
+                    "RR_RATIO",
+                    False,
+                    f"Trailing-stop SL only {sl_pips:.1f} pips — minimum is {min_sl}",
+                    str(sl_pips),
+                    str(min_sl),
+                )
             return (
                 "RR_RATIO",
                 True,
-                "OK — trailing stop mode (no fixed TP)",
-                "N/A",
-                str(min_rr),
+                f"OK — trailing stop mode (SL {sl_pips:.1f} pips ≥ {min_sl} min)",
+                str(sl_pips),
+                str(min_sl),
             )
 
         risk_distance = abs(entry - sl)
