@@ -168,7 +168,11 @@ class OandaExecutor:
         sl_requested = order.stop_loss is not None and order.stop_loss != 0
         tp_requested = order.take_profit is not None and order.take_profit != 0
         expected_dependents = int(sl_requested) + int(tp_requested)
-        if len(related_ids) < 1 + expected_dependents:
+        # OANDA relatedTransactionIDs for a filled market order always includes:
+        # 1) MarketOrderCreate  2) OrderFill  + N dependent SL/TP orders.
+        # Threshold = 2 (base) + N dependents. Using 1+N misses the case where
+        # exactly one SL or TP dependent is absent (3 < 3 = False, no CRITICAL).
+        if len(related_ids) < 2 + expected_dependents:
             logger.critical(
                 "oanda_sl_tp_possibly_not_set",
                 order_ref=str(order.order_ref),
