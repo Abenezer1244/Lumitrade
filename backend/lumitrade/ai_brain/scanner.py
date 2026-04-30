@@ -254,6 +254,25 @@ class SignalScanner:
             await self._save_hold_signal(pair, quant_signal)
             return None
 
+        quant_direction_blocked = (
+            buy_blocked if quant_signal.action == "BUY" else sell_blocked
+        )
+        if quant_direction_blocked:
+            logger.info(
+                "lesson_filter_blocked_post_quant",
+                pair=pair,
+                direction=quant_signal.action,
+                session=lesson_session,
+            )
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "LESSON_BLOCK",
+                    f"Skipping {pair} — {quant_signal.action} blocked by trading memory",
+                    pair=pair, severity="WARNING",
+                )
+            await self._save_hold_signal(pair, quant_signal)
+            return None
+
         # ── STEP 2.5: H4 MULTI-TIMEFRAME FILTER ──
         # USD_JPY only. Requires H4 EMA5>EMA10 AND H4 ADX>=25.
         # Runs before chart/Claude to avoid burning tokens on blocked signals.

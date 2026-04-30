@@ -460,19 +460,24 @@ class OrchestratorService:
                 except Exception as _bal_err:
                     logger.debug("balance_refresh_failed", error=str(_bal_err))
 
-                # Daily loss circuit breaker — stop trading if daily P&L < -$2000
-                # Prevents catastrophic days like Mar 31 (-$11,081)
+                # Daily loss circuit breaker — stop scanning if daily P&L breaches limit.
+                # Uses config.daily_loss_limit_pct * balance for a dynamic threshold.
+                # Falls back to -$2000 when balance is unavailable (startup race).
                 daily_pnl = Decimal(str(self.state._state.get("daily_pnl", "0"))) if self.state else Decimal("0")
-                if daily_pnl < Decimal("-2000"):
+                _raw_balance = self.state._state.get("account_balance", "0") if self.state else "0"
+                _balance = Decimal(str(_raw_balance or "0"))
+                _daily_limit = -(self.config.daily_loss_limit_pct * _balance) if _balance > 0 else Decimal("-2000")
+                if daily_pnl < _daily_limit:
                     logger.warning(
                         "daily_loss_limit_hit",
                         daily_pnl=str(daily_pnl),
-                        limit="-2000",
+                        limit=str(_daily_limit),
+                        limit_pct=str(self.config.daily_loss_limit_pct),
                     )
                     if self.events:
                         self.events.publish(
                             "RISK", "DAILY_LIMIT",
-                            f"Trading paused — daily loss limit hit: ${daily_pnl:.2f}",
+                            f"Trading paused — daily loss limit hit: ${daily_pnl:.2f} (limit {float(self.config.daily_loss_limit_pct)*100:.1f}%)",
                             severity="ERROR",
                         )
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
@@ -506,6 +511,12 @@ class OrchestratorService:
                     # Per-pair session window check
                     pair_window = _pair_hours.get(pair, (0, 13))
                     if not (pair_window[0] <= current_hour < pair_window[1]):
+                        logger.debug(
+                            "pair_session_skip",
+                            pair=pair,
+                            hour=current_hour,
+                            window=f"{pair_window[0]}-{pair_window[1]}",
+                        )
                         continue
 
                     try:
