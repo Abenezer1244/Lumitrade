@@ -19,8 +19,12 @@ PIP_SIZE: dict[str, Decimal] = {
     "XAU_USD": Decimal("0.01"),
     "EUR_JPY": Decimal("0.01"),
     "GBP_JPY": Decimal("0.01"),
+    "BTC_USD": Decimal("1.00"),  # 1 pip = $1 for BTC/USD
 }
 DEFAULT_PIP = Decimal("0.0001")
+
+# Pairs that trade in fractional units (crypto CFDs on OANDA)
+_FRACTIONAL_UNIT_PAIRS = {"BTC_USD", "ETH_USD", "LTC_USD", "XRP_USD", "BCH_USD"}
 
 
 def pip_size(pair: str) -> Decimal:
@@ -55,20 +59,26 @@ def calculate_position_size(
     sl_pips: Decimal,
     pair: str,
     current_rate: Decimal,
-) -> tuple[int, Decimal]:
+) -> tuple[Decimal, Decimal]:
     """
     Calculate position size in units and risk amount in USD.
-    Returns (units: int, risk_amount_usd: Decimal).
-    Floors to nearest unit — OANDA minimum is 1 unit for all pairs.
+    For crypto pairs (BTC_USD etc.) returns units rounded to 2 decimal places
+    to support fractional trading. For all other pairs floors to integer.
+    OANDA accepts decimal unit strings for crypto CFDs.
     """
     risk_usd = balance * risk_pct
     pv_per_unit = pip_value_per_unit(pair, current_rate)
 
     if sl_pips == 0 or pv_per_unit == 0:
-        return 0, Decimal("0")
+        return Decimal("0"), Decimal("0")
 
     raw_units = risk_usd / (sl_pips * pv_per_unit)
-    units = max(0, int(raw_units))  # Floor to nearest unit, never negative
+
+    if pair in _FRACTIONAL_UNIT_PAIRS:
+        # Round to 2dp — OANDA accepts e.g. "0.97" for crypto
+        units = max(Decimal("0"), raw_units.quantize(Decimal("0.01")))
+    else:
+        units = Decimal(max(0, int(raw_units)))
 
     actual_risk = units * sl_pips * pv_per_unit
     return units, actual_risk

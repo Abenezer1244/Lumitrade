@@ -39,8 +39,8 @@ class TestPositionSizer:
             stop_loss=Decimal("1.0830"),
             pair="EUR_USD",
         )
-        assert units == 1500
-        assert isinstance(units, int)
+        assert units == Decimal("1500")
+        assert isinstance(units, Decimal)
         assert risk_usd > Decimal("0")
         # Actual risk = 1500 * 20 * 0.0001 = $3.00
         assert risk_usd == Decimal("3.0000")
@@ -62,7 +62,7 @@ class TestPositionSizer:
         )
         assert units >= 1000
         assert units % 1000 == 0
-        assert isinstance(units, int)
+        assert isinstance(units, Decimal)
         assert risk_usd > Decimal("0")
 
     def test_ps_003_floors_to_nearest_unit(self, sizer):
@@ -78,8 +78,8 @@ class TestPositionSizer:
         )
         # risk = $5, sl = 20 pips, pv = 0.0001
         # raw = 5 / (20 * 0.0001) = 2500 -> floored to int = 2500
-        assert units == 2500
-        assert isinstance(units, int)
+        assert units == Decimal("2500")
+        assert isinstance(units, Decimal)
 
     def test_ps_004_zero_sl_returns_zero(self, sizer):
         """PS-004: When entry == stop_loss (0 pip SL), return (0, 0)."""
@@ -90,7 +90,7 @@ class TestPositionSizer:
             stop_loss=Decimal("1.0850"),
             pair="EUR_USD",
         )
-        assert units == 0
+        assert units == Decimal("0")
         assert risk_usd == Decimal("0")
 
     def test_ps_005_small_balance_sizes_correctly(self, sizer):
@@ -107,8 +107,8 @@ class TestPositionSizer:
         )
         # risk = $0.50, sl = 10 pips, pv = 0.0001
         # raw = 0.50 / (10 * 0.0001) = 500 -> int = 500
-        assert units == 500
-        assert isinstance(units, int)
+        assert units == Decimal("500")
+        assert isinstance(units, Decimal)
         assert risk_usd > Decimal("0")
 
     def test_ps_006_risk_amount_within_budget(self, sizer):
@@ -141,7 +141,7 @@ class TestPositionSizer:
             stop_loss=Decimal("1.2625"),
             pair="GBP_USD",
         )
-        assert units == 1000
+        assert units == Decimal("1000")
         assert units % 1000 == 0
         # Actual risk = 1000 * 25 * 0.0001 = $2.50
         assert risk_usd == Decimal("2.5000")
@@ -157,12 +157,12 @@ class TestPositionSizer:
         )
         # risk = $20, sl = 1 pip, pv = 0.0001
         # raw = 20 / (1 * 0.0001) = 200000 -> floored to 200000
-        assert units == 200000
+        assert units == Decimal("200000")
         assert units % 1000 == 0
-        assert isinstance(units, int)
+        assert isinstance(units, Decimal)
 
     def test_ps_return_types(self, sizer):
-        """Verify return types are (int, Decimal) as documented."""
+        """Verify return types are (Decimal, Decimal) as documented."""
         units, risk_usd = sizer.calculate(
             balance=Decimal("1000"),
             risk_pct=Decimal("0.01"),
@@ -170,7 +170,7 @@ class TestPositionSizer:
             stop_loss=Decimal("1.0830"),
             pair="EUR_USD",
         )
-        assert isinstance(units, int)
+        assert isinstance(units, Decimal)
         assert isinstance(risk_usd, Decimal)
 
     def test_ps_sell_direction_same_result(self, sizer):

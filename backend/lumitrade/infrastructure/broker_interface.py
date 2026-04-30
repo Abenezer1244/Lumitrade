@@ -36,7 +36,7 @@ class BrokerInterface(ABC):
     async def place_market_order(
         self,
         pair: str,
-        units: int,
+        units: Decimal,
         sl: Decimal,
         tp: Decimal,
         client_request_id: str,

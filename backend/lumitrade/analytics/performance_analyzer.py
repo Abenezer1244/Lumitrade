@@ -51,7 +51,7 @@ class TradeRow(TypedDict, total=False):
     exit_price: str | None
     stop_loss: str
     take_profit: str
-    position_size: int
+    position_size: str
     confidence_score: str | None
     slippage_pips: str | None
     pnl_pips: str | None

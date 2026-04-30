@@ -25,7 +25,7 @@ class PositionSizer:
         entry: Decimal,
         stop_loss: Decimal,
         pair: str,
-    ) -> tuple[int, Decimal]:
+    ) -> tuple[Decimal, Decimal]:
         """
         Calculate position size in units and the actual USD risk amount.
 
@@ -37,8 +37,8 @@ class PositionSizer:
             pair: Currency pair in OANDA format (e.g. "EUR_USD").
 
         Returns:
-            Tuple of (units: int, risk_amount_usd: Decimal).
-            units is floored to the nearest 1000 (micro lot).
+            Tuple of (units: Decimal, risk_amount_usd: Decimal).
+            Forex units are whole-number Decimals; crypto may be fractional.
             Returns (0, Decimal("0")) if stop loss distance is zero.
         """
         sl_pips = pips_between(entry, stop_loss, pair)
@@ -50,7 +50,7 @@ class PositionSizer:
                 entry=str(entry),
                 stop_loss=str(stop_loss),
             )
-            return 0, Decimal("0")
+            return Decimal("0"), Decimal("0")
 
         units, risk_amount_usd = calculate_position_size(
             balance, risk_pct, sl_pips, pair, entry,

@@ -49,7 +49,7 @@ def _make_config(trading_mode="PAPER"):
 def _make_order(
     pair="EUR_USD",
     direction=Direction.BUY,
-    units=1000,
+    units=Decimal("1000"),
     entry=Decimal("1.08430"),
     sl=Decimal("1.08230"),
     tp=Decimal("1.08730"),
@@ -216,9 +216,9 @@ class TestPaperExecutor:
 
     async def test_ex_013_correct_fill_units(self, executor):
         """EX-013: fill_units equals abs(order.units)."""
-        order = _make_order(units=-5000)
+        order = _make_order(units=Decimal("-5000"))
         result = await executor.execute(order, Decimal("1.08430"))
-        assert result.fill_units == 5000
+        assert result.fill_units == Decimal("5000")
 
     async def test_ex_014_slippage_calculated_in_pips(self, executor):
         """EX-014: BUY slippage includes 1-pip spread (fill at ask = bid+1pip)."""
@@ -317,8 +317,8 @@ class TestFillVerifier:
 
     async def test_ex_023_partial_fill_detected(self, verifier, alert_service):
         """EX-023: Partial fill (units mismatch) is logged but not rejected."""
-        order = _make_order(units=1000)
-        result = _make_order_result(order, fill_units=800)
+        order = _make_order(units=Decimal("1000"))
+        result = _make_order_result(order, fill_units=Decimal("800"))
         verified = await verifier.verify(order, result)
         # Should still return — partial fills are logged, not rejected
         assert verified is not None

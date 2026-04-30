@@ -71,7 +71,7 @@ class LumitradeConfig(BaseSettings):
     #            (24 trades, +$5,499). Holds in PAPER until either (a) a fresh
     #            backtest under a tuned-for-JPY filter stack passes, or (b) ~50+
     #            additional paper trades sustain the edge. PRD §3.4.
-    pairs: list[str] = ["USD_CAD", "USD_JPY"]
+    pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
     # 2026-04-28: User added USD_JPY to live_pairs for demo-week
     # observability on OANDA practice. Joint Claude+Codex review
     # recommended against it (USD_JPY backtest fails 4/5 live thresholds:

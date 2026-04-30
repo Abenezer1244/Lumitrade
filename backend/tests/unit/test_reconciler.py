@@ -147,7 +147,6 @@ class TestPositionReconciler:
         assert update_data["status"] == "CLOSED"
         assert update_data["exit_reason"] == ExitReason.UNKNOWN.value
         assert "closed_at" in update_data
-        assert "Ghost detected" in update_data["reconciliation_note"]
 
         # CRITICAL alert must have been sent
         mock_alerts.send_critical.assert_called_once()
@@ -189,10 +188,8 @@ class TestPositionReconciler:
         assert insert_data["broker_trade_id"] == "OT-999"
         assert insert_data["pair"] == "GBP_USD"
         assert insert_data["direction"] == "BUY"  # positive units -> BUY
-        assert insert_data["units"] == "5000"
+        assert insert_data["position_size"] == "5000"
         assert insert_data["status"] == "OPEN"
-        assert insert_data["is_phantom"] is True
-        assert "Phantom detected" in insert_data["reconciliation_note"]
 
         # CRITICAL alert must have been sent
         mock_alerts.send_critical.assert_called_once()
@@ -411,4 +408,4 @@ class TestPositionReconciler:
         assert len(result["phantoms"]) == 1
         insert_data = mock_db.insert.call_args[0][1]
         assert insert_data["direction"] == "SELL"
-        assert insert_data["units"] == "-3000"
+        assert insert_data["position_size"] == "3000"

@@ -329,8 +329,9 @@ class PositionReconciler:
         # Create emergency DB record
         # NOTE: Only use columns that exist on the trades table schema.
         try:
-            direction = "BUY" if int(str(units).replace(",", "")) > 0 else "SELL"
-            abs_units = abs(int(str(units).replace(",", "")))
+            units_decimal = Decimal(str(units).replace(",", ""))
+            direction = "BUY" if units_decimal > 0 else "SELL"
+            abs_units = abs(units_decimal)
             # Get the account_id from an existing trade, or use config
             from ..config import LumitradeConfig
             config = LumitradeConfig()  # type: ignore[call-arg]
@@ -342,7 +343,7 @@ class PositionReconciler:
                     "broker_trade_id": trade_id,
                     "pair": instrument,
                     "direction": direction,
-                    "position_size": abs_units,
+                    "position_size": str(abs_units),
                     "entry_price": str(price),
                     "stop_loss": str(price),
                     # Phantom rows have no real SL distance — set

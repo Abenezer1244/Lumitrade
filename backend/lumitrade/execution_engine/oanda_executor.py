@@ -73,6 +73,14 @@ class OandaExecutor:
                 )
                 recovered = None
 
+            if recovered is not None and not isinstance(recovered, dict):
+                logger.warning(
+                    "oanda_order_recovery_lookup_malformed",
+                    order_ref=str(order.order_ref),
+                    recovered_type=type(recovered).__name__,
+                )
+                recovered = None
+
             if recovered is not None:
                 logger.warning(
                     "oanda_order_recovered_via_client_id",
@@ -159,7 +167,7 @@ class OandaExecutor:
         order_create = response.get("orderCreateTransaction", {})
         order_id = order_create.get("id", order_fill.get("id", ""))
         fill_price = Decimal(str(order_fill.get("price", order.entry_price)))
-        fill_units = int(order_fill.get("units", abs(order.units)))
+        fill_units = Decimal(str(order_fill.get("units", abs(order.units))))
         from ..utils.pip_math import pips_between
         slippage = pips_between(order.entry_price, fill_price, order.pair)
 

@@ -243,7 +243,7 @@ class ApprovedOrder:
     signal_id: UUID
     pair: str
     direction: Direction
-    units: int
+    units: Decimal  # Decimal to support fractional crypto units (e.g. 0.97 BTC)
     entry_price: Decimal
     stop_loss: Decimal
     take_profit: Decimal
@@ -271,7 +271,7 @@ class OrderResult:
     broker_trade_id: str
     status: OrderStatus
     fill_price: Decimal
-    fill_units: int
+    fill_units: Decimal  # Decimal to support fractional crypto fills
     fill_timestamp: datetime
     stop_loss_confirmed: Decimal
     take_profit_confirmed: Decimal

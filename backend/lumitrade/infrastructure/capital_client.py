@@ -207,7 +207,7 @@ class CapitalComClient(BrokerInterface):
     async def place_market_order(
         self,
         pair: str,
-        units: int,
+        units: Decimal,
         sl: Decimal,
         tp: Decimal,
         client_request_id: str,
@@ -273,7 +273,7 @@ class CapitalComClient(BrokerInterface):
             return {}
 
     def _to_oanda_format(
-        self, result: dict, pair: str, direction: str, size: int,
+        self, result: dict, pair: str, direction: str, size: Decimal,
         sl: Decimal, tp: Decimal,
     ) -> dict:
         """Convert Capital.com response to OANDA-compatible format."""

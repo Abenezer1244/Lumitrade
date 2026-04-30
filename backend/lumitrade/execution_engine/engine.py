@@ -267,7 +267,7 @@ class ExecutionEngine:
             "stop_loss": str(order.stop_loss),
             "initial_stop_loss": str(order.stop_loss),
             "take_profit": str(order.take_profit),
-            "position_size": abs(order.units),
+            "position_size": str(abs(order.units)),
             "confidence_score": str(order.confidence),
             "slippage_pips": str(result.slippage_pips),
             "status": "OPEN",
@@ -448,9 +448,9 @@ class ExecutionEngine:
             elif hit_sl:
                 pnl_pips = -abs(pnl_pips)
 
-            units = int(trade.get("position_size", 0))
+            units = Decimal(str(trade.get("position_size", 0)))
             pv = pip_value_per_unit(pair, exit_price)
-            pnl_usd = pnl_pips * Decimal(str(units)) * pv
+            pnl_usd = pnl_pips * units * pv
 
             outcome = "WIN" if pnl_usd > 0 else "LOSS"
             exit_reason = "TP_HIT" if hit_tp else "SL_HIT"
@@ -731,9 +731,9 @@ class ExecutionEngine:
 
         # Use OANDA's realized P&L if available, otherwise calculate
         if realized_pnl == 0 and exit_price != entry:
-            units = int(trade.get("position_size", 0))
+            units = Decimal(str(trade.get("position_size", 0)))
             pv = pip_value_per_unit(pair, exit_price)
-            realized_pnl = pnl_pips * Decimal(str(units)) * pv
+            realized_pnl = pnl_pips * units * pv
 
         outcome = "WIN" if realized_pnl > 0 else ("LOSS" if realized_pnl < 0 else "BREAKEVEN")
 

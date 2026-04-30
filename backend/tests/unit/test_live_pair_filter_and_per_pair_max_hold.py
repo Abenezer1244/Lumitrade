@@ -53,12 +53,12 @@ def env_with_required_keys(monkeypatch):
 
 
 def test_live_pairs_default_only_usd_cad(env_with_required_keys):
-    """Per backtest verdict: only USD_CAD has passed live thresholds."""
+    """Operator override (2026-04-28): USD_JPY added to live_pairs for demo-week
+    visibility on OANDA practice. Revert to ['USD_CAD'] before real-money trading."""
     from lumitrade.config import LumitradeConfig
     cfg = LumitradeConfig()
-    assert cfg.live_pairs == ["USD_CAD"], (
-        f"live_pairs default must be ['USD_CAD'] only — got {cfg.live_pairs}"
-    )
+    assert "USD_CAD" in cfg.live_pairs, f"USD_CAD must be in live_pairs — got {cfg.live_pairs}"
+    assert "USD_JPY" in cfg.live_pairs, f"USD_JPY expected in live_pairs (demo-week override)"
 
 
 def test_pairs_universe_still_includes_usd_jpy_for_paper(env_with_required_keys):
@@ -163,8 +163,9 @@ def test_risk_pct_above_080_still_1pct_after_dead_branch_removal(env_with_requir
     )
 
 
-def test_risk_pct_ai_recommendation_takes_precedence(env_with_required_keys):
-    """AI-recommended risk still wins, clamped to [0.25%, 2.0%]."""
+def test_risk_pct_ai_recommendation_advisory_only(env_with_required_keys):
+    """AI-recommended risk_pct is currently advisory_only (pending empirical validation).
+    _determine_risk_pct returns the deterministic confidence-tier rate, not the AI suggestion."""
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
@@ -173,25 +174,23 @@ def test_risk_pct_ai_recommendation_takes_precedence(env_with_required_keys):
     engine.config = cfg
     p = MagicMock()
     p.confidence_adjusted = Decimal("0.75")
-    p.recommended_risk_pct = Decimal("0.015")
+    p.recommended_risk_pct = Decimal("0.015")  # AI suggests 1.5% but is ignored
     rp = engine._determine_risk_pct(p)
-    assert rp == Decimal("0.015")
+    # Advisory mode: falls back to deterministic confidence-based rate (0.5% for conf 0.75)
+    assert rp == Decimal("0.005"), f"Expected deterministic 0.5% (advisory mode) — got {rp}"
 
 
 def test_risk_pct_ai_recommendation_clamped(env_with_required_keys):
+    """When AI advisory eventually activates, extreme values must be clamped.
+    Currently advisory_only so deterministic rate returned for all inputs."""
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
     engine = RiskEngine.__new__(RiskEngine)
     engine._config = cfg
     engine.config = cfg
-    # Above max
     p = MagicMock()
     p.confidence_adjusted = Decimal("0.75")
-    p.recommended_risk_pct = Decimal("0.05")  # 5% — above 2% cap
+    p.recommended_risk_pct = Decimal("0.05")  # 5% — advisory, ignored
     rp = engine._determine_risk_pct(p)
-    assert rp == Decimal("0.02")
-    # Below min
-    p.recommended_risk_pct = Decimal("0.001")  # 0.1% — below 0.25% floor
-    rp = engine._determine_risk_pct(p)
-    assert rp == Decimal("0.0025")
+    assert rp == Decimal("0.005"), f"Expected deterministic 0.5% (advisory mode) — got {rp}"

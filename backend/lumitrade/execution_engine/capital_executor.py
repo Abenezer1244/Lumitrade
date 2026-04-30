@@ -63,7 +63,7 @@ class CapitalExecutor:
             trade_id = str(order_fill.get("id", ""))
 
         fill_price = Decimal(str(order_fill.get("price", order.entry_price)))
-        fill_units = int(order_fill.get("units", abs(order.units)))
+        fill_units = Decimal(str(order_fill.get("units", abs(order.units))))
 
         from ..utils.pip_math import pips_between
         slippage = pips_between(order.entry_price, fill_price, order.pair)

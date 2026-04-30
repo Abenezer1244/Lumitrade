@@ -71,7 +71,7 @@ class TestPositionSize:
             pair="EUR_USD",
             current_rate=Decimal("1.08430"),
         )
-        assert units == 1500
+        assert units == Decimal("1500")
         # risk_usd = 1500 * 20 * 0.0001 = $3.00
         assert Decimal("2.50") <= risk_usd <= Decimal("3.50")
 
@@ -85,7 +85,7 @@ class TestPositionSize:
             pair="EUR_USD",
             current_rate=Decimal("1.08430"),
         )
-        assert units == 13333
+        assert units == Decimal("13333")
         # risk_usd = 13333 * 15 * 0.0001 ≈ $19.9995
         assert Decimal("19.00") <= risk_usd <= Decimal("21.00")
 
@@ -111,7 +111,7 @@ class TestPositionSize:
             pair="EUR_USD",
             current_rate=Decimal("1.08430"),
         )
-        assert units == 0
+        assert units == Decimal("0")
         assert risk_usd == Decimal("0")
 
     def test_position_size_zero_pip_value_returns_zero(self):
@@ -123,7 +123,7 @@ class TestPositionSize:
             pair="USD_JPY",
             current_rate=Decimal("0"),
         )
-        assert units == 0
+        assert units == Decimal("0")
         assert risk_usd == Decimal("0")
 
     def test_risk_amount_matches_position_math(self):

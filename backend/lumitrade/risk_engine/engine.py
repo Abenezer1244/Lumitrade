@@ -181,33 +181,33 @@ class RiskEngine:
             new_pair=proposal.pair,
         )
         is_metal = proposal.pair.startswith("XAU") or proposal.pair.startswith("XAG")
+        is_crypto = proposal.pair.startswith("BTC") or proposal.pair.startswith("ETH")
         if corr_multiplier < Decimal("1.0"):
             original_units = units
-            units = int(Decimal(str(units)) * corr_multiplier)
-            # OANDA accepts integer units down to 1 for both forex and
-            # metals. The previous "round to 1000-unit micro lot" logic
-            # was a holdover from broker-conflation that zeroed out
-            # small-account corrections — dropped in the two-gate
-            # rework (Claude + Codex 2026-04-27).
-            if units < 0:
-                units = 0
+            adjusted = Decimal(str(units)) * corr_multiplier
+            # Crypto: keep 2dp fractional; forex/metals: floor to integer
+            if is_crypto:
+                from decimal import ROUND_DOWN
+                units = max(Decimal("0"), adjusted.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+            else:
+                units = Decimal(max(0, int(adjusted)))
             risk_amount_usd = risk_amount_usd * corr_multiplier
             logger.info(
                 "correlation_units_reduced",
                 pair=proposal.pair,
-                original_units=original_units,
-                adjusted_units=units,
+                original_units=str(original_units),
+                adjusted_units=str(units),
                 multiplier=str(corr_multiplier),
                 open_correlated_pairs=open_pairs,
             )
 
         # Maximum position size cap
-        max_units = self._config.max_position_units
+        max_units = Decimal(str(self._config.max_position_units))
         if units > max_units:
             logger.info(
                 "position_size_capped",
-                original_units=units,
-                capped_units=max_units,
+                original_units=str(units),
+                capped_units=str(max_units),
                 pair=proposal.pair,
             )
             sl_pips = pips_between(proposal.entry_price, proposal.stop_loss, proposal.pair)
@@ -232,10 +232,15 @@ class RiskEngine:
 
         # ── Two-gate position sizing (Claude + Codex review 2026-04-27)
         #
-        # Gate A — broker feasibility. OANDA accepts integer units >=1
-        # for both forex and metals. This guard enforces ONLY what the
-        # broker requires; policy decisions live in Gate B.
-        min_units = 1 if is_metal else self._config.min_position_units_forex
+        # Gate A — broker feasibility.
+        # Forex/metals: OANDA minimum is 1 integer unit.
+        # Crypto CFDs: OANDA accepts fractional units, minimum 0.01.
+        if is_crypto:
+            min_units = Decimal("0.01")
+        elif is_metal:
+            min_units = Decimal("1")
+        else:
+            min_units = Decimal(str(self._config.min_position_units_forex))
         if units < min_units:
             min_result: CheckResult = (
                 "MINIMUM_POSITION_SIZE",
@@ -518,6 +523,7 @@ class RiskEngine:
     # Per-instrument max spread for risk check (in pips)
     _MAX_SPREAD_BY_PAIR: dict[str, Decimal] = {
         "XAU_USD": Decimal("200"),
+        "BTC_USD": Decimal("500"),  # BTC spread is $50-200 wide; 500-pip tolerance
     }
 
     def _check_spread(self, proposal: SignalProposal) -> CheckResult:
@@ -691,7 +697,11 @@ class RiskEngine:
             return
 
         # Missing or malformed row — already failed closed at step 1, just log
-        if not row or not row.get("open_trades") or not isinstance(row["open_trades"], dict):
+        if (
+            not isinstance(row, dict)
+            or not row.get("open_trades")
+            or not isinstance(row["open_trades"], dict)
+        ):
             logger.warning(
                 "user_settings_malformed_fail_closed",
                 row_present=bool(row),

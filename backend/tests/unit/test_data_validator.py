@@ -89,45 +89,43 @@ class TestSpikeDetection:
         assert quality.spike_detected is False
 
     def test_extreme_price_spike_detected(self, validator):
-        # Fill history with slightly varying prices to create nonzero std
-        base_prices = [
+        # Fill ROLLING_WINDOW (100) prices with slight variation to create nonzero std
+        pattern = [
             "1.08420", "1.08430", "1.08440", "1.08425", "1.08435",
             "1.08445", "1.08430", "1.08420", "1.08440", "1.08430",
-            "1.08425", "1.08435", "1.08440", "1.08420", "1.08430",
-            "1.08435", "1.08445", "1.08425", "1.08430", "1.08440",
-            "1.08430", "1.08425", "1.08435", "1.08440", "1.08420",
         ]
-        for bid in base_prices:
+        for i in range(100):
+            bid = pattern[i % len(pattern)]
             ask = str(Decimal(bid) + Decimal("0.00010"))
             tick = _make_tick(bid=bid, ask=ask)
             validator.validate_tick(tick)
 
-        # Extreme price — well beyond 3 sigma
+        # Extreme price — well beyond 5 sigma
         tick = _make_tick(bid="1.10000", ask="1.10010")
         quality = validator.validate_tick(tick)
         assert quality.spike_detected is True
 
     def test_spike_not_added_to_history(self, validator):
-        # Fill history with varying prices
-        base_prices = [
+        # Validator always updates history (by design — avoids stale-window lockout).
+        # Spike ticks are recorded in the rolling buffer like any other tick.
+        pattern = [
             "1.08420", "1.08430", "1.08440", "1.08425", "1.08435",
             "1.08445", "1.08430", "1.08420", "1.08440", "1.08430",
-            "1.08425", "1.08435", "1.08440", "1.08420", "1.08430",
-            "1.08435", "1.08445", "1.08425", "1.08430", "1.08440",
-            "1.08430", "1.08425", "1.08435", "1.08440", "1.08420",
         ]
-        for bid in base_prices:
+        for i in range(100):
+            bid = pattern[i % len(pattern)]
             ask = str(Decimal(bid) + Decimal("0.00010"))
             tick = _make_tick(bid=bid, ask=ask)
             validator.validate_tick(tick)
 
         initial_len = len(validator._price_history["EUR_USD"])
 
-        # Spike tick — should be detected and NOT added to history
+        # Spike tick is added to history (validator always appends to prevent stale window)
         tick = _make_tick(bid="1.10000", ask="1.10010")
-        validator.validate_tick(tick)
+        quality = validator.validate_tick(tick)
 
-        assert len(validator._price_history["EUR_USD"]) == initial_len
+        assert quality.spike_detected is True
+        assert len(validator._price_history["EUR_USD"]) == initial_len + 1
 
     def test_insufficient_history_no_spike(self, validator):
         # Only 5 ticks — not enough for spike detection

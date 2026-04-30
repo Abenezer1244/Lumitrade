@@ -111,7 +111,7 @@ class OandaClient(BrokerInterface):
     async def place_market_order(
         self,
         pair: str,
-        units: int,
+        units: Decimal,
         sl: Decimal,
         tp: Decimal,
         client_request_id: str,
@@ -169,7 +169,7 @@ class OandaTradingClient(OandaClient):
     async def place_market_order(
         self,
         pair: str,
-        units: int,
+        units: Decimal,
         sl: Decimal,
         tp: Decimal,
         client_request_id: str,
@@ -177,10 +177,10 @@ class OandaTradingClient(OandaClient):
         """Place market order with attached SL and TP."""
         url = f"{self._base_url}/v3/accounts/{self._account_id}/orders"
         # OANDA requires specific price precision per instrument
-        # JPY pairs: 3 decimals, XAU: 2 decimals, others: 5 decimals
+        # JPY pairs: 3 decimals, XAU/BTC: 2 decimals, others: 5 decimals
         if "JPY" in pair:
             fmt_sl, fmt_tp = f"{float(sl):.3f}", f"{float(tp):.3f}"
-        elif "XAU" in pair:
+        elif "XAU" in pair or "BTC" in pair:
             fmt_sl, fmt_tp = f"{float(sl):.2f}", f"{float(tp):.2f}"
         else:
             fmt_sl, fmt_tp = f"{float(sl):.5f}", f"{float(tp):.5f}"
@@ -325,7 +325,7 @@ class OandaTradingClient(OandaClient):
         if pair and "JPY" in pair:
             fmt_sl = f"{float(sl):.3f}"
             fmt_tp = f"{float(tp):.3f}" if tp and float(tp) > 0 else None
-        elif pair and "XAU" in pair:
+        elif pair and ("XAU" in pair or "BTC" in pair):
             fmt_sl = f"{float(sl):.2f}"
             fmt_tp = f"{float(tp):.2f}" if tp and float(tp) > 0 else None
         else:
