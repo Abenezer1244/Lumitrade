@@ -61,8 +61,10 @@ class LessonFilter:
                 {"account_id": account_id, "rule_type": "BLOCK"},
             )
         except Exception as e:
-            logger.warning("lesson_filter_block_query_failed", error=str(e))
-            block_rules = []
+            # Fail-closed: a DB error on BLOCK rules means we cannot confirm the
+            # pair is safe to trade. Block immediately rather than skipping checks.
+            logger.warning("lesson_filter_block_query_failed_fail_closed", error=str(e))
+            return True, []
 
         try:
             boost_rules = await self._db.select(

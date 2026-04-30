@@ -20,7 +20,7 @@ Backtest validation (April 2024 – April 2026, H1 data 12434 bars):
 
 D1 bars are synthesized from the 30 most recent D-granularity candles fetched by CandleFetcher.
 
-Fail-open: returns None (allowed) when D1 candle data is insufficient.
+Fail-closed: blocks when D1 candle data is insufficient (empty or below warm-up threshold).
 Only applied to BTC_USD — other pairs pass through unchanged.
 """
 from __future__ import annotations
@@ -71,13 +71,18 @@ def compute_d1_trend_filter(
         logger.warning("d1_trend_filter_fail_closed_no_data", pair=pair)
         return f"D1 candle data unavailable -- {action} blocked (fail-closed on empty fetch)"
     if candle_count < _D1_MIN_CANDLES:
-        # Below threshold but non-empty: engine warm-up, not a fetch failure.
-        logger.debug(
-            "d1_trend_filter_skip_insufficient_data",
+        # Below threshold but non-empty: engine warm-up. Fail-closed until
+        # sufficient history exists — an EMA from <12 bars is unreliable.
+        logger.warning(
+            "d1_trend_filter_fail_closed_insufficient_data",
             pair=pair,
             candle_count=candle_count,
+            required=_D1_MIN_CANDLES,
         )
-        return None  # fail open — warm-up period
+        return (
+            f"D1 insufficient data ({candle_count}/{_D1_MIN_CANDLES} candles) "
+            f"-- {action} blocked (fail-closed warm-up)"
+        )
 
     closes = pd.Series([float(c.close) for c in candles_d1])
 

@@ -13,7 +13,7 @@ Backtest validation (April 2024 – April 2026, H4 data 3109 bars):
   Walk-forward out-of-sample (30%): PF 6.82, Sharpe 5.60, MC 99.7%
   ADX plateau confirmed stable from ADX 23–29 (not a cliff cutoff).
 
-Fail-open: returns None (allowed) when H4 candle data is insufficient.
+Fail-closed: blocks when H4 candle data is insufficient (empty or below warm-up threshold).
 Only applied to USD_JPY — other pairs pass through unchanged.
 """
 from __future__ import annotations
@@ -66,14 +66,18 @@ def compute_h4_trend_filter(
         logger.warning("h4_trend_filter_fail_closed_no_data", pair=pair)
         return f"H4 candle data unavailable — {action} blocked (fail-closed on empty fetch)"
     if candle_count < _H4_MIN_CANDLES:
-        # Below threshold but non-empty: engine warm-up, not a fetch failure.
-        # Fail-open so the pair isn't silently dead for the first ~20 candles.
-        logger.debug(
-            "h4_trend_filter_skip_insufficient_data",
+        # Below threshold but non-empty: engine warm-up. Fail-closed until
+        # sufficient history exists — an EMA from <20 bars is unreliable.
+        logger.warning(
+            "h4_trend_filter_fail_closed_insufficient_data",
             pair=pair,
             candle_count=candle_count,
+            required=_H4_MIN_CANDLES,
         )
-        return None  # fail open — warm-up period
+        return (
+            f"H4 insufficient data ({candle_count}/{_H4_MIN_CANDLES} candles) "
+            f"— {action} blocked (fail-closed warm-up)"
+        )
 
     closes = pd.Series([float(c.close) for c in candles_h4])
     highs  = pd.Series([float(c.high)  for c in candles_h4])

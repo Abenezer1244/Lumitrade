@@ -124,7 +124,9 @@ class DataEngine:
         candles_d1  = candle_data.get("D", [])
 
         # 4. Validate candles (log failures but only block on OHLC, not gaps)
-        for tf_candles in [candles_m15, candles_h1, candles_h4]:
+        # D1 included — Codex+Claude audit 2026-04-30: malformed D1 OHLC would
+        # produce a wrong EMA in the BTC D1 filter without OHLC validation.
+        for tf_candles in [candles_m15, candles_h1, candles_h4, candles_d1]:
             ohlc_ok, gaps_ok = self._validator.validate_candles(tf_candles)
             if not ohlc_ok:
                 quality = DataQuality(

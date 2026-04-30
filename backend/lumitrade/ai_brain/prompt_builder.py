@@ -273,16 +273,31 @@ class PromptBuilder:
             "=== POSITION SIZING GUIDANCE ===",
             "Set stop_loss at a logical technical level (support/resistance, swing low/high).",
             "",
-            "CRITICAL — TURTLE STRATEGY (let winners run):",
-            "  - Set take_profit to 0. We do NOT use fixed TP targets.",
-            "  - The trailing stop will manage the exit automatically.",
-            "  - Winners ride the trend until the trailing stop catches up.",
-            "  - This means some trades run for 50, 100, even 200+ pips.",
-            "  - Our edge is NOT win rate — it's making winners 3-5x bigger than losers.",
-            f"  Current ATR(14): {ind.atr_14} — this is the average range per candle.",
-            "  - Set SL at 3.0x ATR from entry (backtested: wider SL = higher profit).",
-            "  - A wider SL means fewer stop-outs from normal volatility.",
-            "  - Only trade setups where you believe a sustained move is likely.",
+            "=== BTC_USD SPECIFIC RULES ===" if snapshot.pair == "BTC_USD" else "CRITICAL — TURTLE STRATEGY (let winners run):",
+            *(
+                [
+                    "BTC_USD uses a FIXED take-profit — NOT the Turtle strategy.",
+                    "  - Set take_profit to exactly 3.0x the SL distance from entry.",
+                    "  - Example: entry=95000, SL=93500 (1500 dist) → TP=99500 (4500 dist = 3:1)",
+                    "  - NEVER set take_profit to 0 for BTC — the risk engine will reject it.",
+                    "  - SL must be at most 2% of entry price (e.g. entry=95000 → max SL dist=1900).",
+                    f"  Current ATR(14): {ind.atr_14} — use 1.5x ATR for SL (validated in backtest).",
+                    "  - Set SL at 1.5x ATR from entry for BTC (tighter than forex; BTC edge needs it).",
+                    "  - Only trade when D1 trend (daily EMA5 vs EMA10) aligns with your direction.",
+                ]
+                if snapshot.pair == "BTC_USD"
+                else [
+                    "  - Set take_profit to 0. We do NOT use fixed TP targets.",
+                    "  - The trailing stop will manage the exit automatically.",
+                    "  - Winners ride the trend until the trailing stop catches up.",
+                    "  - This means some trades run for 50, 100, even 200+ pips.",
+                    "  - Our edge is NOT win rate — it's making winners 3-5x bigger than losers.",
+                    f"  Current ATR(14): {ind.atr_14} — this is the average range per candle.",
+                    "  - Set SL at 3.0x ATR from entry (backtested: wider SL = higher profit).",
+                    "  - A wider SL means fewer stop-outs from normal volatility.",
+                    "  - Only trade setups where you believe a sustained move is likely.",
+                ]
+            ),
             "",
             "=== GOLD (XAU_USD) SPECIFIC RULES ===" if snapshot.pair == "XAU_USD" else "",
             (

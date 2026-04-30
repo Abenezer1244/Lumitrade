@@ -164,6 +164,21 @@ class OandaExecutor:
                 f"OANDA returned no orderFillTransaction for {order.pair}. Keys: {list(response.keys())}"
             )
 
+        related_ids = response.get("relatedTransactionIDs", [])
+        sl_requested = order.stop_loss is not None and order.stop_loss != 0
+        tp_requested = order.take_profit is not None and order.take_profit != 0
+        expected_dependents = int(sl_requested) + int(tp_requested)
+        if len(related_ids) < 1 + expected_dependents:
+            logger.critical(
+                "oanda_sl_tp_possibly_not_set",
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+                related_ids_count=len(related_ids),
+                expected_dependents=expected_dependents,
+                sl=order.stop_loss,
+                tp=order.take_profit,
+            )
+
         order_create = response.get("orderCreateTransaction", {})
         order_id = order_create.get("id", order_fill.get("id", ""))
         fill_price = Decimal(str(order_fill.get("price", order.entry_price)))
@@ -179,6 +194,7 @@ class OandaExecutor:
             fill_price=fill_price,
             fill_units=abs(fill_units),
             fill_timestamp=datetime.now(timezone.utc),
+            # NOTE: These reflect the requested values, not confirmed OANDA values. Confirmation is approximated via relatedTransactionIDs count above.
             stop_loss_confirmed=order.stop_loss,
             take_profit_confirmed=order.take_profit,
             slippage_pips=slippage,

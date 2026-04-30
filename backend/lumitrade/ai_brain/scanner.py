@@ -388,6 +388,57 @@ class SignalScanner:
             pair, system, prompt, prompt_hash, snapshot, chart_b64=chart_b64,
         )
 
+        # ── STEP 5b: POST-CLAUDE MTF RECHECK ──────────────────────────────────
+        # Codex+Claude audit 2026-04-30 — critical fix.
+        # The H4/D1 MTF filters ran on quant_signal.action (pre-Claude).
+        # Claude may flip direction (e.g. quant=BUY, Claude=SELL). Without
+        # this recheck, the final direction bypasses the MTF gate entirely —
+        # especially in chart mode where _check_h4_trend_alignment is skipped.
+        if proposal:
+            final_action = (
+                proposal.action.value
+                if hasattr(proposal.action, "value")
+                else str(proposal.action)
+            )
+            if final_action not in ("HOLD",):
+                h4_recheck = compute_h4_trend_filter(
+                    snapshot.candles_h4, final_action, pair
+                )
+                if h4_recheck:
+                    logger.warning(
+                        "h4_mtf_filter_post_claude_blocked",
+                        pair=pair,
+                        quant_action=quant_signal.action,
+                        claude_action=final_action,
+                        reason=h4_recheck,
+                    )
+                    if self._events:
+                        self._events.publish(
+                            "SCANNER", "SIGNAL",
+                            f"No trade on {pair} — H4 MTF blocked Claude direction flip: {h4_recheck}",
+                            pair=pair, severity="WARNING",
+                        )
+                    return None
+
+                d1_recheck = compute_d1_trend_filter(
+                    snapshot.candles_d1, final_action, pair
+                )
+                if d1_recheck:
+                    logger.warning(
+                        "d1_mtf_filter_post_claude_blocked",
+                        pair=pair,
+                        quant_action=quant_signal.action,
+                        claude_action=final_action,
+                        reason=d1_recheck,
+                    )
+                    if self._events:
+                        self._events.publish(
+                            "SCANNER", "SIGNAL",
+                            f"No trade on {pair} — D1 MTF blocked Claude direction flip: {d1_recheck}",
+                            pair=pair, severity="WARNING",
+                        )
+                    return None
+
         # 6. Publish signal result
         if proposal and self._events:
             if (proposal.action.value if hasattr(proposal.action, "value") else str(proposal.action)) == "HOLD":
