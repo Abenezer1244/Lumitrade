@@ -187,6 +187,7 @@ class MarketSnapshot:
     account_context: AccountContext
     data_quality: DataQuality
     # Phase 0 defaults — populated when features activate
+    candles_d1: list[Candle] = field(default_factory=list)
     market_regime: MarketRegime = MarketRegime.UNKNOWN
     sentiment: dict[str, CurrencySentiment] = field(default_factory=dict)
     ai_models: list[str] = field(default_factory=lambda: ["claude-sonnet"])

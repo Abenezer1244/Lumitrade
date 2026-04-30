@@ -16,6 +16,7 @@ from ..config import LumitradeConfig
 from ..core.enums import Action, GenerationMethod, TradeDuration
 from ..core.models import SignalProposal
 from ..data_engine.engine import DataEngine
+from ..data_engine.d1_trend_filter import compute_d1_trend_filter
 from ..data_engine.h4_trend_filter import compute_h4_trend_filter
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
@@ -264,7 +265,24 @@ class SignalScanner:
             if self._events:
                 self._events.publish(
                     "SCANNER", "SIGNAL",
-                    f"No trade on {pair} — H4 MTF filter: {h4_block}",
+                    f"No trade on {pair} -- H4 MTF filter: {h4_block}",
+                    pair=pair, severity="WARNING",
+                )
+            return None
+
+        # ── STEP 2.6: D1 MULTI-TIMEFRAME FILTER ──
+        # BTC_USD only. Requires D1 EMA5 > EMA10 (daily trend alignment).
+        # Backtest: N=16, WR=81%, PF=5.29, MC=99.7% [5/5 gates].
+        # Runs before Claude to avoid burning tokens on counter-trend signals.
+        d1_block = compute_d1_trend_filter(
+            snapshot.candles_d1, quant_signal.action, pair
+        )
+        if d1_block:
+            logger.info("d1_mtf_filter_blocked", pair=pair, reason=d1_block)
+            if self._events:
+                self._events.publish(
+                    "SCANNER", "SIGNAL",
+                    f"No trade on {pair} -- D1 MTF filter: {d1_block}",
                     pair=pair, severity="WARNING",
                 )
             return None

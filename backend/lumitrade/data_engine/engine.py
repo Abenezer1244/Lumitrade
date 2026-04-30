@@ -119,8 +119,9 @@ class DataEngine:
         # 3. Fetch candles for all timeframes
         candle_data = await self._fetcher.fetch_all_timeframes(pair)
         candles_m15 = candle_data.get("M15", [])
-        candles_h1 = candle_data.get("H1", [])
-        candles_h4 = candle_data.get("H4", [])
+        candles_h1  = candle_data.get("H1", [])
+        candles_h4  = candle_data.get("H4", [])
+        candles_d1  = candle_data.get("D", [])
 
         # 4. Validate candles (log failures but only block on OHLC, not gaps)
         for tf_candles in [candles_m15, candles_h1, candles_h4]:
@@ -173,6 +174,7 @@ class DataEngine:
             candles_m15=candles_m15,
             candles_h1=candles_h1,
             candles_h4=candles_h4,
+            candles_d1=candles_d1,
             indicators=indicators,
             news_events=news_events,
             recent_trades=recent_trades,

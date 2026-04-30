@@ -53,7 +53,7 @@ class CandleFetcher:
         timeframe (H1 — fed to indicator compute) while keeping payloads
         reasonable on slower/faster frames.
         """
-        counts = {"M15": 120, "H1": 250, "H4": 120}
+        counts = {"M15": 120, "H1": 250, "H4": 120, "D": 30}
         result: dict[str, list[Candle]] = {}
         for tf, n in counts.items():
             result[tf] = await self.fetch(pair, tf, count=n)

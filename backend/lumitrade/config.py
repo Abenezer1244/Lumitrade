@@ -71,10 +71,15 @@ class LumitradeConfig(BaseSettings):
     #            Walk-forward OOS (30%): PF 6.82, MC 99.7%. ADX plateau stable ADX 23-29.
     #            Filter: data_engine/h4_trend_filter.py, wired in scanner.py step 2.5.
     #            LIVE approved (2026-04-29).
-    #   BTC_USD: PF 1.10, Sharpe 0.28, MAR 0.20, MC P(profit) 65%, MaxDD 4.8%
-    #            — 1/5 gates. EMA+BB+Momentum signals insufficient for BTC. PAPER ONLY.
+    #   BTC_USD: D1 MTF filter (D1 EMA5>EMA10) — 5/5 gates (2026-04-30).
+    #            16 trades | WR 81.2% | PF 5.29 | Sharpe 4.84 | MAR 5.51 | MaxDD 0.53% | MC 99.7%
+    #            Walk-forward OOS (30%): N=4, 100% WR. N=16 is below 20-trade confidence
+    #            threshold — risk capped at 0.5%/trade (~8 trades/yr). Promote to full
+    #            confidence after 20+ real-market trades accumulate under D1 filter.
+    #            Filter: data_engine/d1_trend_filter.py, wired in scanner.py step 2.6.
+    #            LIVE approved (2026-04-30) with caveat above.
     pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
-    live_pairs: list[str] = ["USD_CAD", "USD_JPY"]
+    live_pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
