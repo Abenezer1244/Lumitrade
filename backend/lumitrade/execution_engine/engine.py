@@ -380,6 +380,7 @@ class ExecutionEngine:
                         )
                         try:
                             await self._oanda_trade.close_trade(broker_id)
+                            self._circuit_breaker.record_success()
                             if self._events:
                                 self._events.publish(
                                     "EXECUTION", "MAX_HOLD_CLOSE",
@@ -387,6 +388,7 @@ class ExecutionEngine:
                                     pair=pair, severity="WARNING",
                                 )
                         except Exception as e:
+                            self._circuit_breaker.record_failure()
                             logger.error("max_hold_close_failed", broker_id=broker_id, error=str(e))
                         continue
                 except (ValueError, TypeError):
@@ -657,7 +659,13 @@ class ExecutionEngine:
             else:
                 be_sl = be_sl.quantize(Decimal("0.00001"))
 
-            await self._oanda_trade.modify_trade(broker_id, be_sl, tp, pair=pair)
+            try:
+                await self._oanda_trade.modify_trade(broker_id, be_sl, tp, pair=pair)
+                self._circuit_breaker.record_success()
+            except Exception as _be_err:
+                self._circuit_breaker.record_failure()
+                logger.error("breakeven_stop_modify_failed", broker_id=broker_id, error=str(_be_err))
+                return
             await self._db.update(
                 "trades",
                 {"id": trade.get("id")},
@@ -740,7 +748,13 @@ class ExecutionEngine:
                 return
 
         # Update SL on OANDA
-        await self._oanda_trade.modify_trade(broker_id, new_sl, tp, pair=pair)
+        try:
+            await self._oanda_trade.modify_trade(broker_id, new_sl, tp, pair=pair)
+            self._circuit_breaker.record_success()
+        except Exception as _trail_err:
+            self._circuit_breaker.record_failure()
+            logger.error("trailing_stop_modify_failed", broker_id=broker_id, error=str(_trail_err))
+            return
 
         # Update SL in DB
         await self._db.update(
@@ -1069,6 +1083,8 @@ class ExecutionEngine:
                 attempted += 1
                 try:
                     await broker_client.close_trade(broker_trade_id)  # type: ignore[attr-defined]
+                    if broker_name == "oanda":
+                        self._circuit_breaker.record_success()
                     closed += 1
                     logger.warning(
                         "kill_switch_position_closed",
@@ -1079,6 +1095,8 @@ class ExecutionEngine:
                         reason=reason,
                     )
                 except Exception as e:
+                    if broker_name == "oanda":
+                        self._circuit_breaker.record_failure()
                     failed.append(f"{broker_name}:{broker_trade_id}")
                     logger.error(
                         "kill_switch_close_failed",

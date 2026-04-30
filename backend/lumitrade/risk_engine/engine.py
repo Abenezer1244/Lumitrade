@@ -14,7 +14,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from ..config import LumitradeConfig
-from ..core.enums import Action, Direction, RiskState, TradingMode
+from ..core.enums import Action, CircuitBreakerState, Direction, RiskState, TradingMode
 from ..core.models import ApprovedOrder, RiskRejection, SignalProposal
 from ..infrastructure.db import DatabaseClient
 from ..infrastructure.event_publisher import EventPublisher
@@ -23,6 +23,7 @@ from ..utils.pip_math import pip_value_per_unit, pips_between
 from .calendar_guard import CalendarGuard
 from .correlation_matrix import CorrelationMatrix
 from .position_sizer import PositionSizer
+from .state_machine import RiskStateMachine
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,7 @@ class RiskEngine:
         self._position_sizer = PositionSizer()
         self._calendar_guard = CalendarGuard()
         self._correlation_matrix = CorrelationMatrix()
+        self._rsm = RiskStateMachine(state_manager)
 
     async def evaluate(
         self,
@@ -825,16 +827,28 @@ class RiskEngine:
             return []
 
     async def _get_current_risk_state(self) -> RiskState:
-        """Read current risk state from state manager."""
+        """Evaluate current risk state via RiskStateMachine using live metrics."""
         if self._state_manager is None:
             return RiskState.CAUTIOUS
         try:
-            state = getattr(self._state_manager, "risk_state", RiskState.CAUTIOUS)
-            if callable(state):
-                return await state()
-            return state
+            state = await self._state_manager.get()
+            raw_balance = state.get("account_balance", "0") or "0"
+            balance = float(raw_balance)
+            daily_pnl = float(state.get("daily_pnl", "0") or "0")
+            weekly_pnl = float(state.get("weekly_pnl", "0") or "0")
+            consecutive_losses = int(state.get("consecutive_losses", 0) or 0)
+            daily_pnl_pct = daily_pnl / balance if balance > 0 else None
+            weekly_pnl_pct = weekly_pnl / balance if balance > 0 else None
+            return await self._rsm.evaluate_transitions(
+                daily_pnl_pct=daily_pnl_pct,
+                weekly_pnl_pct=weekly_pnl_pct,
+                consecutive_losses=consecutive_losses,
+                circuit_breaker_state=CircuitBreakerState.CLOSED,
+                daily_loss_limit=float(self._config.daily_loss_limit_pct),
+                weekly_loss_limit=float(self._config.weekly_loss_limit_pct),
+            )
         except Exception:
-            logger.warning("risk_state_read_failed_defaulting_cautious")
+            logger.warning("risk_state_evaluation_failed_defaulting_cautious")
             return RiskState.CAUTIOUS
 
     async def _reject(
