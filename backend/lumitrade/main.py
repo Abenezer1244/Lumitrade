@@ -225,6 +225,7 @@ class OrchestratorService:
             events=self.events,
             capital_client=capital_client,
         )
+        self.risk_eng._circuit_breaker = self.exec_eng._circuit_breaker
         self.watchdog = Watchdog(self.config, self.state, self.alerts)
 
         # 8. Start background tasks
@@ -489,6 +490,7 @@ class OrchestratorService:
                 _pair_hours = {
                     "USD_JPY": (0, 17),   # Asian + London/NY overlap — JPY active both sessions
                     "USD_CAD": (8, 17),   # London + NY overlap — CAD most liquid during NY
+                    "BTC_USD": (0, 17),   # 24/7 asset — scan through London/NY overlap same as JPY
                     "AUD_USD": (0, 8),    # Asian only — best in early session
                     "NZD_USD": (0, 8),    # Asian only — best in early session
                 }

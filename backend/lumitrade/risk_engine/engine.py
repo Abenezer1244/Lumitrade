@@ -44,11 +44,13 @@ class RiskEngine:
         state_manager,
         db: DatabaseClient,
         events: EventPublisher | None = None,
+        circuit_breaker=None,
     ) -> None:
         self._config = config
         self._state_manager = state_manager
         self._db = db
         self._events = events
+        self._circuit_breaker = circuit_breaker
         self._position_sizer = PositionSizer()
         self._calendar_guard = CalendarGuard()
         self._correlation_matrix = CorrelationMatrix()
@@ -839,11 +841,12 @@ class RiskEngine:
             consecutive_losses = int(state.get("consecutive_losses", 0) or 0)
             daily_pnl_pct = daily_pnl / balance if balance > 0 else None
             weekly_pnl_pct = weekly_pnl / balance if balance > 0 else None
+            cb_state = self._circuit_breaker.state if self._circuit_breaker else CircuitBreakerState.CLOSED
             return await self._rsm.evaluate_transitions(
                 daily_pnl_pct=daily_pnl_pct,
                 weekly_pnl_pct=weekly_pnl_pct,
                 consecutive_losses=consecutive_losses,
-                circuit_breaker_state=CircuitBreakerState.CLOSED,
+                circuit_breaker_state=cb_state,
                 daily_loss_limit=float(self._config.daily_loss_limit_pct),
                 weekly_loss_limit=float(self._config.weekly_loss_limit_pct),
             )
