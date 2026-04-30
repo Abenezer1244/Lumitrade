@@ -57,6 +57,9 @@ def _make_config():
     # large enough to clear both, so behavior is unchanged.
     config.min_position_units_forex = 1
     config.min_meaningful_risk_usd = Decimal("0.01")
+    # Pair allowlist — risk engine checks `pair in config.pairs`; needs a real list
+    config.pairs = ["EUR_USD", "GBP_USD", "AUD_USD", "USD_CHF", "USD_CAD", "USD_JPY"]
+    config.live_pairs = ["USD_CAD", "USD_JPY"]
     return config
 
 
