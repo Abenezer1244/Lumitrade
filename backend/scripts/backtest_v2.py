@@ -63,7 +63,11 @@ PIP_SIZE: dict[str, Decimal] = {
     "USD_CAD": Decimal("0.0001"),
     "AUD_USD": Decimal("0.0001"),
     "NZD_USD": Decimal("0.0001"),
+    "BTC_USD": Decimal("1.00"),   # 1 pip = $1 move in BTC price
 }
+
+# Crypto pairs use fractional (Decimal) units; all others use integer units
+_FRACTIONAL_UNIT_PAIRS = {"BTC_USD", "ETH_USD", "LTC_USD"}
 
 # Live source: backend/lumitrade/main.py:357-362 (_pair_hours)
 SESSION_HOURS_LIVE: dict[str, tuple[int, int]] = {
@@ -71,11 +75,14 @@ SESSION_HOURS_LIVE: dict[str, tuple[int, int]] = {
     "USD_CAD": (8, 17),
     "AUD_USD": (0, 8),
     "NZD_USD": (0, 8),
+    "BTC_USD": (0, 17),   # 24/7 asset; apply global 17 UTC cutoff
 }
 
 # Live source: backend/lumitrade/execution_engine/engine.py
-BREAKEVEN_PIPS = {"USD_JPY": 15, "USD_CAD": 15, "AUD_USD": 15, "NZD_USD": 15}
-TRAIL_ACTIVATION_PIPS = {"USD_JPY": 20, "USD_CAD": 18, "AUD_USD": 15, "NZD_USD": 15}
+BREAKEVEN_PIPS = {"USD_JPY": 15, "USD_CAD": 15, "AUD_USD": 15, "NZD_USD": 15,
+                  "BTC_USD": 200}   # $200 move before breakeven
+TRAIL_ACTIVATION_PIPS = {"USD_JPY": 20, "USD_CAD": 18, "AUD_USD": 15, "NZD_USD": 15,
+                          "BTC_USD": 300}  # $300 move before trailing activates
 
 # Friction defaults (Phase 1 research recommendation)
 SPREAD_PIPS_DEFAULT: dict[str, Decimal] = {
@@ -83,6 +90,7 @@ SPREAD_PIPS_DEFAULT: dict[str, Decimal] = {
     "USD_JPY": Decimal("1.0"),
     "AUD_USD": Decimal("1.5"),
     "NZD_USD": Decimal("1.5"),
+    "BTC_USD": Decimal("50"),     # ~$50 typical BTC/USD spread on OANDA practice
 }
 SLIPPAGE_PIPS = Decimal("0.5")  # per side (entry and exit)
 
@@ -93,6 +101,7 @@ SWAP_PIPS_PER_DAY: dict[str, dict[str, Decimal]] = {
     "USD_JPY": {"BUY": Decimal("0.8"), "SELL": Decimal("-0.8")},
     "AUD_USD": {"BUY": Decimal("-0.2"), "SELL": Decimal("0.2")},
     "NZD_USD": {"BUY": Decimal("-0.2"), "SELL": Decimal("0.2")},
+    "BTC_USD": {"BUY": Decimal("0"), "SELL": Decimal("0")},  # no swap for crypto CFDs
 }
 
 
@@ -172,7 +181,7 @@ class Trade:
     entry_price: Decimal
     stop_loss: Decimal
     entry_time: datetime
-    units: int
+    units: Decimal
     confidence_score: float
     strategies_fired: str
     regime: str
@@ -541,6 +550,8 @@ def pip_value_per_unit(pair: str, price: Decimal) -> Decimal:
 def round_price(price: Decimal, pair: str) -> Decimal:
     if "JPY" in pair:
         return price.quantize(Decimal("0.001"))
+    if "BTC" in pair or "ETH" in pair:
+        return price.quantize(Decimal("0.01"))
     return price.quantize(Decimal("0.00001"))
 
 
@@ -725,9 +736,16 @@ def run_backtest(
         pv = pip_value_per_unit(pair, entry_price)
         if pv == 0:
             continue
-        units = int(risk_usd / (sl_pips * pv))
-        units = min(units, cfg.max_units)
-        if units < 1000:
+        raw_units = risk_usd / (sl_pips * pv)
+        if pair in _FRACTIONAL_UNIT_PAIRS:
+            # Crypto: keep 2dp fractional (e.g. 0.17 BTC); minimum 0.01
+            units = max(Decimal("0"), raw_units.quantize(Decimal("0.01")))
+            min_units: Decimal = Decimal("0.01")
+        else:
+            units = Decimal(max(0, int(raw_units)))
+            min_units = Decimal("1000")
+        units = min(units, Decimal(str(cfg.max_units)))
+        if units < min_units:
             continue
 
         # Open

@@ -1,4 +1,4 @@
-# Lumitrade Backtest v2 Report — 2026-04-25
+# Lumitrade Backtest v2 Report — 2026-04-29
 **Live-parity**. SL 3.0×ATR, max hold 24h, conf band 0.7-0.8, ADX regime gate, tiered risk 0.5/1.0/2.0%, friction modeled.
 
 ## Per-pair baseline (full history, all live filters on)
@@ -33,6 +33,40 @@
   Recovery:      0.13
 ```
 
+### BTC_USD (added 2026-04-29 — 12,434 H1 candles, 2024-04-30 to 2026-04-30)
+```
+  Trades:        123 (W:82/L:41/BE:0)
+  Win rate:      66.7%   95% CI: [57.9, 74.4]
+  P&L:           $-1,270.04  (-1.3%)
+  Profit factor: 0.91
+  Expectancy:    $-10.33 / trade  (-0.030R)
+  Avg W / Avg L: $+156 / $-343  (ratio 0.45)
+  Max DD:        $4,010.74  (4.0%)
+  Sharpe (ann):  -0.27
+  Sortino:       -0.34
+  Calmar / MAR:  -0.16
+  Recovery:      -0.32
+```
+
+**VERDICT: FAILS all 5 live thresholds → paper-only until BTC-specific filter stack is tuned.**
+
+Live threshold checklist (same as USD_CAD/JPY criteria):
+| Metric | BTC_USD | Threshold | Pass? |
+|---|---|---|---|
+| Profit factor | 0.91 | ≥ 1.50 | FAIL |
+| Sharpe (ann) | -0.27 | ≥ 1.00 | FAIL |
+| MAR | -0.16 | ≥ 0.50 | FAIL |
+| MC P(profit) | 35.7% | ≥ 85% | FAIL |
+| Max DD | 4.0% | ≤ 10% | PASS |
+
+Root cause: W/L ratio of 0.45 — the forex filter stack wins small and loses big on BTC.
+The trailing stop closes BTC winners too early (avg win $156) while the 3x ATR SL
+allows full losses ($343 avg). This is the inverse of the desired R:R.
+
+Key ablation insight: removing friction (spread $50 + slippage) improves P&L by +$1,512
+and pushes PF to 1.02 — nearly all the loss is friction cost. Suggests BTC is borderline
+if a tighter spread window can be found (e.g. trade only when BTC spread < $30).
+
 ## Walk-forward (6mo train / 3mo test rolling)
 
 ### USD_CAD
@@ -60,6 +94,19 @@
 | 5 | 0.56 | 20 | 1.02 | 14 | $+35 |
 
 **OOS aggregate:** 6 folds, avg test PF 7.33, total OOS P&L $-175
+
+### BTC_USD
+
+| Fold | Train PF | Train trades | Test PF | Test trades | Test P&L |
+|---|---|---|---|---|---|
+| 0 | 0.54 | 28 | 0.70 | 19 | $-602 |
+| 1 | 0.74 | 38 | 0.26 | 10 | $-1,169 |
+| 2 | 0.54 | 30 | 1.05 | 14 | $+71 |
+| 3 | 0.73 | 26 | 3.97 | 9 | $+1,563 |
+| 4 | 1.77 | 24 | 0.87 | 14 | $-134 |
+| 5 | 2.90 | 28 | 0.71 | 13 | $-510 |
+
+**OOS aggregate:** 6 folds, total OOS P&L $-781. Highly inconsistent — no edge present.
 
 ## Ablation — marginal contribution of each filter
 
@@ -103,12 +150,36 @@
 
 *Filters with positive `P&L Δ` when REMOVED are dead-weight or harmful.*
 
+### BTC_USD
+
+| Variant | Trades | WR | PF | PF Delta | P&L | P&L Delta |
+|---|---|---|---|---|---|---|
+| baseline | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+| no_adx | 191 | 63.9% | 0.92 | +0.01 | $-1,670 | $-400 |
+| no_confidence_band | 1085 | 65.3% | 0.99 | +0.08 | $-1,031 | $+239 |
+| no_session | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+| no_17utc_cutoff | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+| no_daily_loss | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+| no_max_hold | 123 | 65.9% | 0.84 | -0.07 | $-2,294 | $-1,024 |
+| no_min_sl | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+| no_tiered_risk | 123 | 66.7% | 0.90 | -0.01 | $-4,078 | $-2,808 |
+| **no_friction** | **123** | **65.9%** | **1.02** | **+0.11** | **$+242** | **$+1,512** |
+| no_trailing | 96 | 17.7% | 0.78 | -0.13 | $-2,400 | $-1,130 |
+| no_breakeven | 92 | 55.4% | 0.93 | +0.02 | $-1,109 | $+161 |
+| no_cooldown | 123 | 66.7% | 0.91 | +0.00 | $-1,270 | $+0 |
+
+**Key insight**: `no_friction` pushes PF to 1.02 (+$1,512). The $50 BTC spread dominates losses.
+Trading only during low-spread windows (<$30) or using a tighter spread gate could flip BTC profitable.
+The `no_trailing` result (WR collapses from 67% to 18%) confirms the trailing stop is critical —
+it is converting many potential losses to wins, but the friction cost erases those gains.
+
 ## Monte Carlo bootstrap (10k resamples)
 
 | Pair | P(profit) | DD 5% | DD median | DD 95% |
 |---|---|---|---|---|
 | USD_CAD | 93.5% | 0.6% | 1.4% | 3.0% |
 | USD_JPY | 55.0% | 1.3% | 2.8% | 5.9% |
+| BTC_USD | 35.7% | 1.9% | 4.0% | 8.0% |
 
 ## Methodology notes
 - Entries placed at **open[i+1]** (not close[i]) to avoid look-ahead bias.

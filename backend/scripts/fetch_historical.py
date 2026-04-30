@@ -17,9 +17,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Config
-PAIRS = ["USD_JPY", "USD_CAD", "AUD_USD", "NZD_USD"]
+PAIRS = ["USD_JPY", "USD_CAD", "AUD_USD", "NZD_USD", "BTC_USD"]
 TIMEFRAMES = ["M15", "H1", "H4"]
 YEARS_BACK = 2
 MAX_CANDLES_PER_REQUEST = 5000
