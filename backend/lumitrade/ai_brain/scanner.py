@@ -157,8 +157,9 @@ class SignalScanner:
             return None
 
         # 1a-ii. Early spread check — skip before burning AI tokens
+        # BTC and XAU both use 200-pip ceiling (pip=$1 for BTC, pip=$0.01 for XAU)
         from decimal import Decimal as _Dec
-        max_spread = _Dec("200") if "XAU" in pair else _Dec("5")
+        max_spread = _Dec("200") if ("XAU" in pair or "BTC" in pair) else _Dec("5")
         if snapshot.spread_pips > max_spread:
             logger.info("early_spread_skip", pair=pair, spread=str(snapshot.spread_pips), max=str(max_spread))
             return None
