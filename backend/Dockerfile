@@ -20,8 +20,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers playwright install chromium \
     && chmod -R o+rX /opt/pw-browsers
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
-# lumitrade user has no home dir — point matplotlib cache to writable /tmp
+# lumitrade user has no home dir — point matplotlib and fontconfig caches to writable /tmp
 ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV FC_CACHEDIR=/tmp/fontconfig
 COPY backend/lumitrade/ /app/lumitrade/
 COPY backend/supervisord.conf /etc/supervisor/conf.d/lumitrade.conf
 RUN useradd --no-create-home --shell /bin/false lumitrade && \
