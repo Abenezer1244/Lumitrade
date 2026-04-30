@@ -63,14 +63,17 @@ class LumitradeConfig(BaseSettings):
     # `pairs`: the trading universe (used in PAPER mode).
     # `live_pairs`: the subset that may trade in LIVE mode.
     #
-    # 2-year backtest under current filter stack (see tasks/backtest_2026Q2_results.md):
-    #   USD_CAD: PF 1.96, Sharpe 1.76, MAR 2.09, MC P(profit) 93.5% — passes all
-    #            research-grounded live thresholds. Approved for LIVE.
-    #   USD_JPY: PF 1.04, Sharpe 0.10, MAR 0.07, MC P(profit) 55.0% — fails every
-    #            threshold. Backtest disagrees with the small live-paper sample
-    #            (24 trades, +$5,499). Holds in PAPER until either (a) a fresh
-    #            backtest under a tuned-for-JPY filter stack passes, or (b) ~50+
-    #            additional paper trades sustain the edge. PRD §3.4.
+    # 2-year backtest under current filter stack + partial close 67%@1.5xRR (2026-04-29):
+    #   USD_CAD: PF 2.00, Sharpe 1.94, MAR 2.18, MC P(profit) 95.2%, MaxDD 1.09%
+    #            — passes all 5 live thresholds. Approved for LIVE.
+    #   USD_JPY: PF 1.26, Sharpe 0.59, MAR 0.58, MC P(profit) 78%, MaxDD 2.8%
+    #            — 2/5 gates. Exhaustively tested: EMA200 filter, SL mult sweep
+    #            (1.5x/2x/2.5x/3x), ADX threshold (20/25/30) all fail. Root cause:
+    #            39-45% win rate structural incompatibility with momentum signal stack.
+    #            PAPER ONLY. Do not add to live_pairs without a new signal approach.
+    #   BTC_USD: PF 1.10, Sharpe 0.28, MAR 0.20, MC P(profit) 65%, MaxDD 4.8%
+    #            — 1/5 gates. Current EMA+BB+Momentum signals insufficient for BTC.
+    #            PAPER ONLY.
     pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
     # 2026-04-28: User added USD_JPY to live_pairs for demo-week
     # observability on OANDA practice. Joint Claude+Codex review
