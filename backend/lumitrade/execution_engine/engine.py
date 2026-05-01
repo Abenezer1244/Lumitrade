@@ -367,7 +367,7 @@ class ExecutionEngine:
         oanda_open_ids: set[str] = set()
         if self._oanda_read:
             try:
-                oanda_trades = await self._oanda_read.get_open_trades()
+                oanda_trades = await self._oanda_read.get_all_open_trades()
                 oanda_open_ids = {t["id"] for t in oanda_trades}
             except Exception as e:
                 logger.warning("position_monitor_oanda_error", error=str(e))
@@ -409,7 +409,7 @@ class ExecutionEngine:
                             age_hours=round(age_hours, 1),
                         )
                         try:
-                            await self._oanda_trade.close_trade(broker_id)
+                            await self._oanda_trade.close_trade(broker_id, pair=pair)
                             await self._circuit_breaker.record_success()
                             if self._events:
                                 self._events.publish(
@@ -1095,7 +1095,7 @@ class ExecutionEngine:
 
         for broker_name, broker_client in broker_clients:
             try:
-                open_trades = await broker_client.get_open_trades()  # type: ignore[attr-defined]
+                open_trades = await broker_client.get_all_open_trades()  # type: ignore[attr-defined]
             except Exception as e:
                 logger.error(
                     "kill_switch_get_open_trades_failed",
@@ -1118,8 +1118,9 @@ class ExecutionEngine:
                 if not broker_trade_id:
                     continue
                 attempted += 1
+                _kill_pair = trade.get("instrument", "") or trade.get("epic", "") or ""
                 try:
-                    await broker_client.close_trade(broker_trade_id)  # type: ignore[attr-defined]
+                    await broker_client.close_trade(broker_trade_id, pair=_kill_pair)  # type: ignore[attr-defined]
                     if broker_name == "oanda":
                         await self._circuit_breaker.record_success()
                     closed += 1

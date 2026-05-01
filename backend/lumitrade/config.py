@@ -26,6 +26,23 @@ class LumitradeConfig(BaseSettings):
     oanda_environment: str = Field(
         validation_alias="OANDA_ENVIRONMENT", default="practice"
     )
+    # Separate OANDA sub-account for spot crypto (BTC_USD, ETH_USD).
+    # When set, order placement and trade management for these instruments
+    # routes to this account ID instead of oanda_account_id.
+    # Set OANDA_SPOT_CRYPTO_ACCOUNT_ID in Railway env.
+    oanda_spot_crypto_account_id: Optional[str] = Field(
+        validation_alias="OANDA_SPOT_CRYPTO_ACCOUNT_ID", default=None
+    )
+
+    # Instruments that trade on the spot crypto sub-account when
+    # oanda_spot_crypto_account_id is configured.
+    SPOT_CRYPTO_PAIRS: frozenset = frozenset({"BTC_USD", "ETH_USD"})
+
+    def account_id_for(self, pair: str) -> str:
+        """Return the correct OANDA account ID for a given instrument."""
+        if pair in self.SPOT_CRYPTO_PAIRS and self.oanda_spot_crypto_account_id:
+            return self.oanda_spot_crypto_account_id
+        return self.oanda_account_id
 
     # ── Anthropic ──────────────────────────────────────────────
     anthropic_api_key: str = Field(validation_alias="ANTHROPIC_API_KEY")

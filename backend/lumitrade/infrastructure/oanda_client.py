@@ -95,11 +95,30 @@ class OandaClient(BrokerInterface):
         return resp.json()["account"]
 
     async def get_open_trades(self) -> list[dict]:
-        """Fetch all currently open trades."""
+        """Fetch all currently open trades from the main account."""
         url = f"{self._base_url}/v3/accounts/{self._account_id}/openTrades"
         resp = await self._client.get(url)
         resp.raise_for_status()
         return resp.json()["trades"]
+
+    async def get_all_open_trades(self) -> list[dict]:
+        """Fetch open trades from main account AND spot crypto sub-account (if configured).
+
+        Merges results so the position monitor sees BTC/ETH trades placed on
+        the separate spot crypto account alongside standard forex trades.
+        """
+        trades = await self.get_open_trades()
+        spot_id = self.config.oanda_spot_crypto_account_id
+        if spot_id and spot_id != self._account_id:
+            try:
+                url = f"{self._base_url}/v3/accounts/{spot_id}/openTrades"
+                resp = await self._client.get(url)
+                resp.raise_for_status()
+                spot_trades = resp.json().get("trades", [])
+                trades = trades + spot_trades
+            except Exception as e:
+                logger.warning("spot_crypto_open_trades_fetch_failed", error=str(e))
+        return trades
 
     async def get_trade(self, trade_id: str) -> dict:
         """Fetch a specific trade by ID (open or closed)."""
@@ -121,7 +140,7 @@ class OandaClient(BrokerInterface):
             "OandaClient is read-only. Use OandaTradingClient for orders."
         )
 
-    async def close_trade(self, broker_trade_id: str) -> dict:
+    async def close_trade(self, broker_trade_id: str, pair: str = "") -> dict:
         """Not available on read-only client."""
         raise NotImplementedError(
             "OandaClient is read-only. Use OandaTradingClient for closing."
@@ -175,7 +194,8 @@ class OandaTradingClient(OandaClient):
         client_request_id: str,
     ) -> dict:
         """Place market order with attached SL and TP."""
-        url = f"{self._base_url}/v3/accounts/{self._account_id}/orders"
+        account_id = self.config.account_id_for(pair)
+        url = f"{self._base_url}/v3/accounts/{account_id}/orders"
         # OANDA requires specific price precision per instrument
         # JPY pairs: 3 decimals, XAU/BTC: 2 decimals, others: 5 decimals
         if "JPY" in pair:
@@ -211,17 +231,18 @@ class OandaTradingClient(OandaClient):
         resp.raise_for_status()
         return resp.json()
 
-    async def close_trade(self, broker_trade_id: str) -> dict:
+    async def close_trade(self, broker_trade_id: str, pair: str = "") -> dict:
         """Close a specific trade by OANDA trade ID."""
+        account_id = self.config.account_id_for(pair) if pair else self._account_id
         url = (
-            f"{self._base_url}/v3/accounts/{self._account_id}"
+            f"{self._base_url}/v3/accounts/{account_id}"
             f"/trades/{broker_trade_id}/close"
         )
         resp = await self._trading_client.put(url, json={"units": "ALL"})
         resp.raise_for_status()
         return resp.json()
 
-    async def lookup_order_status(self, client_request_id: str) -> dict | None:
+    async def lookup_order_status(self, client_request_id: str, pair: str = "") -> dict | None:
         """
         Idempotent order lookup by client_request_id, used by OandaExecutor
         to recover from network timeouts during order placement.
@@ -239,8 +260,9 @@ class OandaTradingClient(OandaClient):
             or when the lookup itself fails. The caller treats None as
             'cannot confirm success — fail closed'.
         """
+        account_id = self.config.account_id_for(pair) if pair else self._account_id
         url = (
-            f"{self._base_url}/v3/accounts/{self._account_id}"
+            f"{self._base_url}/v3/accounts/{account_id}"
             f"/orders/@{client_request_id}"
         )
         try:
@@ -317,8 +339,9 @@ class OandaTradingClient(OandaClient):
         receives an invalid price. Logs the response body on 4xx so the
         exact OANDA errorCode is visible in structured logs.
         """
+        account_id = self.config.account_id_for(pair) if pair else self._account_id
         url = (
-            f"{self._base_url}/v3/accounts/{self._account_id}"
+            f"{self._base_url}/v3/accounts/{account_id}"
             f"/trades/{broker_trade_id}/orders"
         )
         # Match precision formatting from place_market_order
