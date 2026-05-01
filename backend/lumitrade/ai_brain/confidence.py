@@ -173,12 +173,17 @@ class ConfidenceAdjuster:
             return Decimal("-0.10")
         return Decimal("0")
 
-    # Per-instrument spread thresholds for confidence penalty
+    # Per-instrument spread thresholds for confidence penalty.
+    # BTC pip = $1; typical OANDA BTC spread is $20-30 (20-30 pips).
+    # XAU pip = $0.01; typical OANDA gold spread is 25-50 pips.
+    # Default (forex) reject at 3 pips is correct for EUR/USD etc.
     _SPREAD_REJECT: dict[str, Decimal] = {
-        "XAU_USD": Decimal("150"),   # Gold has wide spreads naturally
+        "XAU_USD": Decimal("150"),
+        "BTC_USD": Decimal("50"),    # Matches risk engine _MAX_SPREAD_BY_PAIR ceiling
     }
     _SPREAD_WARN: dict[str, Decimal] = {
         "XAU_USD": Decimal("100"),
+        "BTC_USD": Decimal("30"),    # Slight penalty above normal $20-30 range
     }
     _DEFAULT_SPREAD_REJECT = Decimal("3.0")
     _DEFAULT_SPREAD_WARN = Decimal("2.0")

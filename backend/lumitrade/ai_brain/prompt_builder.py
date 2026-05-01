@@ -275,16 +275,30 @@ class PromptBuilder:
             "",
             "=== BTC_USD SPECIFIC RULES ===" if snapshot.pair == "BTC_USD" else "CRITICAL — TURTLE STRATEGY (let winners run):",
             *(
-                [
-                    "BTC_USD uses a FIXED take-profit — NOT the Turtle strategy.",
-                    "  - Set take_profit to exactly 3.0x the SL distance from entry.",
-                    "  - Example: entry=95000, SL=93500 (1500 dist) → TP=99500 (4500 dist = 3:1)",
-                    "  - NEVER set take_profit to 0 for BTC — the risk engine will reject it.",
-                    "  - SL must be at most 2% of entry price (e.g. entry=95000 → max SL dist=1900).",
-                    f"  Current ATR(14): {ind.atr_14} — use 1.5x ATR for SL (validated in backtest).",
-                    "  - Set SL at 1.5x ATR from entry for BTC (tighter than forex; BTC edge needs it).",
-                    "  - Only trade when D1 trend (daily EMA5 vs EMA10) aligns with your direction.",
-                ]
+                (lambda: (
+                    # Compute the correct SL distance: min(1.5x ATR, 1.9% of price).
+                    # 1.9% gives a 5% buffer under the 2% hard cap enforced by the risk
+                    # engine — so floating-point rounding can never push the SL over.
+                    # Both inputs are rounded to whole dollars for Claude clarity.
+                    lambda _atr, _price, _atr15, _cap19, _rec: [
+                        "BTC_USD uses a FIXED take-profit — NOT the Turtle strategy.",
+                        "  - NEVER set take_profit to 0 for BTC — the risk engine will reject it.",
+                        f"  RISK ENGINE SL CAP: max SL distance = 1.9% of entry price.",
+                        f"  Current ATR(14)={_atr:.0f}  |  1.5x ATR={_atr15:.0f}  |  1.9% cap={_cap19:.0f}",
+                        f"  >>> USE THIS SL DISTANCE: {_rec:.0f} (= the smaller of the two above) <<<",
+                        f"  If 1.5x ATR exceeds the cap, shrink SL to the cap — NEVER exceed it.",
+                        "  - Set take_profit to exactly 3.0x the SL distance from entry.",
+                        f"  Example: if entry=95000 and SL dist={_rec:.0f} → BUY SL={95000-_rec:.0f}, TP={95000+_rec*3:.0f}",
+                        "  - Only trade when D1 trend (daily EMA5 vs EMA10) aligns with your direction.",
+                    ]
+                )(
+                    float(ind.atr_14) if ind.atr_14 else 0.0,
+                    float(snapshot.bid) if snapshot.bid else 0.0,
+                    float(ind.atr_14) * 1.5 if ind.atr_14 else 0.0,
+                    float(snapshot.bid) * 0.019 if snapshot.bid else 0.0,
+                    min(float(ind.atr_14) * 1.5 if ind.atr_14 else 0.0,
+                        float(snapshot.bid) * 0.019 if snapshot.bid else 0.0),
+                ))()
                 if snapshot.pair == "BTC_USD"
                 else [
                     "  - Set take_profit to 0. We do NOT use fixed TP targets.",
