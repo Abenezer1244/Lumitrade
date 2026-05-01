@@ -51,6 +51,36 @@ class OandaExecutor:
             )
             return self._parse_response(order, response)
         except Exception as e:
+            # Permanent broker rejections (instrument not available on this account,
+            # bad parameters, etc.) never committed at OANDA — skip recovery entirely.
+            # Recovery is only useful for network timeouts where the order MAY have
+            # reached OANDA before the connection dropped.
+            _err_str = str(e)
+            _PERMANENT_REJECTS = (
+                "INSTRUMENT_NOT_TRADEABLE",
+                "INSTRUMENT_HALTED",
+                "STOP_LOSS_ON_FILL_LOSS_TOO_LARGE",
+                "TAKE_PROFIT_ON_FILL_LOSS",
+                "UNITS_PRECISION_EXCEEDED",
+            )
+            if any(code in _err_str for code in _PERMANENT_REJECTS):
+                # Extract the specific reject reason for a clear log message.
+                reject_code = next(
+                    (code for code in _PERMANENT_REJECTS if code in _err_str),
+                    "BROKER_PERMANENT_REJECT",
+                )
+                logger.error(
+                    "oanda_order_permanent_reject",
+                    error=reject_code,
+                    order_ref=str(order.order_ref),
+                    pair=order.pair,
+                )
+                raise ExecutionError(
+                    f"Order permanently rejected by broker ({reject_code}): "
+                    f"{order.pair} is not tradeable on this account. "
+                    f"Enable {order.pair} CFD trading in OANDA account settings."
+                ) from e
+
             # Codex 2026-04-25 audit finding [critical] #3: place_market_order
             # may have raised AFTER OANDA committed the order. Without an
             # idempotent status lookup, a restart-and-rescan creates a duplicate
