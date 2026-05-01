@@ -1095,7 +1095,12 @@ class ExecutionEngine:
 
         for broker_name, broker_client in broker_clients:
             try:
-                open_trades = await broker_client.get_all_open_trades()  # type: ignore[attr-defined]
+                # OANDA: get_all_open_trades merges main + spot crypto sub-account.
+                # Other brokers (Capital.com) only have get_open_trades.
+                if broker_name == "oanda":
+                    open_trades = await broker_client.get_all_open_trades()  # type: ignore[attr-defined]
+                else:
+                    open_trades = await broker_client.get_open_trades()  # type: ignore[attr-defined]
             except Exception as e:
                 logger.error(
                     "kill_switch_get_open_trades_failed",
@@ -1120,7 +1125,10 @@ class ExecutionEngine:
                 attempted += 1
                 _kill_pair = trade.get("instrument", "") or trade.get("epic", "") or ""
                 try:
-                    await broker_client.close_trade(broker_trade_id, pair=_kill_pair)  # type: ignore[attr-defined]
+                    if broker_name == "oanda":
+                        await broker_client.close_trade(broker_trade_id, pair=_kill_pair)  # type: ignore[attr-defined]
+                    else:
+                        await broker_client.close_trade(broker_trade_id)  # type: ignore[attr-defined]
                     if broker_name == "oanda":
                         await self._circuit_breaker.record_success()
                     closed += 1

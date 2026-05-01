@@ -26,10 +26,12 @@ def _build_engine(*, effective_mode: str = TradingMode.LIVE.value, open_trades=N
     config.account_uuid = "test-acct-uuid"
 
     trading_client = MagicMock()
+    # Engine calls get_all_open_trades (merges main + spot crypto sub-account).
     if get_open_trades_raises is not None:
-        trading_client.get_open_trades = AsyncMock(side_effect=get_open_trades_raises)
+        trading_client.get_all_open_trades = AsyncMock(side_effect=get_open_trades_raises)
     else:
-        trading_client.get_open_trades = AsyncMock(return_value=open_trades or [])
+        trading_client.get_all_open_trades = AsyncMock(return_value=open_trades or [])
+    trading_client.get_open_trades = AsyncMock(return_value=open_trades or [])
 
     if close_trade_side_effect is not None:
         trading_client.close_trade = AsyncMock(side_effect=close_trade_side_effect)
@@ -59,7 +61,7 @@ async def test_close_all_paper_mode_is_noop():
     result = await engine.close_all_positions(reason="test")
 
     assert result == {"attempted": 0, "closed": 0, "failed": []}
-    engine._oanda_trade.get_open_trades.assert_not_awaited()
+    engine._oanda_trade.get_all_open_trades.assert_not_awaited()
     engine._oanda_trade.close_trade.assert_not_awaited()
 
 
@@ -148,7 +150,7 @@ async def test_close_all_skips_trades_without_id():
     # Only the well-formed one is attempted
     assert result["attempted"] == 1
     assert result["closed"] == 1
-    engine._oanda_trade.close_trade.assert_awaited_once_with("300")
+    engine._oanda_trade.close_trade.assert_awaited_once_with("300", pair="USD_JPY")
 
 
 @pytest.mark.asyncio
@@ -160,12 +162,14 @@ async def test_close_all_sweeps_capital_when_present():
     config.account_uuid = "test-acct"
 
     oanda_client = MagicMock()
-    oanda_client.get_open_trades = AsyncMock(
+    oanda_client.get_all_open_trades = AsyncMock(
         return_value=[{"id": "O1", "instrument": "USD_CAD"}]
     )
+    oanda_client.get_open_trades = AsyncMock(return_value=[])
     oanda_client.close_trade = AsyncMock()
 
     capital_client = MagicMock()
+    # Capital.com only has get_open_trades (no get_all_open_trades); engine falls back via getattr.
     capital_client.get_open_trades = AsyncMock(
         return_value=[{"id": "C1", "epic": "GOLD", "size": "1.0"}]
     )
@@ -187,7 +191,7 @@ async def test_close_all_sweeps_capital_when_present():
 
     assert result["attempted"] == 2
     assert result["closed"] == 2
-    oanda_client.close_trade.assert_awaited_once_with("O1")
+    oanda_client.close_trade.assert_awaited_once_with("O1", pair="USD_CAD")
     capital_client.close_trade.assert_awaited_once_with("C1")
 
 
