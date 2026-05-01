@@ -83,7 +83,7 @@ class LumitradeConfig(BaseSettings):
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
-    signal_interval_minutes: int = 10  # 2026-04-29: reduced from 15 to increase paper trade volume
+    signal_interval_minutes: int = 15  # Live: restored from paper-mode 10min. Reduces API calls, more conservative cadence.
     max_risk_pct: Decimal = Decimal("0.005")  # Default 0.5% — matches dashboard conservative default
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
     # 106-trade audit (2026-04-21): 0.80+ confidence bucket WR collapsed to
@@ -102,7 +102,7 @@ class LumitradeConfig(BaseSettings):
     # only 6 trades. Leaving empty by default — re-enable with [1] if
     # Tuesday drawdowns recur on USD_CAD / USD_JPY specifically.
     blocked_weekdays_utc: list[int] = []
-    max_open_trades: int = 10  # 2026-04-29: raised from 5 to show more positions on dash (PAPER only)
+    max_open_trades: int = 5  # Live: restored from paper-mode 10. Limits real-money exposure to 5 concurrent trades.
     max_positions_per_pair: int = 5  # Default 5 — matches dashboard conservative default
     max_position_units: int = 500_000
     # Two-gate position sizing (Claude + Codex review 2026-04-27):
@@ -122,7 +122,7 @@ class LumitradeConfig(BaseSettings):
     max_spread_pips: Decimal = Decimal("5.0")
     news_blackout_before_min: int = 30
     news_blackout_after_min: int = 15
-    trade_cooldown_minutes: int = 2  # 2026-04-29: reduced from 5 to allow faster re-entry (PAPER)
+    trade_cooldown_minutes: int = 5  # Live: restored from paper-mode 2min. Prevents over-trading on same pair.
     min_rr_ratio: Decimal = Decimal("1.5")
     min_sl_pips: Decimal = Decimal("15.0")
     min_tp_pips: Decimal = Decimal("15.0")
