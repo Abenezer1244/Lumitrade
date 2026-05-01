@@ -42,6 +42,18 @@ def _make_released_lock_row() -> dict:
     }
 
 
+def _make_acquired_row(instance_id: str) -> dict:
+    """Singleton row showing a successful acquisition for double-readback mocks."""
+    future = datetime.now(timezone.utc) + timedelta(seconds=LOCK_TTL_SECONDS)
+    return {
+        "id": LOCK_ROW_ID,
+        "instance_id": instance_id,
+        "is_primary_instance": True,
+        "lock_expires_at": future.isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @pytest.mark.chaos
 class TestFailover:
     """FO-001 to FO-006: Distributed lock failover scenarios."""
@@ -69,9 +81,10 @@ class TestFailover:
     async def test_fo002_standby_takes_over_expired_lock(self):
         """FO-002: Expired primary lock allows standby takeover."""
         db = AsyncMock()
-        # Lock expired 60 seconds ago
         expired = datetime.now(timezone.utc) - timedelta(seconds=60)
         db.select_one.return_value = _make_lock_row("primary-01", expired)
+        # CAS update must return 1 row to signal success
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         result = await lock.acquire("standby-01")
@@ -88,8 +101,11 @@ class TestFailover:
     async def test_fo003_primary_reclaims_after_release(self):
         """FO-003: Primary reclaims after standby releases."""
         db = AsyncMock()
-        # Released lock row — instance_id=None, is_primary_instance=False
-        db.select_one.return_value = _make_released_lock_row()
+        released = _make_released_lock_row()
+        acquired = _make_acquired_row("primary-01")
+        # Initial read returns released row; double-readback returns acquired row
+        db.select_one.side_effect = [released, acquired, acquired]
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         result = await lock.acquire("primary-01")
@@ -105,6 +121,8 @@ class TestFailover:
         now = datetime.now(timezone.utc)
         future_expiry = now + timedelta(seconds=90)
         db.select_one.return_value = _make_lock_row("primary-01", future_expiry)
+        # Return 1 row so the CAS release succeeds (not lost-race branch)
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         await lock.release("primary-01")
@@ -112,7 +130,8 @@ class TestFailover:
         db.update.assert_called_once()
         update_args = db.update.call_args[0]
         assert update_args[0] == "system_state"
-        assert update_args[1] == {"id": LOCK_ROW_ID}
+        # CAS release filters on both id and instance_id
+        assert update_args[1] == {"id": LOCK_ROW_ID, "instance_id": "primary-01"}
         cleared = update_args[2]
         assert cleared["instance_id"] is None
         assert cleared["is_primary_instance"] is False
@@ -124,7 +143,9 @@ class TestFailover:
     async def test_fo005_acquire_empty_table(self):
         """FO-005: When no lock row exists at all, acquire creates one via upsert."""
         db = AsyncMock()
-        db.select_one.return_value = None
+        acquired = _make_acquired_row("new-instance")
+        # First select_one returns None (empty table); readbacks return acquired row
+        db.select_one.side_effect = [None, acquired, acquired]
 
         lock = DistributedLock(db)
         result = await lock.acquire("new-instance")
@@ -144,6 +165,8 @@ class TestFailover:
         db = AsyncMock()
         future_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
         db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
+        # CAS renewal must return 1 row to signal success
+        db.update.return_value = [{"id": LOCK_ROW_ID}]
 
         lock = DistributedLock(db)
         result = await lock.acquire("instance-A")

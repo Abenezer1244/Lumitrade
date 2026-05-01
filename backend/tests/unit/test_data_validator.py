@@ -106,8 +106,7 @@ class TestSpikeDetection:
         assert quality.spike_detected is True
 
     def test_spike_not_added_to_history(self, validator):
-        # Validator always updates history (by design — avoids stale-window lockout).
-        # Spike ticks are recorded in the rolling buffer like any other tick.
+        # Spike ticks are NOT added to history to keep the baseline clean.
         pattern = [
             "1.08420", "1.08430", "1.08440", "1.08425", "1.08435",
             "1.08445", "1.08430", "1.08420", "1.08440", "1.08430",
@@ -120,12 +119,11 @@ class TestSpikeDetection:
 
         initial_len = len(validator._price_history["EUR_USD"])
 
-        # Spike tick is added to history (validator always appends to prevent stale window)
         tick = _make_tick(bid="1.10000", ask="1.10010")
         quality = validator.validate_tick(tick)
 
         assert quality.spike_detected is True
-        assert len(validator._price_history["EUR_USD"]) == initial_len + 1
+        assert len(validator._price_history["EUR_USD"]) == initial_len
 
     def test_insufficient_history_no_spike(self, validator):
         # Only 5 ticks — not enough for spike detection

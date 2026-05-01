@@ -46,8 +46,8 @@ class DataValidator:
         spike_detected = self._check_spike(tick)
         spread_ok = self._check_spread(tick)
 
-        # Always update history — skipping on spike causes stale-window lockout
-        self._update_price_history(tick)
+        if not spike_detected:
+            self._update_price_history(tick)
 
         quality = DataQuality(
             is_fresh=is_fresh,

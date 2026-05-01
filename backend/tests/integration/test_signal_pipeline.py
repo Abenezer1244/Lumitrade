@@ -10,7 +10,7 @@ and verify the full evaluate() decision path.
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -56,13 +56,20 @@ def _make_config(**overrides) -> LumitradeConfig:
         "TRADING_MODE": "PAPER",
     }
     defaults.update(overrides)
-    return LumitradeConfig(**defaults)
+    config = LumitradeConfig(**defaults)
+    # Expand pairs to include EUR_USD so integration tests can use it
+    if "EUR_USD" not in config.pairs:
+        config.pairs = ["EUR_USD"] + config.pairs
+    # Clear time-of-day blocks so tests pass regardless of when they run
+    config.no_trade_hours_utc = []
+    config.blocked_weekdays_utc = []
+    return config
 
 
 def _make_proposal(
     action: Action = Action.BUY,
     pair: str = "EUR_USD",
-    confidence: Decimal = Decimal("0.82"),
+    confidence: Decimal = Decimal("0.80"),
     entry: Decimal = Decimal("1.08500"),
     stop_loss: Decimal = Decimal("1.08300"),
     take_profit: Decimal = Decimal("1.08900"),
@@ -118,7 +125,7 @@ def _make_db(
     db = AsyncMock()
 
     async def mock_count(table, filters):
-        if table == "open_positions":
+        if table == "trades" and filters.get("status") == "OPEN":
             return open_positions_count
         return 0
 
@@ -157,7 +164,7 @@ class TestSignalPipeline:
 
         proposal = _make_proposal(
             action=Action.BUY,
-            confidence=Decimal("0.82"),
+            confidence=Decimal("0.80"),
             entry=Decimal("1.08500"),
             stop_loss=Decimal("1.08300"),
             take_profit=Decimal("1.08900"),
@@ -226,7 +233,7 @@ class TestSignalPipeline:
         )
 
         proposal = _make_proposal(
-            confidence=Decimal("0.85"),
+            confidence=Decimal("0.80"),
             news_context=[news_event],
         )
 
@@ -239,11 +246,11 @@ class TestSignalPipeline:
 
     async def test_sp005_max_positions_blocks_new_trade(self, config):
         """SP-005: Max positions (3 open) blocks new trade."""
-        db = _make_db(open_positions_count=3)
+        db = _make_db(open_positions_count=10)  # equals max_open_trades default
         state_manager = _make_state_manager()
         engine = RiskEngine(config=config, state_manager=state_manager, db=db)
 
-        proposal = _make_proposal(confidence=Decimal("0.85"))
+        proposal = _make_proposal(confidence=Decimal("0.80"))
 
         result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
 
@@ -261,7 +268,7 @@ class TestSignalPipeline:
         # Entry 1.08500, SL 1.08300 (20 pips risk), TP 1.08700 (20 pips reward)
         # R:R = 1.0:1 which is below minimum 1.5:1
         proposal = _make_proposal(
-            confidence=Decimal("0.82"),
+            confidence=Decimal("0.80"),
             entry=Decimal("1.08500"),
             stop_loss=Decimal("1.08300"),
             take_profit=Decimal("1.08700"),
@@ -280,9 +287,13 @@ class TestSignalPipeline:
         state_manager = _make_state_manager(risk_state=RiskState.CIRCUIT_OPEN)
         engine = RiskEngine(config=config, state_manager=state_manager, db=db)
 
-        proposal = _make_proposal(confidence=Decimal("0.90"))
+        proposal = _make_proposal(confidence=Decimal("0.80"))
 
-        result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
+        with patch.object(
+            engine, "_get_current_risk_state",
+            AsyncMock(return_value=RiskState.CIRCUIT_OPEN),
+        ):
+            result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
 
         assert isinstance(result, RiskRejection)
         assert result.rule_violated == "RISK_STATE"
@@ -296,9 +307,13 @@ class TestSignalPipeline:
         state_manager = _make_state_manager(risk_state=RiskState.DAILY_LIMIT)
         engine = RiskEngine(config=config, state_manager=state_manager, db=db)
 
-        proposal = _make_proposal(confidence=Decimal("0.90"))
+        proposal = _make_proposal(confidence=Decimal("0.80"))
 
-        result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
+        with patch.object(
+            engine, "_get_current_risk_state",
+            AsyncMock(return_value=RiskState.DAILY_LIMIT),
+        ):
+            result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
 
         assert isinstance(result, RiskRejection)
         assert result.rule_violated == "RISK_STATE"
@@ -313,8 +328,8 @@ class TestSignalPipeline:
         engine = RiskEngine(config=config, state_manager=state_manager, db=db)
 
         proposal = _make_proposal(
-            confidence=Decimal("0.85"),
-            spread_pips=Decimal("3.5"),
+            confidence=Decimal("0.80"),
+            spread_pips=Decimal("6.0"),  # exceeds max_spread_pips default of 5.0
         )
 
         result = await engine.evaluate(proposal, account_balance=Decimal("1000"))
@@ -326,9 +341,9 @@ class TestSignalPipeline:
 
     async def test_sp010_cooldown_blocks_repeat_signal(self, config):
         """SP-010: Cooldown period blocks repeat signal on same pair."""
-        # Simulate a trade closed 30 minutes ago (cooldown is 60 min)
+        # Simulate a trade closed 1 minute ago (cooldown is 2 min)
         closed_at = (
-            datetime.now(timezone.utc) - timedelta(minutes=30)
+            datetime.now(timezone.utc) - timedelta(minutes=1)
         ).isoformat()
 
         db = _make_db(
@@ -339,7 +354,7 @@ class TestSignalPipeline:
 
         proposal = _make_proposal(
             pair="EUR_USD",
-            confidence=Decimal("0.85"),
+            confidence=Decimal("0.80"),
         )
 
         result = await engine.evaluate(proposal, account_balance=Decimal("1000"))

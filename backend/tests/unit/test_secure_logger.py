@@ -43,7 +43,7 @@ class TestScrubValue:
     def test_scrubs_phone_number(self):
         msg = "SMS sent to +12065551234"
         result = scrub_value(msg)
-        assert "[REDACTED_PHONE]" in result
+        assert "+1[REDACTED]" in result
         assert "2065551234" not in result
 
 

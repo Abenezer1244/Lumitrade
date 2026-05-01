@@ -38,8 +38,8 @@ SCRUB_PATTERNS: list[tuple[str, str]] = [
         r"(?<![A-Za-z0-9])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9])",
         "[REDACTED_TOKEN]",
     ),
-    # Phone numbers (E.164 international format)
-    (r"\+?1?\d{10,15}", "[REDACTED_PHONE]"),
+    # Phone numbers (E.164 format — preserve +1 country code, redact subscriber)
+    (r"\+1\d{10,14}", "+1[REDACTED]"),
     # Email addresses
     (
         r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
