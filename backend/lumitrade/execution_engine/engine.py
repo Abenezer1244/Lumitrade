@@ -15,7 +15,7 @@ from ..ai_brain.lesson_analyzer import LessonAnalyzer
 from ..analytics.performance_analyzer import PerformanceAnalyzer
 from ..config import LumitradeConfig
 from ..core.enums import CircuitBreakerState, OrderStatus, TradingMode
-from ..core.exceptions import OrderExpiredError
+from ..core.exceptions import ExecutionError, OrderExpiredError
 from ..core.models import ApprovedOrder, OrderResult
 from ..infrastructure.alert_service import AlertService
 from ..infrastructure.db import DatabaseClient
@@ -176,8 +176,20 @@ class ExecutionEngine:
                     # Live metals via Capital.com
                     result = await self._capital_executor.execute(order)
                 else:
-                    # Live forex via OANDA
-                    result = await self._oanda_executor.execute(order)
+                    # Live forex via OANDA — with paper fallback for instruments
+                    # not enabled on the account (e.g. BTC_USD CFD on practice).
+                    try:
+                        result = await self._oanda_executor.execute(order)
+                    except ExecutionError as _exec_err:
+                        if "INSTRUMENT_NOT_TRADEABLE" in str(_exec_err):
+                            logger.warning(
+                                "oanda_instrument_not_tradeable_paper_fallback",
+                                pair=order.pair,
+                                reason="BTC_USD CFD not enabled on this OANDA account — simulating as paper trade",
+                            )
+                            result = await self._paper_executor.execute(order, current_price)
+                        else:
+                            raise
                 await self._circuit_breaker.record_success()
             except Exception:
                 await self._circuit_breaker.record_failure()
