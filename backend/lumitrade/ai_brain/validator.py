@@ -158,7 +158,12 @@ class AIOutputValidator:
                 _cfg = LumitradeConfig()  # type: ignore[call-arg]
                 min_tp_pips = 10.0 if "XAU" in pair else float(_cfg.min_tp_pips)
                 min_sl_pips = 10.0 if "XAU" in pair else float(_cfg.min_sl_pips)
-            except Exception:
+            except Exception as _cfg_err:
+                logger.warning(
+                    "validator_config_fallback",
+                    pair=pair,
+                    error=str(_cfg_err),
+                )
                 min_tp_pips = 10.0 if "XAU" in pair else 15.0
                 min_sl_pips = 10.0 if "XAU" in pair else 15.0
             if tp != Decimal("0") and tp_pips < min_tp_pips:
