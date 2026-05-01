@@ -49,7 +49,7 @@ class OandaExecutor:
                 tp=order.take_profit,
                 client_request_id=client_request_id,
             )
-            return self._parse_response(order, response)
+            return await self._parse_response(order, response)
         except Exception as e:
             # Permanent broker rejections (instrument not available on this account,
             # bad parameters, etc.) never committed at OANDA — skip recovery entirely.
@@ -122,7 +122,7 @@ class OandaExecutor:
                 # _parse_response handles both FILLED and CANCELLED branches —
                 # it raises ExecutionError on cancellation, otherwise returns
                 # an OrderResult exactly as if the original POST had succeeded.
-                return self._parse_response(order, recovered)
+                return await self._parse_response(order, recovered)
 
             # No recovery — order either never reached OANDA or is still
             # in-flight. Failing closed is the only safe choice; reconciler
@@ -134,7 +134,7 @@ class OandaExecutor:
             )
             raise ExecutionError(f"Order placement failed: {e}") from e
 
-    def _parse_response(self, order: ApprovedOrder, response: dict) -> OrderResult:
+    async def _parse_response(self, order: ApprovedOrder, response: dict) -> OrderResult:
         order_fill = response.get("orderFillTransaction", {})
         trade_id = ""
         if order_fill:
@@ -212,6 +212,39 @@ class OandaExecutor:
                 sl=order.stop_loss,
                 tp=order.take_profit,
             )
+            # Attempt corrective SL placement — modify_trade is idempotent if SL
+            # was actually set (overwrites with same value). Only fires when SL was
+            # requested, meaning a missing SL would leave capital unprotected.
+            if sl_requested and trade_id:
+                try:
+                    await self._client.modify_trade(
+                        broker_trade_id=trade_id,
+                        sl=order.stop_loss,
+                        tp=order.take_profit or Decimal("0"),
+                        pair=order.pair,
+                    )
+                    logger.info(
+                        "oanda_corrective_sl_placed",
+                        trade_id=trade_id,
+                        pair=order.pair,
+                        sl=str(order.stop_loss),
+                    )
+                except Exception as corr_err:
+                    logger.critical(
+                        "oanda_corrective_sl_failed_closing_trade",
+                        trade_id=trade_id,
+                        pair=order.pair,
+                        error=str(corr_err),
+                    )
+                    try:
+                        await self._client.close_trade(trade_id)
+                        logger.info("oanda_unprotected_trade_closed", trade_id=trade_id)
+                    except Exception as close_err:
+                        logger.critical(
+                            "oanda_emergency_close_failed",
+                            trade_id=trade_id,
+                            error=str(close_err),
+                        )
 
         order_create = response.get("orderCreateTransaction", {})
         order_id = order_create.get("id", order_fill.get("id", ""))

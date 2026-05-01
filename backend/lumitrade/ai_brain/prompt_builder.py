@@ -181,7 +181,7 @@ class PromptBuilder:
             _format_candles(snapshot.candles_m15[-20:]),
             "",
             "=== ECONOMIC CALENDAR (next 4 hours) ===",
-            _format_news(snapshot.news_events),
+            _format_news(snapshot.news_events or []),
             "",
             "=== ACCOUNT CONTEXT ===",
             f"Balance: ${acc.balance}  Equity: ${acc.equity}",

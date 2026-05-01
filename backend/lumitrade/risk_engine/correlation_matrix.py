@@ -112,9 +112,10 @@ class CorrelationMatrix:
         mean_y = sum(y) / n
         dx = [xi - mean_x for xi in x]
         dy = [yi - mean_y for yi in y]
+        import math
         cov = sum(a * b for a, b in zip(dx, dy))
-        std_x = (sum(d * d for d in dx)) ** Decimal("0.5")
-        std_y = (sum(d * d for d in dy)) ** Decimal("0.5")
+        std_x = Decimal(str(math.sqrt(float(sum(d * d for d in dx)))))
+        std_y = Decimal(str(math.sqrt(float(sum(d * d for d in dy)))))
         if std_x == 0 or std_y == 0:
             return Decimal("0.0")
         corr = cov / (std_x * std_y)

@@ -13,6 +13,7 @@ Per BDS Section 16.4.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, TypedDict
 
 from ..infrastructure.alert_service import AlertService
@@ -48,7 +49,10 @@ SYSTEM_PROMPT = (
 
 USER_PROMPT_TEMPLATE = (
     "Pair: {pair}, Direction: {direction}, Entry: {entry}, Current: {current}. "
-    "Is the thesis still VALID or INVALID? One sentence reason."
+    "Stop loss: {stop_loss}, Take profit: {take_profit}. "
+    "Original trade thesis:\n{original_thesis}\n\n"
+    "Is the original thesis still VALID or INVALID at the current price? "
+    "Respond with the verdict first and one specific sentence explaining why."
 )
 
 
@@ -104,6 +108,9 @@ class RiskMonitorAgent(BaseSubagent):
             direction: str = trade.get("direction", "?")
             entry: str = str(trade.get("entry_price", "?"))
             current: str = str(trade.get("current_price", "?"))
+            stop_loss: str = str(trade.get("stop_loss", "?"))
+            take_profit: str = str(trade.get("take_profit", "?"))
+            original_thesis: str = self._format_original_thesis(trade)
 
             try:
                 user_prompt = USER_PROMPT_TEMPLATE.format(
@@ -111,6 +118,9 @@ class RiskMonitorAgent(BaseSubagent):
                     direction=direction,
                     entry=entry,
                     current=current,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    original_thesis=original_thesis,
                 )
 
                 response = await self._call_claude(
@@ -118,8 +128,11 @@ class RiskMonitorAgent(BaseSubagent):
                     user=user_prompt,
                 )
 
+                if not response:
+                    raise RuntimeError("empty_claude_response")
+
                 thesis_valid = self._parse_validity(response)
-                assessment = response.strip() if response else "No assessment available"
+                assessment = response.strip()
 
                 results[trade_id] = {
                     "thesis_valid": thesis_valid,
@@ -196,6 +209,44 @@ class RiskMonitorAgent(BaseSubagent):
             ),
         )
         return results
+
+    async def _call_claude(self, system: str, user: str) -> str:
+        """Call Claude for SA-03 using configured model settings."""
+        try:
+            response = await asyncio.wait_for(
+                self._client.messages.create(
+                    model=self.config.claude_model,
+                    max_tokens=self.config.claude_max_tokens,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                ),
+                timeout=self.timeout_seconds,
+            )
+            text_parts: list[str] = []
+            for block in response.content:
+                if getattr(block, "type", "") == "text":
+                    text_parts.append(getattr(block, "text", ""))
+            return "".join(text_parts).strip()
+        except Exception as e:
+            logger.warning(
+                "risk_monitor_claude_failed",
+                model=self.config.claude_model,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return ""
+
+    @staticmethod
+    def _format_original_thesis(trade: dict) -> str:
+        """Build the original thesis text from the source signal fields."""
+        parts: list[str] = []
+        summary = str(trade.get("signal_summary") or "").strip()
+        reasoning = str(trade.get("signal_reasoning") or "").strip()
+        if summary:
+            parts.append(f"Summary: {summary}")
+        if reasoning:
+            parts.append(f"Reasoning: {reasoning}")
+        return "\n".join(parts) if parts else "Original signal thesis unavailable."
 
     @staticmethod
     def _parse_validity(response: str) -> bool:

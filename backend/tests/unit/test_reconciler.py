@@ -67,6 +67,7 @@ def _make_reconciler(
     mock_oanda.get_open_trades.return_value = (
         oanda_trades if oanda_trades is not None else []
     )
+    mock_oanda.get_trade.return_value = {"realizedPL": "0"}
 
     mock_alerts = AsyncMock()
 

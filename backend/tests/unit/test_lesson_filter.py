@@ -52,6 +52,7 @@ def _rule(
 def config():
     c = MagicMock()
     c.account_uuid = "acct-1"
+    c.lesson_max_age_days = 90
     return c
 
 

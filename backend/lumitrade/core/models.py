@@ -182,7 +182,7 @@ class MarketSnapshot:
     candles_h1: list[Candle]
     candles_h4: list[Candle]
     indicators: IndicatorSet
-    news_events: list[NewsEvent]
+    news_events: list[NewsEvent] | None
     recent_trades: list[TradeSummary]
     account_context: AccountContext
     data_quality: DataQuality
@@ -225,7 +225,7 @@ class SignalProposal:
     generation_method: GenerationMethod
     session: Session
     spread_pips: Decimal
-    news_context: list[NewsEvent]
+    news_context: list[NewsEvent] | None
     ai_prompt_hash: str
     created_at: datetime
     # Adaptive sizing fields (optional — safe defaults)

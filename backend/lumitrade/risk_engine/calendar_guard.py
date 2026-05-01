@@ -38,10 +38,34 @@ class CalendarGuard:
         Returns:
             True if trading should be blocked for this pair.
         """
-        if not news_events:
+        now = datetime.now(timezone.utc)
+
+        # None = calendar API was unreachable. Apply conservative safety window
+        # rather than silently passing. Covers most US macro release times UTC.
+        if news_events is None:
+            weekday = now.weekday()  # 0=Mon, 6=Sun
+            hour, minute = now.hour, now.minute
+            in_us_release_window = (
+                weekday < 5  # weekday only
+                and (
+                    (hour == 12 and minute >= 20)  # 12:20-13:00 (NFP, CPI, PPI, etc.)
+                    or hour == 13                  # 13:00-14:00 (ISM, etc.)
+                    or (hour == 14 and minute <= 35)  # 14:00-14:35 (FOMC)
+                )
+            )
+            if in_us_release_window:
+                logger.warning(
+                    "news_blackout_calendar_unavailable",
+                    pair=pair,
+                    hour=hour,
+                    minute=minute,
+                    reason="calendar API unreachable, blocking during US release window",
+                )
+                return True
             return False
 
-        now = datetime.now(timezone.utc)
+        if not news_events:
+            return False
         pair_currencies = set(pair.replace("_", "").upper()[i:i + 3] for i in (0, 3))
 
         for event in news_events:

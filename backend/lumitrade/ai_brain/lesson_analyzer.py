@@ -378,49 +378,9 @@ class LessonAnalyzer:
         now = datetime.now(timezone.utc).isoformat()
         rules_created: list[str] = []
 
+        active_pairs = set(self._config.pairs)
+
         seed_rules = [
-            # BLOCK: SELL any pair any session (0% WR, 13 trades)
-            {
-                "pattern_key": "SELL:*:*",
-                "pair": "*",
-                "direction": "SELL",
-                "session": "*",
-                "rule_type": "BLOCK",
-                "win_count": 0,
-                "loss_count": 13,
-                "sample_size": 13,
-                "win_rate": "0.0000",
-                "total_pnl": "-3500.00",
-                "evidence": "0W/13L, WR=0.0%, P&L=-$3500.00 (72-trade analysis)",
-            },
-            # BLOCK: Any direction GBP_USD any session (7% WR, 14 trades)
-            {
-                "pattern_key": "*:GBP_USD:*",
-                "pair": "GBP_USD",
-                "direction": "*",
-                "session": "*",
-                "rule_type": "BLOCK",
-                "win_count": 1,
-                "loss_count": 13,
-                "sample_size": 14,
-                "win_rate": "0.0714",
-                "total_pnl": "-2800.00",
-                "evidence": "1W/13L, WR=7.1%, P&L=-$2800.00 (72-trade analysis)",
-            },
-            # BLOCK: Any direction EUR_USD any session (31% WR, 13 trades)
-            {
-                "pattern_key": "*:EUR_USD:*",
-                "pair": "EUR_USD",
-                "direction": "*",
-                "session": "*",
-                "rule_type": "BLOCK",
-                "win_count": 4,
-                "loss_count": 9,
-                "sample_size": 13,
-                "win_rate": "0.3077",
-                "total_pnl": "-1200.00",
-                "evidence": "4W/9L, WR=30.8%, P&L=-$1200.00 (72-trade analysis)",
-            },
             # BOOST: BUY USD_JPY ASIAN (80% WR, 5 trades)
             {
                 "pattern_key": "BUY:USD_JPY:ASIAN",
@@ -450,6 +410,10 @@ class LessonAnalyzer:
                 "evidence": "3W/0L, WR=100%, P&L=+$1133.00 (72-trade analysis)",
             },
         ]
+
+        # Only seed rules for currently active pairs — never block pairs we don't trade
+        # and never use wildcard pair="*" rules that would suppress all directions globally.
+        seed_rules = [r for r in seed_rules if r["pair"] in active_pairs]
 
         for rule in seed_rules:
             try:

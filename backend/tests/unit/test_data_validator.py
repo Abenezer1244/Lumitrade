@@ -190,10 +190,15 @@ class TestGapDetection:
         assert gaps_ok is True
 
     def test_large_gap_detected(self, validator):
+        # Use a fixed Tuesday anchor so the gap is never misclassified as a
+        # normal Friday→Monday weekend gap (which the validator correctly skips).
+        tuesday = datetime(2026, 4, 28, 12, 0, 0, tzinfo=timezone.utc)  # Tuesday
+        def _fixed(dt: datetime) -> Candle:
+            return Candle(time=dt, open=Decimal("1.0843"), high=Decimal("1.0850"), low=Decimal("1.0840"), close=Decimal("1.0845"), volume=100, complete=True, timeframe="M15")
         candles = [
-            _make_candle(time_offset_min=60, timeframe="M15"),
-            _make_candle(time_offset_min=15, timeframe="M15"),  # 45 min gap
-            _make_candle(time_offset_min=0, timeframe="M15"),
+            _fixed(tuesday - timedelta(minutes=60)),
+            _fixed(tuesday - timedelta(minutes=15)),  # 45 min gap
+            _fixed(tuesday),
         ]
         ohlc_ok, gaps_ok = validator.validate_candles(candles)
         assert gaps_ok is False

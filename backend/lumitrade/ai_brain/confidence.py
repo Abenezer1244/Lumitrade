@@ -136,7 +136,7 @@ class ConfidenceAdjuster:
 
     def _news_proximity(self, snapshot: MarketSnapshot) -> Decimal:
         """Reduce confidence near high-impact news events."""
-        for event in snapshot.news_events:
+        for event in (snapshot.news_events or []):
             if event.impact == NewsImpact.HIGH:
                 if 0 < event.minutes_until <= 30:
                     return Decimal("-0.25")

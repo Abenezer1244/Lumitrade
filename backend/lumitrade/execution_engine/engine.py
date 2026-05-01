@@ -985,6 +985,9 @@ class ExecutionEngine:
                 daily_pnl = Decimal(str(state._state.get("daily_pnl", "0")))
                 state._state["daily_pnl"] = str(daily_pnl + pnl_usd)
 
+                weekly_pnl = Decimal(str(state._state.get("weekly_pnl", "0")))
+                state._state["weekly_pnl"] = str(weekly_pnl + pnl_usd)
+
             # Trigger SA-02 post-trade analysis + performance insights
             asyncio.create_task(
                 self._run_post_trade_analysis(trade),
@@ -1013,7 +1016,11 @@ class ExecutionEngine:
 
         # Update trading memory — extract patterns and create/update BLOCK/BOOST rules
         try:
-            rules = await self._lesson_analyzer.analyze_trade(trade, {})
+            signal_row = await self._db.select_one(
+                "signals", {"id": trade.get("signal_id", "")}
+            )
+            indicators = (signal_row or {}).get("indicators_snapshot") or {}
+            rules = await self._lesson_analyzer.analyze_trade(trade, indicators)
             if rules:
                 logger.info(
                     "lesson_analysis_post_trade",

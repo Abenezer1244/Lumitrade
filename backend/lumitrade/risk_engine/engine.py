@@ -400,7 +400,7 @@ class RiskEngine:
         try:
             recent = await self._db.select(
                 "trades",
-                {"pair": pair, "account_id": self._config.account_uuid},
+                {"pair": pair, "account_id": self._config.account_uuid, "status": "CLOSED"},
                 order="closed_at",
                 limit=1,
             )

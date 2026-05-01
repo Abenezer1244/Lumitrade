@@ -360,7 +360,7 @@ class SignalScanner:
         sentiment_context = ""
         try:
             sentiment = await self._sentiment.analyze(
-                pairs=[pair], calendar_events=snapshot.news_events,
+                pairs=[pair], calendar_events=snapshot.news_events or [],
             )
             if sentiment:
                 lines = [f"{c}: {s.value if hasattr(s, 'value') else str(s)}" for c, s in sentiment.items()]

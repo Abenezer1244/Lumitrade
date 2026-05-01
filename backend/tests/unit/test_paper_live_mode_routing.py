@@ -238,6 +238,8 @@ def execution_engine_with_mocked_executors(env_with_required_keys):
     eng._capital_client = None
     eng._capital_executor = None
     eng._state = MagicMock()
+    eng._state.refresh_kill_switch_from_db = AsyncMock()
+    eng._state.kill_switch_active = False
 
     # Mock circuit breaker — always closed
     from lumitrade.core.enums import CircuitBreakerState

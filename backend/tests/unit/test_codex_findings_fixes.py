@@ -498,11 +498,11 @@ def test_scanner_already_in_position_query_includes_account_id(env_keys):
     scanner_path = ROOT / "lumitrade" / "ai_brain" / "scanner.py"
     src = scanner_path.read_text(encoding="utf-8")
     # Find the already-in-position block
-    assert "already_in_position_skip" in src
+    assert "already_at_max_positions_skip" in src
     # Confirm the query right above it includes account_id
-    snippet = src.split("already_in_position_skip")[0]
+    snippet = src.split("already_at_max_positions_skip")[0]
     last_select = snippet.rfind('self._db.select')
-    assert last_select != -1, "scanner.py must call self._db.select before already_in_position_skip"
+    assert last_select != -1, "scanner.py must call self._db.select before already_at_max_positions_skip"
     # Look forward from that select to find the closing paren
     select_block = snippet[last_select:last_select + 400]
     assert "account_id" in select_block, \

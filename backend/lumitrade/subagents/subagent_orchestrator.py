@@ -30,6 +30,7 @@ class SubagentOrchestrator:
         alerts: AlertService,
         events: EventPublisher | None = None,
     ):
+        self._config = config
         self._db = db
         self._events = events
         self.market_analyst = MarketAnalystAgent(config)
@@ -53,7 +54,12 @@ class SubagentOrchestrator:
                 "bb_lower": str(snapshot.indicators.bb_lower),
             },
             "candles": [
-                {"o": str(c.open), "h": str(c.high), "l": str(c.low), "c": str(c.close)}
+                {
+                    "open": str(c.open), "high": str(c.high),
+                    "low": str(c.low), "close": str(c.close),
+                    "volume": str(getattr(c, "volume", 0)),
+                    "time": str(getattr(c, "time", "")),
+                }
                 for c in (snapshot.candles_h1 or [])[-30:]
             ],
         })
@@ -97,7 +103,7 @@ class SubagentOrchestrator:
             "account_id": account_id,
             "recent_trades": recent_trades,
             "account_summary": account_summary,
-            "pairs": ["EUR_USD", "GBP_USD", "USD_JPY"],
+            "pairs": self._config.pairs,
         })
         if result.get("status") == "error":
             logger.error(

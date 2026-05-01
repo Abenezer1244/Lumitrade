@@ -112,8 +112,8 @@ async def test_fetch_events_populates_scheduled_at_from_forexfactory():
 
 
 @pytest.mark.asyncio
-async def test_fetch_events_returns_empty_on_http_failure():
-    """Sanity check: HTTP non-200 returns [] without crashing (graceful degradation)."""
+async def test_fetch_events_returns_none_on_http_failure():
+    """HTTP non-200 returns None (distinguishable from 'no events') without crashing."""
     fetcher = CalendarFetcher(_build_config())
 
     mock_client = AsyncMock()
@@ -124,4 +124,4 @@ async def test_fetch_events_returns_empty_on_http_failure():
     with patch("lumitrade.data_engine.calendar.httpx.AsyncClient", return_value=mock_client):
         events = await fetcher._fetch_events()
 
-    assert events == []
+    assert events is None

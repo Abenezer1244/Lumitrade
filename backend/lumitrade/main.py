@@ -678,6 +678,15 @@ class OrchestratorService:
                                     order_num=order_num + 1,
                                     total_orders=num_orders,
                                 )
+                                if order_num == 0:
+                                    try:
+                                        await self.db.update(
+                                            "signals",
+                                            {"id": str(proposal.signal_id)},
+                                            {"executed": True},
+                                        )
+                                    except Exception:
+                                        pass
                             except Exception as e:
                                 logger.error(
                                     "scaled_order_failed",
@@ -760,12 +769,31 @@ class OrchestratorService:
                     # Enrich trades with current price
                     enriched = []
                     for t in open_trades:
+                        signal = {}
+                        signal_id = t.get("signal_id")
+                        if signal_id:
+                            try:
+                                signal = await self.db.select_one(
+                                    "signals", {"id": str(signal_id)}
+                                ) or {}
+                            except Exception as e:
+                                logger.warning(
+                                    "risk_monitor_signal_fetch_failed",
+                                    trade_id=t.get("id", ""),
+                                    signal_id=str(signal_id),
+                                    error=str(e),
+                                )
                         enriched.append({
                             "trade_id": t.get("id", ""),
+                            "signal_id": signal_id or "",
                             "pair": t.get("pair", ""),
                             "direction": t.get("direction", ""),
                             "entry_price": t.get("entry_price", 0),
+                            "stop_loss": t.get("stop_loss", 0),
+                            "take_profit": t.get("take_profit", 0),
                             "current_price": prices.get(t.get("pair", ""), 0),
+                            "signal_summary": signal.get("summary", ""),
+                            "signal_reasoning": signal.get("reasoning", ""),
                         })
 
                     snapshot = await self.data_eng.get_snapshot(

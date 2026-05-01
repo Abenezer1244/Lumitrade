@@ -7,7 +7,7 @@ Per QTS Table 5. All 25 test cases.
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -121,6 +121,7 @@ def mock_state_manager():
     sm = MagicMock()
     sm.risk_state = RiskState.NORMAL
     sm.get = AsyncMock(return_value=_make_state())
+    sm.kill_switch_active = False
     return sm
 
 
@@ -198,38 +199,32 @@ class TestRejections:
     """RE-002 to RE-005, RE-007, RE-009, RE-011, RE-013, RE-015-017."""
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_daily_limit(
-        self, engine, mock_state_manager,
-    ):
+    async def test_rejects_when_risk_state_daily_limit(self, engine):
         """RE-002"""
-        mock_state_manager.risk_state = RiskState.DAILY_LIMIT
-        result = await engine.evaluate(_make_proposal(), Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.DAILY_LIMIT)):
+            result = await engine.evaluate(_make_proposal(), Decimal("300"))
         assert isinstance(result, RiskRejection)
         assert result.rule_violated == "RISK_STATE"
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_weekly_limit(
-        self, engine, mock_state_manager,
-    ):
+    async def test_rejects_when_risk_state_weekly_limit(self, engine):
         """RE-003"""
-        mock_state_manager.risk_state = RiskState.WEEKLY_LIMIT
-        result = await engine.evaluate(_make_proposal(), Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.WEEKLY_LIMIT)):
+            result = await engine.evaluate(_make_proposal(), Decimal("300"))
         assert isinstance(result, RiskRejection)
 
     @pytest.mark.asyncio
-    async def test_rejects_when_risk_state_emergency_halt(
-        self, engine, mock_state_manager,
-    ):
+    async def test_rejects_when_risk_state_emergency_halt(self, engine):
         """RE-004"""
-        mock_state_manager.risk_state = RiskState.EMERGENCY_HALT
-        result = await engine.evaluate(_make_proposal(), Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.EMERGENCY_HALT)):
+            result = await engine.evaluate(_make_proposal(), Decimal("300"))
         assert isinstance(result, RiskRejection)
 
     @pytest.mark.asyncio
-    async def test_rejects_when_circuit_breaker_open(self, engine, mock_state_manager):
+    async def test_rejects_when_circuit_breaker_open(self, engine):
         """RE-005"""
-        mock_state_manager.risk_state = RiskState.CIRCUIT_OPEN
-        result = await engine.evaluate(_make_proposal(), Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.CIRCUIT_OPEN)):
+            result = await engine.evaluate(_make_proposal(), Decimal("300"))
         assert isinstance(result, RiskRejection)
 
     @pytest.mark.asyncio
@@ -394,10 +389,10 @@ class TestOrderDetails:
         assert 29 <= delta <= 31
 
     @pytest.mark.asyncio
-    async def test_rejection_logged_to_db(self, engine, mock_state_manager, mock_db):
+    async def test_rejection_logged_to_db(self, engine, mock_db):
         """RE-023"""
-        mock_state_manager.risk_state = RiskState.DAILY_LIMIT
-        await engine.evaluate(_make_proposal(), Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.DAILY_LIMIT)):
+            await engine.evaluate(_make_proposal(), Decimal("300"))
         mock_db.insert.assert_called()
         # Find the risk_events insert call
         found = any(
@@ -416,10 +411,10 @@ class TestOrderDetails:
         assert result.rule_violated == "SPREAD"
 
     @pytest.mark.asyncio
-    async def test_all_rejections_include_signal_id(self, engine, mock_state_manager):
+    async def test_all_rejections_include_signal_id(self, engine):
         """RE-025"""
-        mock_state_manager.risk_state = RiskState.DAILY_LIMIT
         proposal = _make_proposal()
-        result = await engine.evaluate(proposal, Decimal("300"))
+        with patch.object(engine, "_get_current_risk_state", AsyncMock(return_value=RiskState.DAILY_LIMIT)):
+            result = await engine.evaluate(proposal, Decimal("300"))
         assert isinstance(result, RiskRejection)
         assert result.signal_id == proposal.signal_id

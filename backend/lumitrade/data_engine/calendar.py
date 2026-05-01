@@ -55,39 +55,47 @@ class CalendarFetcher:
 
     def __init__(self, config: LumitradeConfig):
         self._config = config
-        self._cache: list[NewsEvent] = []
+        self._cache: list[NewsEvent] | None = None
         self._cache_expiry: Optional[datetime] = None
+        # Tracks whether the last fetch succeeded — None = never fetched
+        self._last_fetch_ok: bool | None = None
 
     async def get_upcoming_events(
         self, currencies: list[str], hours_ahead: int = 4
-    ) -> list[NewsEvent]:
+    ) -> list[NewsEvent] | None:
         """
         Get upcoming high and medium impact events.
+        Returns None when the calendar API is unavailable (vs [] for no events).
+        CalendarGuard uses None to apply safety blocks during known risk windows.
         Returns cached results if available and fresh.
-
-        Fetches from OANDA Labs /labs/v1/calendar endpoint.
-        Falls back to empty list on any error (non-critical data source).
         """
         now = datetime.now(timezone.utc)
 
-        # Return cache if still valid
+        # Return cache if still valid (preserves None if last fetch failed)
         if self._cache_expiry and now < self._cache_expiry:
+            if self._cache is None:
+                return None
             return self._filter_upcoming(self._cache, currencies, hours_ahead)
 
         # Fetch fresh events from OANDA Labs
         events = await self._fetch_events()
+        self._last_fetch_ok = events is not None
+        if events is None:
+            # Keep stale cache entry for TTL so we don't hammer a down API
+            self._cache_expiry = now + timedelta(seconds=CACHE_TTL_SECONDS)
+            self._cache = None
+            return None
         self._cache = events
         self._cache_expiry = now + timedelta(seconds=CACHE_TTL_SECONDS)
 
         return self._filter_upcoming(events, currencies, hours_ahead)
 
-    async def _fetch_events(self) -> list[NewsEvent]:
+    async def _fetch_events(self) -> list[NewsEvent] | None:
         """
         Fetch economic calendar from ForexFactory free JSON feed.
 
-        Source: https://nfs.faireconomy.media/ff_calendar_thisweek.json
-        Returns HIGH and MEDIUM impact events for the next 4 hours.
-        Returns empty list on any failure (graceful degradation).
+        Returns None on any network/API failure (caller distinguishes from []).
+        Returns [] when fetch succeeds but no events match.
         """
         url = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
 
@@ -96,13 +104,13 @@ class CalendarFetcher:
                 resp = await client.get(url)
                 if resp.status_code != 200:
                     logger.warning("calendar_fetch_failed", status=resp.status_code)
-                    return []
+                    return None
 
                 raw_events = resp.json()
 
         except Exception as e:
             logger.error("calendar_fetch_failed", error=str(e))
-            return []
+            return None
 
         # Map ForexFactory country codes to forex currencies
         country_to_currency = {

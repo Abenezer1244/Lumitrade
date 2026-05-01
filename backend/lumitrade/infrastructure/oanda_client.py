@@ -179,11 +179,11 @@ class OandaTradingClient(OandaClient):
         # OANDA requires specific price precision per instrument
         # JPY pairs: 3 decimals, XAU/BTC: 2 decimals, others: 5 decimals
         if "JPY" in pair:
-            fmt_sl, fmt_tp = f"{float(sl):.3f}", f"{float(tp):.3f}"
+            fmt_sl, fmt_tp = f"{sl:.3f}", f"{tp:.3f}"
         elif "XAU" in pair or "BTC" in pair:
-            fmt_sl, fmt_tp = f"{float(sl):.2f}", f"{float(tp):.2f}"
+            fmt_sl, fmt_tp = f"{sl:.2f}", f"{tp:.2f}"
         else:
-            fmt_sl, fmt_tp = f"{float(sl):.5f}", f"{float(tp):.5f}"
+            fmt_sl, fmt_tp = f"{sl:.5f}", f"{tp:.5f}"
         order = {
             "type": "MARKET",
             "instrument": pair,
@@ -192,7 +192,7 @@ class OandaTradingClient(OandaClient):
             "clientExtensions": {"id": client_request_id},
         }
         # Only attach TP if provided — no TP lets trailing stop manage exit
-        if tp and float(tp) > 0:
+        if tp and tp > 0:
             order["takeProfitOnFill"] = {"price": fmt_tp}
         body = {"order": order}
         resp = await self._trading_client.post(url, json=body)
@@ -323,14 +323,14 @@ class OandaTradingClient(OandaClient):
         )
         # Match precision formatting from place_market_order
         if pair and "JPY" in pair:
-            fmt_sl = f"{float(sl):.3f}"
-            fmt_tp = f"{float(tp):.3f}" if tp and float(tp) > 0 else None
+            fmt_sl = f"{sl:.3f}"
+            fmt_tp = f"{tp:.3f}" if tp and tp > 0 else None
         elif pair and ("XAU" in pair or "BTC" in pair):
-            fmt_sl = f"{float(sl):.2f}"
-            fmt_tp = f"{float(tp):.2f}" if tp and float(tp) > 0 else None
+            fmt_sl = f"{sl:.2f}"
+            fmt_tp = f"{tp:.2f}" if tp and tp > 0 else None
         else:
-            fmt_sl = f"{float(sl):.5f}"
-            fmt_tp = f"{float(tp):.5f}" if tp and float(tp) > 0 else None
+            fmt_sl = f"{sl:.5f}"
+            fmt_tp = f"{tp:.5f}" if tp and tp > 0 else None
 
         body: dict = {"stopLoss": {"price": fmt_sl}}
         if fmt_tp is not None:
