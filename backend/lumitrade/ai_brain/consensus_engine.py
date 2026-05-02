@@ -24,9 +24,6 @@ logger = get_logger(__name__)
 # ── Constants ──────────────────────────────────────────────────
 CONSENSUS_MODEL = "claude-haiku-4-5-20251001"
 CONSENSUS_MAX_TOKENS = 50
-CONFIDENCE_BOOST = Decimal("0.05")
-CONFIDENCE_PENALTY = Decimal("0.05")
-CONFIDENCE_MAX = Decimal("1.0")
 CONFIDENCE_MIN = Decimal("0.0")
 
 SYSTEM_PROMPT = (
@@ -43,8 +40,9 @@ class ConsensusEngine:
     The engine asks a fresh Haiku instance whether to BUY, SELL, or HOLD
     the given pair based on the market context. If the second opinion
     matches the primary signal's action, confidence is boosted by 0.05
-    (capped at 1.0). If it disagrees, confidence is reduced by 0.10
-    (floored at 0.0). On any error, the proposal passes through unchanged.
+    (capped at config.max_confidence). If it disagrees, confidence is
+    reduced by 0.05 (floored at 0.0). On any error, the proposal passes
+    through unchanged.
     """
 
     def __init__(self, config: LumitradeConfig) -> None:
@@ -91,7 +89,7 @@ class ConsensusEngine:
 
         if agrees:
             new_confidence = min(
-                CONFIDENCE_MAX,
+                Decimal(str(self._config.max_confidence)),
                 proposal.confidence_adjusted + self._config.confidence_boost,
             )
             logger.info(

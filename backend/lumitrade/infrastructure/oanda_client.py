@@ -110,8 +110,21 @@ class OandaClient(BrokerInterface):
         return {"prices": all_prices}
 
     async def get_account_summary(self) -> dict:
-        """Fetch account balance, equity, margin."""
+        """Fetch account balance, equity, margin from the main account."""
         url = f"{self._base_url}/v3/accounts/{self._account_id}/summary"
+        resp = await self._client.get(url)
+        resp.raise_for_status()
+        return resp.json()["account"]
+
+    async def get_account_summary_for(self, pair: str = "") -> dict:
+        """Fetch account balance/equity/margin, routing spot crypto pairs to their sub-account.
+
+        BTC_USD and ETH_USD positions live on the spot crypto sub-account;
+        fetching balance from the main forex account would give the wrong
+        equity base for BTC risk sizing.
+        """
+        account_id = self.config.account_id_for(pair) if pair else self._account_id
+        url = f"{self._base_url}/v3/accounts/{account_id}/summary"
         resp = await self._client.get(url)
         resp.raise_for_status()
         return resp.json()["account"]

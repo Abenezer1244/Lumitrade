@@ -176,18 +176,28 @@ class ExecutionEngine:
                     # Live metals via Capital.com
                     result = await self._capital_executor.execute(order)
                 else:
-                    # Live forex via OANDA — with paper fallback for instruments
-                    # not enabled on the account (e.g. BTC_USD CFD on practice).
+                    # Live forex via OANDA.
                     try:
                         result = await self._oanda_executor.execute(order)
                     except ExecutionError as _exec_err:
                         if "INSTRUMENT_NOT_TRADEABLE" in str(_exec_err):
-                            logger.warning(
-                                "oanda_instrument_not_tradeable_paper_fallback",
+                            # In LIVE mode this is a fatal configuration failure.
+                            # Silently papering here would write a fake LIVE row to
+                            # the DB — operators would see a "live" trade that never
+                            # hit the broker. Hard-fail and page instead.
+                            logger.critical(
+                                "oanda_instrument_not_tradeable_live_mode",
                                 pair=order.pair,
-                                reason="BTC_USD CFD not enabled on this OANDA account — simulating as paper trade",
+                                order_ref=str(order.order_ref),
                             )
-                            result = await self._paper_executor.execute(order, current_price)
+                            await self._alerts.send_critical(
+                                f"CRITICAL: {order.pair} is not tradeable on this OANDA account. "
+                                "Enable CFD trading in OANDA account settings. Order skipped."
+                            )
+                            raise ExecutionError(
+                                f"INSTRUMENT_NOT_TRADEABLE in LIVE mode for {order.pair}: "
+                                "enable CFD trading in OANDA account settings"
+                            ) from _exec_err
                         else:
                             raise
                 await self._circuit_breaker.record_success()
@@ -829,7 +839,7 @@ class ExecutionEngine:
         exit_reason = "UNKNOWN"
         try:
             if self._oanda_read and broker_id:
-                oanda_trade = await self._oanda_read.get_trade(broker_id)
+                oanda_trade = await self._oanda_read.get_trade(broker_id, pair=pair)
                 trade_state = oanda_trade.get("state", "UNKNOWN")
                 logger.info(
                     "oanda_trade_closure_data",

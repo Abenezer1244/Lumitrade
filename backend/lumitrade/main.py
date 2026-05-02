@@ -569,8 +569,10 @@ class OrchestratorService:
                         # Confidence threshold is checked by risk engine
                         # (which also accounts for CAUTIOUS state)
 
-                        # 2. Get account balance for risk sizing
-                        account = await self.oanda.get_account_summary()
+                        # 2. Get account balance for risk sizing — route spot crypto
+                        # pairs (BTC_USD) to the sub-account so risk sizing uses
+                        # the correct equity base, not the main forex account balance.
+                        account = await self.oanda.get_account_summary_for(pair)
                         balance = Decimal(str(account.get("balance", "0")))
 
                         # 3. Risk evaluation
