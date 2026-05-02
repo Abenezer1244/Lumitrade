@@ -293,7 +293,7 @@ export default function AccountPanel() {
             const bal        = data.balance        ?? 0;
             const eq         = data.equity         ?? 0;
             const unrealized = data.unrealized_pnl ?? 0;
-            const daily      = (data as { daily_pnl_usd?: number }).daily_pnl_usd ?? 0;
+            const daily      = data.daily_pnl_usd ?? 0;
             const isUnrealizedProfit = unrealized >= 0;
             const isDailyProfit      = daily >= 0;
 

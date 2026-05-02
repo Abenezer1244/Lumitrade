@@ -28,6 +28,7 @@ export interface AccountBreakdown {
   equity: number;
   unrealized_pnl: number;
   open_trade_count: number;
+  daily_pnl_usd: number;
 }
 
 export interface AccountSummary {
