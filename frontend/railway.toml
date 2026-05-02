@@ -1,2 +1,3 @@
 [build]
 builder = "dockerfile"
+dockerfilePath = "frontend/Dockerfile"
