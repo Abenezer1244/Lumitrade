@@ -784,6 +784,40 @@ class HealthServer:
                     except Exception:
                         pass  # PAXOS account not accessible via V20; zeros are correct
 
+                # BTC/ETH daily P&L from closed trades today
+                crypto_daily_pnl = 0.0
+                try:
+                    from datetime import datetime, timezone as _tz
+                    today_utc = datetime.now(_tz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    crypto_rows = await (
+                        self._db.client.table("trades")
+                        .select("pnl_usd")
+                        .eq("status", "CLOSED")
+                        .in_("pair", ["BTC_USD", "ETH_USD"])
+                        .gte("closed_at", today_utc)
+                        .execute()
+                    )
+                    crypto_daily_pnl = sum(float(r.get("pnl_usd") or 0) for r in (crypto_rows.data or []))
+                except Exception:
+                    pass
+
+                # Forex daily P&L = aggregate daily P&L minus crypto daily P&L
+                forex_daily_pnl = 0.0
+                try:
+                    from datetime import datetime, timezone as _tz
+                    today_utc = datetime.now(_tz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+                    forex_rows = await (
+                        self._db.client.table("trades")
+                        .select("pnl_usd")
+                        .eq("status", "CLOSED")
+                        .not_.in_("pair", ["BTC_USD", "ETH_USD"])
+                        .gte("closed_at", today_utc)
+                        .execute()
+                    )
+                    forex_daily_pnl = sum(float(r.get("pnl_usd") or 0) for r in (forex_rows.data or []))
+                except Exception:
+                    pass
+
                 return web.json_response({
                     "balance": round(balance, 2),
                     "equity": round(equity, 2),
@@ -797,12 +831,14 @@ class HealthServer:
                             "equity": round(forex_equity, 2),
                             "unrealized_pnl": round(forex_unrealized, 2),
                             "open_trade_count": forex_open,
+                            "daily_pnl_usd": round(forex_daily_pnl, 2),
                         },
                         "crypto": {
                             "balance": round(crypto_balance, 2),
                             "equity": round(crypto_equity, 2),
                             "unrealized_pnl": round(crypto_unrealized, 2),
                             "open_trade_count": crypto_open,
+                            "daily_pnl_usd": round(crypto_daily_pnl, 2),
                         },
                     },
                 })
