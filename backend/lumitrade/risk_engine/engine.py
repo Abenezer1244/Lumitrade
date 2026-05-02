@@ -251,6 +251,57 @@ class RiskEngine:
             min_units = Decimal("1")
         else:
             min_units = Decimal(str(self._config.min_position_units_forex))
+        # Snap-to-minimum for crypto: if sizing math produces sub-0.01 BTC but
+        # there is a valid signal (raw_units > 0), round up to broker minimum
+        # rather than discarding the trade. Guard: reject if snapped risk_pct
+        # exceeds 2x the configured cap (prevents accidental over-sizing on tiny
+        # accounts). Codex+Claude dual-review 2026-05-02.
+        if is_crypto and units < min_units:
+            sl_pips = pips_between(proposal.entry_price, proposal.stop_loss, proposal.pair)
+            pv = pip_value_per_unit(proposal.pair, proposal.entry_price)
+            raw_units = Decimal("0")
+            if sl_pips != Decimal("0") and pv != Decimal("0"):
+                raw_units = (
+                    (account_balance * risk_pct) / (sl_pips * pv)
+                ) * corr_multiplier
+
+            if raw_units > Decimal("0"):
+                snapped_units = min_units
+                snapped_risk_usd = snapped_units * sl_pips * pv
+                snapped_risk_pct = (
+                    snapped_risk_usd / account_balance
+                    if account_balance > Decimal("0")
+                    else Decimal("Infinity")
+                )
+                max_snap_risk_pct = risk_pct * Decimal("2")
+
+                if snapped_risk_pct > max_snap_risk_pct:
+                    snap_result: CheckResult = (
+                        "BTC_SNAP_RISK_EXCEEDED",
+                        False,
+                        f"Snapping {proposal.pair} to broker minimum "
+                        f"{snapped_units} units would risk "
+                        f"{snapped_risk_pct * Decimal('100'):.2f}%, above "
+                        f"{max_snap_risk_pct * Decimal('100'):.0f}% limit",
+                        str(snapped_risk_pct),
+                        str(max_snap_risk_pct),
+                    )
+                    return await self._reject(proposal, snap_result, risk_state, now)
+
+                logger.warning(
+                    "crypto_min_position_snapped",
+                    pair=proposal.pair,
+                    original_units=str(units),
+                    snapped_units=str(snapped_units),
+                    original_risk_usd=str(risk_amount_usd),
+                    snapped_risk_usd=str(snapped_risk_usd),
+                    snapped_risk_pct=str(snapped_risk_pct),
+                    configured_risk_pct=str(risk_pct),
+                    max_snap_risk_pct=str(max_snap_risk_pct),
+                )
+                units = snapped_units
+                risk_amount_usd = snapped_risk_usd
+
         if units < min_units:
             min_result: CheckResult = (
                 "MINIMUM_POSITION_SIZE",
