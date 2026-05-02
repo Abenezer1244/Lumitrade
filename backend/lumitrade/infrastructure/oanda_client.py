@@ -80,12 +80,34 @@ class OandaClient(BrokerInterface):
             raise
 
     async def get_pricing(self, pairs: list[str]) -> dict:
-        """Get current bid/ask for one or more pairs."""
-        url = f"{self._base_url}/v3/accounts/{self._account_id}/pricing"
-        params = {"instruments": ",".join(pairs)}
-        resp = await self._client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
+        """Get current bid/ask for one or more pairs.
+
+        Routes spot crypto pairs (BTC_USD, ETH_USD) to the sub-account when
+        configured — those instruments are not listed on the main forex account.
+        Merges results into a single {"prices": [...]} dict.
+        """
+        spot_id = getattr(self.config, "oanda_spot_crypto_account_id", None)
+        spot_set = getattr(self.config, "SPOT_CRYPTO_PAIRS", frozenset())
+        spot_pairs = [p for p in pairs if p in spot_set and spot_id and spot_id != self._account_id]
+        main_pairs = [p for p in pairs if p not in spot_pairs]
+
+        all_prices: list = []
+        if main_pairs:
+            url = f"{self._base_url}/v3/accounts/{self._account_id}/pricing"
+            resp = await self._client.get(url, params={"instruments": ",".join(main_pairs)})
+            resp.raise_for_status()
+            all_prices.extend(resp.json().get("prices", []))
+
+        if spot_pairs:
+            url = f"{self._base_url}/v3/accounts/{spot_id}/pricing"
+            try:
+                resp = await self._client.get(url, params={"instruments": ",".join(spot_pairs)})
+                resp.raise_for_status()
+                all_prices.extend(resp.json().get("prices", []))
+            except Exception as e:
+                logger.warning("spot_crypto_pricing_fetch_failed", pairs=spot_pairs, error=str(e))
+
+        return {"prices": all_prices}
 
     async def get_account_summary(self) -> dict:
         """Fetch account balance, equity, margin."""

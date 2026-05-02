@@ -94,7 +94,7 @@ class OandaExecutor:
             )
             try:
                 await asyncio.sleep(RECOVERY_LOOKUP_DELAY_SEC)
-                recovered = await self._client.lookup_order_status(client_request_id)
+                recovered = await self._client.lookup_order_status(client_request_id, pair=order.pair)
             except Exception as lookup_err:
                 logger.error(
                     "oanda_order_recovery_lookup_failed",
@@ -237,7 +237,7 @@ class OandaExecutor:
                         error=str(corr_err),
                     )
                     try:
-                        await self._client.close_trade(trade_id)
+                        await self._client.close_trade(trade_id, pair=order.pair)
                         logger.info("oanda_unprotected_trade_closed", trade_id=trade_id)
                     except Exception as close_err:
                         logger.critical(

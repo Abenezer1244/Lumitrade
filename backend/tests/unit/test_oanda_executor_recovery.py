@@ -60,6 +60,10 @@ def _ok_response(broker_trade_id: str = "12345", fill_price: str = "1.08431") ->
             "price": fill_price,
             "units": "1000",
         },
+        # 4 IDs = 2 base + 2 dependents (SL + TP). Satisfies the relatedTransactionIDs
+        # check so the corrective-SL path is not entered and modify_trade/close_trade
+        # don't need to be mocked in basic recovery tests.
+        "relatedTransactionIDs": ["tx-create-1", "tx-fill-1", "tx-sl-1", "tx-tp-1"],
     }
 
 
@@ -101,7 +105,7 @@ async def test_timeout_recovers_when_broker_already_filled(monkeypatch):
     client.place_market_order.assert_awaited_once()
     # Lookup must use the same client_request_id (order_ref) so OANDA's
     # @<id> specifier finds the order that was actually committed.
-    client.lookup_order_status.assert_awaited_once_with(str(order.order_ref))
+    client.lookup_order_status.assert_awaited_once_with(str(order.order_ref), pair=order.pair)
 
 
 @pytest.mark.asyncio
