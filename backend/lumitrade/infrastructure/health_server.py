@@ -283,7 +283,7 @@ class HealthServer:
         try:
             oanda = OandaClient(config)
             try:
-                acct = await oanda.get_account_summary()
+                acct = await oanda.get_account_summary_for_pairs(config.pairs)
                 oanda_reachable = True
                 try:
                     oanda_balance = float(acct.get("balance", 0))
@@ -752,7 +752,7 @@ class HealthServer:
             config = self._get_config()
             oanda = OandaClient(config)
             try:
-                acct = await oanda.get_account_summary()
+                acct = await oanda.get_account_summary_for_pairs(config.pairs)
                 balance = float(acct.get("balance", 0))
                 equity = float(acct.get("NAV", acct.get("equity", balance)))
                 margin_used = float(acct.get("marginUsed", 0))
@@ -782,7 +782,21 @@ class HealthServer:
             config = self._get_config()
             oanda = OandaClient(config)
             try:
-                trade = await oanda.get_trade(trade_id)
+                pair = request.query.get("pair", "")
+                if not pair:
+                    try:
+                        trade_row = await self._db.select_one(
+                            "trades", {"broker_trade_id": trade_id}
+                        )
+                        if trade_row:
+                            pair = trade_row.get("pair", "") or ""
+                    except Exception as _db_err:
+                        logger.warning(
+                            "trade_lookup_pair_lookup_failed",
+                            trade_id=trade_id,
+                            error=str(_db_err),
+                        )
+                trade = await oanda.get_trade(trade_id, pair=pair)
                 return web.json_response(trade)
             finally:
                 await oanda.close()
@@ -796,7 +810,7 @@ class HealthServer:
             config = self._get_config()
             oanda = OandaClient(config)
             try:
-                trades = await oanda.get_open_trades()
+                trades = await oanda.get_all_open_trades()
                 return web.json_response({"trades": trades})
             finally:
                 await oanda.close()
@@ -972,7 +986,8 @@ class HealthServer:
                     if not broker_id:
                         continue
                     try:
-                        oanda_trade = await oanda.get_trade(broker_id)
+                        pair = trade.get("pair", "")
+                        oanda_trade = await oanda.get_trade(broker_id, pair=pair)
                         close_price = oanda_trade.get("averageClosePrice")
                         real_pl = oanda_trade.get("realizedPL")
                         if not close_price or not real_pl:
@@ -1108,7 +1123,8 @@ class HealthServer:
                     if not broker_id:
                         continue
                     try:
-                        oanda_trade = await oanda.get_trade(broker_id)
+                        pair = trade.get("pair", "")
+                        oanda_trade = await oanda.get_trade(broker_id, pair=pair)
                         close_time = oanda_trade.get("closeTime")
                         if close_time and close_time != trade.get("closed_at"):
                             await self._db.update(
@@ -1154,7 +1170,8 @@ class HealthServer:
             config = self._get_config()
             stream_env = "fxpractice" if config.oanda_environment != "live" else "fxtrade"
             stream_base = f"https://stream-{stream_env}.oanda.com"
-            url = f"{stream_base}/v3/accounts/{config.oanda_account_id}/pricing/stream?instruments={pair}"
+            account_id = config.account_id_for(pair)
+            url = f"{stream_base}/v3/accounts/{account_id}/pricing/stream?instruments={pair}"
 
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(

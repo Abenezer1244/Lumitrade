@@ -129,6 +129,42 @@ class OandaClient(BrokerInterface):
         resp.raise_for_status()
         return resp.json()["account"]
 
+    async def get_account_summary_for_pairs(self, pairs: list[str]) -> dict:
+        """Fetch aggregate summary across the unique OANDA accounts for pairs."""
+        representatives: dict[str, str] = {}
+        for pair in pairs:
+            account_id = self.config.account_id_for(pair)
+            representatives.setdefault(account_id, pair)
+        if not representatives:
+            representatives[self._account_id] = ""
+
+        summaries = [
+            await self.get_account_summary_for(pair)
+            for pair in representatives.values()
+        ]
+        if len(summaries) == 1:
+            return summaries[0]
+
+        def _sum_decimal(key: str) -> str:
+            total = sum(Decimal(str(summary.get(key, "0") or "0")) for summary in summaries)
+            return str(total)
+
+        nav_total = sum(
+            Decimal(str(summary.get("NAV", summary.get("equity", "0")) or "0"))
+            for summary in summaries
+        )
+        return {
+            **summaries[0],
+            "balance": _sum_decimal("balance"),
+            "NAV": str(nav_total),
+            "equity": str(nav_total),
+            "marginUsed": _sum_decimal("marginUsed"),
+            "unrealizedPL": _sum_decimal("unrealizedPL"),
+            "openTradeCount": str(
+                sum(int(summary.get("openTradeCount", 0) or 0) for summary in summaries)
+            ),
+        }
+
     async def get_open_trades(self) -> list[dict]:
         """Fetch all currently open trades from the main account."""
         url = f"{self._base_url}/v3/accounts/{self._account_id}/openTrades"
@@ -188,8 +224,39 @@ class OandaClient(BrokerInterface):
 
     async def stream_prices(self, pairs: list[str]):
         """Async generator yielding real-time price ticks."""
+        pairs_by_account: dict[str, list[str]] = {}
+        for pair in pairs:
+            pairs_by_account.setdefault(self.config.account_id_for(pair), []).append(pair)
+
+        if len(pairs_by_account) == 1:
+            account_id, account_pairs = next(iter(pairs_by_account.items()))
+            async for line in self._stream_prices_for_account(account_id, account_pairs):
+                yield line
+            return
+
+        import asyncio
+
+        queue: asyncio.Queue[str] = asyncio.Queue()
+
+        async def _pump(account_id: str, account_pairs: list[str]) -> None:
+            async for line in self._stream_prices_for_account(account_id, account_pairs):
+                await queue.put(line)
+
+        tasks = [
+            asyncio.create_task(_pump(account_id, account_pairs))
+            for account_id, account_pairs in pairs_by_account.items()
+        ]
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            for task in tasks:
+                task.cancel()
+
+    async def _stream_prices_for_account(self, account_id: str, pairs: list[str]):
+        """Async generator yielding price ticks for pairs on one OANDA account."""
         url = (
-            f"{self._stream_url}/v3/accounts/{self._account_id}/pricing/stream"
+            f"{self._stream_url}/v3/accounts/{account_id}/pricing/stream"
         )
         params = {"instruments": ",".join(pairs)}
         async with httpx.AsyncClient(

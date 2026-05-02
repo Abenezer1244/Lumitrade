@@ -80,7 +80,7 @@ class PositionReconciler:
             db_trades = await self._db.select("trades", db_filter)
 
             # Fetch OANDA open trades
-            oanda_trades = await self._oanda.get_open_trades()
+            oanda_trades = await self._oanda.get_all_open_trades()
 
             # Index OANDA trades by broker_trade_id for O(1) lookup
             oanda_by_id: dict[str, dict] = {}
@@ -181,7 +181,7 @@ class PositionReconciler:
             # Attempt to get real P&L from OANDA if we have a broker_trade_id
             if broker_trade_id:
                 try:
-                    oanda_trade = await self._oanda.get_trade(broker_trade_id)
+                    oanda_trade = await self._oanda.get_trade(broker_trade_id, pair=pair)
                     real_pl = float(oanda_trade.get("realizedPL", 0))
                     if real_pl != 0:
                         pnl_usd = real_pl

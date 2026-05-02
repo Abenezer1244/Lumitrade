@@ -210,7 +210,7 @@ class StateManager:
 
         # 2. Fetch live account data from OANDA
         try:
-            account = await self._oanda.get_account_summary()
+            account = await self._oanda.get_account_summary_for_pairs(self._config.pairs)
             self._state["account_balance"] = account.get("balance", "0")
             self._state["account_equity"] = account.get("NAV", "0")
             logger.info(
@@ -334,7 +334,7 @@ class StateManager:
             # computes risk on outdated equity == real money risk.
             if self._oanda:
                 try:
-                    acct = await self._oanda.get_account_summary()
+                    acct = await self._oanda.get_account_summary_for_pairs(self._config.pairs)
                     if acct:
                         self._state["account_balance"] = str(acct.get("balance", "0"))
                         self._state["account_equity"] = str(

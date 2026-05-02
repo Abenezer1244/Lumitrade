@@ -150,7 +150,7 @@ class OrchestratorService:
 
         # 6. Validate OANDA connection
         try:
-            account = await self.oanda.get_account_summary()
+            account = await self.oanda.get_account_summary_for_pairs(self.config.pairs)
             logger.info("oanda_connected", balance=account.get("balance"))
         except Exception as e:
             logger.error("oanda_connection_failed", error=str(e))
@@ -303,7 +303,7 @@ class OrchestratorService:
 
         balance: str = "unknown"
         try:
-            acct = await self.oanda.get_account_summary()
+            acct = await self.oanda.get_account_summary_for_pairs(self.config.pairs)
             balance = str(acct.get("balance", "0"))
         except Exception as e:
             balance = f"fetch_failed: {type(e).__name__}"
@@ -338,20 +338,30 @@ class OrchestratorService:
     async def _validate_tradeable_instruments(self) -> set[str]:
         """Check OANDA account for tradeable instruments. Returns set of tradeable pair names."""
         import httpx
-        url = f"{self.config.oanda_base_url}/v3/accounts/{self.config.oanda_account_id}/instruments"
+        account_ids = {
+            self.config.account_id_for(pair)
+            for pair in self.config.pairs
+        }
         async with httpx.AsyncClient(
             headers={"Authorization": f"Bearer {self.config.oanda_api_key_data}"},
             timeout=10.0, verify=True,
         ) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            instruments = resp.json().get("instruments", [])
             tradeable = set()
-            for inst in instruments:
-                name = inst.get("name", "")
-                if name in self.config.pairs:
-                    tradeable.add(name)
-                    logger.info("instrument_tradeable", pair=name, type=inst.get("type", ""))
+            for account_id in account_ids:
+                url = f"{self.config.oanda_base_url}/v3/accounts/{account_id}/instruments"
+                resp = await client.get(url)
+                resp.raise_for_status()
+                instruments = resp.json().get("instruments", [])
+                for inst in instruments:
+                    name = inst.get("name", "")
+                    if name in self.config.pairs:
+                        tradeable.add(name)
+                        logger.info(
+                            "instrument_tradeable",
+                            pair=name,
+                            account_id=account_id,
+                            type=inst.get("type", ""),
+                        )
             return tradeable
 
     async def shutdown(self, reason: str = "SIGTERM") -> None:
@@ -458,7 +468,7 @@ class OrchestratorService:
 
                 # Refresh account balance from OANDA every cycle
                 try:
-                    acct = await self.oanda.get_account_summary()
+                    acct = await self.oanda.get_account_summary_for_pairs(self.config.pairs)
                     if acct and self.state:
                         self.state._state["account_balance"] = str(acct.get("balance", "0"))
                         self.state._state["account_equity"] = str(acct.get("equity", acct.get("NAV", "0")))
