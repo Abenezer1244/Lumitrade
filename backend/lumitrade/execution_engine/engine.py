@@ -613,6 +613,9 @@ class ExecutionEngine:
         "USD_JPY": Decimal("20"),
         # Gold — much larger price, needs bigger activation
         "XAU_USD": Decimal("500"),    # $5.00 move (~0.1% of price)
+        # Crypto — BTC pip = $1; $500 = ~0.5% of price at $100k
+        "BTC_USD": Decimal("500"),
+        "ETH_USD": Decimal("200"),
     }
     DEFAULT_TRAIL_ACTIVATION = Decimal("20")
 
@@ -687,14 +690,21 @@ class ExecutionEngine:
         else:
             profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
-        # Break-even stop: move SL to entry when +15 pips (gold: +300 pips)
+        # Break-even stop: move SL to entry when profit exceeds threshold
+        # XAU: 300 pips ($3.00), BTC: 500 pips ($500), forex: 15 pips
         ps = get_pip_size(pair)
-        be_threshold = Decimal("300") if pair == "XAU_USD" else Decimal("15")
+        be_threshold = (
+            Decimal("300") if pair == "XAU_USD"
+            else Decimal("500") if "BTC" in pair or "ETH" in pair
+            else Decimal("15")
+        )
         sl_is_behind_entry = (direction == "BUY" and current_sl < entry) or (direction == "SELL" and current_sl > entry)
         if profit_pips >= be_threshold and sl_is_behind_entry:
             # Move SL to entry (breakeven)
             be_sl = entry
-            if ps >= Decimal("0.01"):
+            if "BTC" in pair or "ETH" in pair:
+                be_sl = be_sl.quantize(Decimal("0.01"))
+            elif ps >= Decimal("0.01"):
                 be_sl = be_sl.quantize(Decimal("0.001"))
             else:
                 be_sl = be_sl.quantize(Decimal("0.00001"))
@@ -764,7 +774,9 @@ class ExecutionEngine:
                 return
 
         # Round to appropriate decimal places
-        if ps >= Decimal("0.01"):
+        if "BTC" in pair or "ETH" in pair:
+            new_sl = new_sl.quantize(Decimal("0.01"))
+        elif ps >= Decimal("0.01"):
             new_sl = new_sl.quantize(Decimal("0.001"))
         else:
             new_sl = new_sl.quantize(Decimal("0.00001"))

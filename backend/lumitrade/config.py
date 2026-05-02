@@ -40,7 +40,7 @@ class LumitradeConfig(BaseSettings):
 
     def account_id_for(self, pair: str) -> str:
         """Return the correct OANDA account ID for a given instrument."""
-        if pair in self.SPOT_CRYPTO_PAIRS and self.oanda_spot_crypto_account_id:
+        if pair.upper() in self.SPOT_CRYPTO_PAIRS and self.oanda_spot_crypto_account_id:
             return self.oanda_spot_crypto_account_id
         return self.oanda_account_id
 
