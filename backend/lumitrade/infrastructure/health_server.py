@@ -881,9 +881,27 @@ class HealthServer:
             return web.json_response({"error": "Missing trade_id"}, status=400)
         try:
             config = self._get_config()
+
+            # Resolve the pair from DB so we route to the correct OANDA account.
+            # BTC_USD trades live on the spot crypto sub-account; without the pair
+            # close_trade() defaults to the main forex account and fails silently.
+            pair = ""
+            try:
+                trade_row = await self._db.select_one(
+                    "trades", {"broker_trade_id": trade_id}
+                )
+                if trade_row:
+                    pair = trade_row.get("pair", "") or ""
+            except Exception as _db_err:
+                logger.warning(
+                    "close_trade_pair_lookup_failed",
+                    trade_id=trade_id,
+                    error=str(_db_err),
+                )
+
             client = OandaTradingClient(config)
             try:
-                result = await client.close_trade(trade_id)
+                result = await client.close_trade(trade_id, pair=pair)
                 return web.json_response(result)
             finally:
                 await client.close()

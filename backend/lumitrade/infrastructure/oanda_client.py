@@ -142,9 +142,14 @@ class OandaClient(BrokerInterface):
                 logger.warning("spot_crypto_open_trades_fetch_failed", error=str(e))
         return trades
 
-    async def get_trade(self, trade_id: str) -> dict:
-        """Fetch a specific trade by ID (open or closed)."""
-        url = f"{self._base_url}/v3/accounts/{self._account_id}/trades/{trade_id}"
+    async def get_trade(self, trade_id: str, pair: str = "") -> dict:
+        """Fetch a specific trade by ID (open or closed).
+
+        Routes to the spot crypto sub-account when pair is a spot crypto instrument
+        and the sub-account is configured.
+        """
+        account_id = self.config.account_id_for(pair) if pair else self._account_id
+        url = f"{self._base_url}/v3/accounts/{account_id}/trades/{trade_id}"
         resp = await self._client.get(url)
         resp.raise_for_status()
         return resp.json()["trade"]
@@ -329,7 +334,7 @@ class OandaTradingClient(OandaClient):
             if not trade_id:
                 return None
             try:
-                trade = await self.get_trade(trade_id)
+                trade = await self.get_trade(trade_id, pair=pair)
             except Exception:
                 return None
 
