@@ -431,8 +431,13 @@ class OrchestratorService:
                 else:
                     self._kill_switch_handled = False
 
-                # Check market hours — skip scanning when forex is closed
-                if not self._is_market_open():
+                # Check market hours — skip only when ALL active pairs require forex hours.
+                # Spot crypto pairs (BTC_USD, ETH_USD) trade 24/7 and must not be
+                # blocked by the forex weekend/maintenance closure.
+                _has_crypto = any(
+                    p in self.config.SPOT_CRYPTO_PAIRS for p in self.config.pairs
+                )
+                if not _has_crypto and not self._is_market_open():
                     logger.info("market_closed_skipping_scan")
                     await asyncio.sleep(300)  # Check again in 5 minutes
                     continue
@@ -488,9 +493,10 @@ class OrchestratorService:
                 # 05-13 UTC: London session (strong)
                 # 13-17 UTC: London/NY overlap (peak liquidity, tightest spreads per BIS data)
                 # 17-24 UTC: late NY + dead zone (0% WR 18-20 UTC, confirmed by industry research)
+                # Spot crypto pairs (BTC_USD) are 24/7 — they bypass this gate.
                 current_hour = datetime.now(timezone.utc).hour
-                if current_hour >= 17:
-                    logger.info("session_filter_skip", hour=current_hour, reason="Outside 00-17 UTC")
+                if not _has_crypto and current_hour >= 17:
+                    logger.info("session_filter_skip", hour=current_hour, reason="Outside 00-17 UTC (forex only)")
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
@@ -498,9 +504,10 @@ class OrchestratorService:
                 _pair_hours = {
                     "USD_JPY": (0, 17),   # Asian + London/NY overlap — JPY active both sessions
                     "USD_CAD": (8, 17),   # London + NY overlap — CAD most liquid during NY
-                    "BTC_USD": (0, 17),   # 24/7 asset — scan through London/NY overlap same as JPY
                     "AUD_USD": (0, 8),    # Asian only — best in early session
                     "NZD_USD": (0, 8),    # Asian only — best in early session
+                    # All configured spot crypto pairs are 24/7 — no session restriction
+                    **{cp: (0, 24) for cp in self.config.SPOT_CRYPTO_PAIRS},
                 }
 
                 # (Kill-switch handling moved to the top of the loop body —
@@ -517,6 +524,12 @@ class OrchestratorService:
                             hour=current_hour,
                             window=f"{pair_window[0]}-{pair_window[1]}",
                         )
+                        continue
+
+                    # Forex pairs additionally obey market hours (no weekend trading).
+                    # Spot crypto (BTC_USD, ETH_USD) trades 24/7 — exempt from this gate.
+                    if pair not in self.config.SPOT_CRYPTO_PAIRS and not self._is_market_open():
+                        logger.debug("pair_market_closed_skip", pair=pair)
                         continue
 
                     try:
@@ -733,8 +746,11 @@ class OrchestratorService:
         """SA-03: Run risk monitor every 30 minutes while positions open."""
         while True:
             await asyncio.sleep(1800)  # 30 minutes
-            # Skip when market is closed
-            if not self._is_market_open():
+            # Skip when forex market is closed — but always run when spot crypto
+            # pairs are configured (BTC_USD positions need monitoring 24/7).
+            if not self._is_market_open() and not any(
+                p in self.config.SPOT_CRYPTO_PAIRS for p in self.config.pairs
+            ):
                 continue
             try:
                 # Fetch real open trades from DB with full details
@@ -816,7 +832,12 @@ class OrchestratorService:
         while True:
             try:
                 await asyncio.sleep(RECONCILE_INTERVAL)
-                if not self._is_market_open():
+                # Always reconcile when spot crypto pairs are configured —
+                # BTC_USD positions can be opened/closed 24/7 and ghost trades
+                # must be detected on weekends too.
+                if not self._is_market_open() and not any(
+                    p in self.config.SPOT_CRYPTO_PAIRS for p in self.config.pairs
+                ):
                     continue
                 from .infrastructure.alert_service import AlertService
                 from .state.reconciler import PositionReconciler
