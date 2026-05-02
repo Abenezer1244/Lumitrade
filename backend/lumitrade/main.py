@@ -474,14 +474,14 @@ class OrchestratorService:
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
-                # Refresh account balance from OANDA every cycle
+                # Refresh primary-account balance from OANDA every cycle.
                 try:
-                    acct = await self.oanda.get_account_summary_for_pairs(self.config.pairs)
+                    acct = await self.oanda.get_account_summary()
                     if acct and self.state:
                         self.state._state["account_balance"] = str(acct.get("balance", "0"))
                         self.state._state["account_equity"] = str(acct.get("equity", acct.get("NAV", "0")))
                 except Exception as _bal_err:
-                    logger.debug("balance_refresh_failed", error=str(_bal_err))
+                    logger.warning("balance_refresh_failed", error=str(_bal_err))
 
                 # Daily loss circuit breaker — stop scanning if daily P&L breaches limit.
                 # Uses config.daily_loss_limit_pct * balance for a dynamic threshold.
@@ -600,10 +600,18 @@ class OrchestratorService:
                         # Confidence threshold is checked by risk engine
                         # (which also accounts for CAUTIOUS state)
 
-                        # 2. Get account balance for risk sizing — route spot crypto
-                        # pairs (BTC_USD) to the sub-account so risk sizing uses
-                        # the correct equity base, not the main forex account balance.
-                        account = await self.oanda.get_account_summary_for(pair)
+                        # 2. Get primary-account balance for risk sizing. BTC_USD
+                        # signal generation stays active even if the spot account
+                        # summary endpoint is unavailable.
+                        try:
+                            account = await self.oanda.get_account_summary()
+                        except Exception as e:
+                            logger.warning(
+                                "risk_balance_fetch_failed",
+                                pair=pair,
+                                error=str(e),
+                            )
+                            continue
                         balance = Decimal(str(account.get("balance", "0")))
 
                         # 3. Risk evaluation

@@ -29,7 +29,8 @@ DB schema (system_state singleton row):
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, TypedDict
 
 from ..config import LumitradeConfig
@@ -47,6 +48,8 @@ PERSIST_INTERVAL_SECONDS = 5
 # escalate to an operator alert. Stale balance == position sizer
 # computes risk against outdated equity == real-money risk.
 _BALANCE_STALE_ALERT_THRESHOLD = 3
+_BALANCE_ACCOUNT_BREAKER_THRESHOLD = 3
+_BALANCE_ACCOUNT_BREAKER_SECONDS = 300
 
 
 class SystemState(TypedDict, total=False):
@@ -101,6 +104,8 @@ class StateManager:
         # _BALANCE_STALE_ALERT_THRESHOLD. Reset to 0 on success.
         self._consecutive_balance_refresh_failures: int = 0
         self._balance_stale_alert_sent: bool = False
+        self._balance_account_failures: dict[str, int] = {}
+        self._balance_account_breaker_until: dict[str, datetime] = {}
         # Set to True by mark_as_primary() after the distributed lock is
         # acquired. restore() checks this to catch misuse where state mutations
         # are attempted before lock ownership is confirmed.
@@ -127,6 +132,84 @@ class StateManager:
             "account_equity": "0",
             "confidence_threshold_override": None,
         }
+
+    def _balance_summary_representatives(self) -> dict[str, str]:
+        representatives: dict[str, str] = {}
+        for pair in self._config.pairs:
+            account_id = self._config.account_id_for(pair)
+            representatives.setdefault(account_id, pair)
+        if not representatives:
+            representatives[self._config.oanda_account_id] = ""
+        return representatives
+
+    def _merge_account_summaries(self, summaries: list[dict]) -> dict:
+        if len(summaries) == 1:
+            return summaries[0]
+
+        def _sum_decimal(key: str) -> str:
+            total = sum(Decimal(str(summary.get(key, "0") or "0")) for summary in summaries)
+            return str(total)
+
+        nav_total = sum(
+            Decimal(str(summary.get("NAV", summary.get("equity", "0")) or "0"))
+            for summary in summaries
+        )
+        return {
+            **summaries[0],
+            "balance": _sum_decimal("balance"),
+            "NAV": str(nav_total),
+            "equity": str(nav_total),
+            "marginUsed": _sum_decimal("marginUsed"),
+            "unrealizedPL": _sum_decimal("unrealizedPL"),
+            "openTradeCount": str(
+                sum(int(summary.get("openTradeCount", 0) or 0) for summary in summaries)
+            ),
+        }
+
+    async def _get_balance_summary_with_account_breakers(self) -> dict | None:
+        if not self._oanda:
+            return None
+
+        now = datetime.now(timezone.utc)
+        summaries: list[dict] = []
+        for account_id, pair in self._balance_summary_representatives().items():
+            breaker_until = self._balance_account_breaker_until.get(account_id)
+            if breaker_until and now < breaker_until:
+                continue
+            try:
+                summary = await self._oanda.get_account_summary_for(pair)
+            except Exception as e:
+                failures = self._balance_account_failures.get(account_id, 0) + 1
+                self._balance_account_failures[account_id] = failures
+                if failures >= _BALANCE_ACCOUNT_BREAKER_THRESHOLD:
+                    self._balance_account_breaker_until[account_id] = (
+                        now + timedelta(seconds=_BALANCE_ACCOUNT_BREAKER_SECONDS)
+                    )
+                    if failures == _BALANCE_ACCOUNT_BREAKER_THRESHOLD:
+                        logger.warning(
+                            "oanda_balance_account_breaker_opened",
+                            account_id=account_id,
+                            pair=pair,
+                            consecutive_failures=failures,
+                            cooldown_seconds=_BALANCE_ACCOUNT_BREAKER_SECONDS,
+                            error=str(e),
+                        )
+                continue
+
+            prior_failures = self._balance_account_failures.pop(account_id, 0)
+            was_open = self._balance_account_breaker_until.pop(account_id, None)
+            if prior_failures or was_open:
+                logger.info(
+                    "oanda_balance_account_refresh_recovered",
+                    account_id=account_id,
+                    pair=pair,
+                    prior_failures=prior_failures,
+                )
+            summaries.append(summary)
+
+        if not summaries:
+            return None
+        return self._merge_account_summaries(summaries)
 
     def mark_as_primary(self) -> None:
         """Called by OrchestratorService immediately after acquiring the
@@ -334,7 +417,7 @@ class StateManager:
             # computes risk on outdated equity == real money risk.
             if self._oanda:
                 try:
-                    acct = await self._oanda.get_account_summary_for_pairs(self._config.pairs)
+                    acct = await self._get_balance_summary_with_account_breakers()
                     if acct:
                         self._state["account_balance"] = str(acct.get("balance", "0"))
                         self._state["account_equity"] = str(

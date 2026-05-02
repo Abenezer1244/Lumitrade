@@ -197,7 +197,13 @@ class OandaClient(BrokerInterface):
                 resp.raise_for_status()
                 spot_trades = resp.json().get("trades", [])
                 trades = trades + spot_trades
-            except Exception as e:
+            except httpx.HTTPStatusError as e:
+                logger.warning(
+                    "spot_crypto_open_trades_fetch_failed",
+                    status_code=e.response.status_code,
+                    error=str(e),
+                )
+            except httpx.HTTPError as e:
                 logger.warning("spot_crypto_open_trades_fetch_failed", error=str(e))
         return trades
 
@@ -249,8 +255,33 @@ class OandaClient(BrokerInterface):
         queue: asyncio.Queue[str] = asyncio.Queue()
 
         async def _pump(account_id: str, account_pairs: list[str]) -> None:
-            async for line in self._stream_prices_for_account(account_id, account_pairs):
-                await queue.put(line)
+            delay_seconds = 1.0
+            warned = False
+            while True:
+                try:
+                    async for line in self._stream_prices_for_account(account_id, account_pairs):
+                        if warned:
+                            logger.info(
+                                "oanda_price_stream_recovered",
+                                account_id=account_id,
+                                pairs=account_pairs,
+                            )
+                        warned = False
+                        delay_seconds = 1.0
+                        await queue.put(line)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    if not warned:
+                        logger.warning(
+                            "oanda_price_stream_failed",
+                            account_id=account_id,
+                            pairs=account_pairs,
+                            error=str(e),
+                        )
+                        warned = True
+                    await asyncio.sleep(delay_seconds)
+                    delay_seconds = min(delay_seconds * 2, 300.0)
 
         tasks = [
             asyncio.create_task(_pump(account_id, account_pairs))
