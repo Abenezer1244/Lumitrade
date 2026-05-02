@@ -120,7 +120,7 @@ class RiskEngine:
             return await self._reject(proposal, result, risk_state, now)
 
         # ── Check 4c: No-Trade Hours ────────────────────────────
-        result = self._check_no_trade_hours(now)
+        result = self._check_no_trade_hours(now, proposal.pair)
         checks.append(result)
         if not result[1]:
             return await self._reject(proposal, result, risk_state, now)
@@ -486,8 +486,14 @@ class RiskEngine:
             str(max_conf),
         )
 
-    def _check_no_trade_hours(self, now: datetime) -> CheckResult:
-        """Check 4c: Block trading during historically unprofitable hours (UTC)."""
+    _CRYPTO_PAIRS: frozenset[str] = frozenset({"BTC_USD", "ETH_USD"})
+
+    def _check_no_trade_hours(self, now: datetime, pair: str = "") -> CheckResult:
+        """Check 4c: Block trading during historically unprofitable hours (UTC).
+
+        Crypto trades 24/7 — no-trade hours are forex-only."""
+        if pair in self._CRYPTO_PAIRS:
+            return ("NO_TRADE_HOURS", True, "OK", str(now.hour), "[]")
         current_hour = now.hour
         blocked = self._config.no_trade_hours_utc
         passed = current_hour not in blocked
