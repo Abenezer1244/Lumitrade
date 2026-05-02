@@ -138,10 +138,20 @@ class OandaClient(BrokerInterface):
         if not representatives:
             representatives[self._account_id] = ""
 
-        summaries = [
-            await self.get_account_summary_for(pair)
-            for pair in representatives.values()
-        ]
+        summaries = []
+        for pair in representatives.values():
+            try:
+                summaries.append(await self.get_account_summary_for(pair))
+            except Exception as e:
+                acct_id = self.config.account_id_for(pair) if pair else self._account_id
+                logger.warning(
+                    "account_summary_skipped",
+                    account_id=acct_id,
+                    pair=pair,
+                    error=str(e),
+                )
+        if not summaries:
+            raise RuntimeError("No OANDA accounts returned a valid summary")
         if len(summaries) == 1:
             return summaries[0]
 

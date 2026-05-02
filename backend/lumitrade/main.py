@@ -349,8 +349,16 @@ class OrchestratorService:
             tradeable = set()
             for account_id in account_ids:
                 url = f"{self.config.oanda_base_url}/v3/accounts/{account_id}/instruments"
-                resp = await client.get(url)
-                resp.raise_for_status()
+                try:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                except Exception as e:
+                    logger.warning(
+                        "instrument_validation_skipped",
+                        account_id=account_id,
+                        error=str(e),
+                    )
+                    continue
                 instruments = resp.json().get("instruments", [])
                 for inst in instruments:
                     name = inst.get("name", "")
