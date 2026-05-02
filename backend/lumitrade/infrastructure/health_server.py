@@ -746,18 +746,43 @@ class HealthServer:
     async def _handle_account(self, request: web.Request) -> web.Response:
         """
         GET /account — return real OANDA account summary.
-        Returns balance, equity, margin, unrealized P&L directly from OANDA.
+        Returns aggregate balance/equity/margin/unrealizedPL plus a per-account
+        breakdown (forex primary + spot crypto sub-account).
         """
         try:
             config = self._get_config()
             oanda = OandaClient(config)
             try:
+                # Aggregate across all accounts
                 acct = await oanda.get_account_summary_for_pairs(config.pairs)
                 balance = float(acct.get("balance", 0))
                 equity = float(acct.get("NAV", acct.get("equity", balance)))
                 margin_used = float(acct.get("marginUsed", 0))
                 unrealized_pnl = float(acct.get("unrealizedPL", 0))
                 open_trade_count = int(acct.get("openTradeCount", 0))
+
+                # Forex (primary) account
+                forex_acct = await oanda.get_account_summary()
+                forex_balance = float(forex_acct.get("balance", 0))
+                forex_equity = float(forex_acct.get("NAV", forex_acct.get("equity", forex_balance)))
+                forex_unrealized = float(forex_acct.get("unrealizedPL", 0))
+                forex_open = int(forex_acct.get("openTradeCount", 0))
+
+                # Spot crypto sub-account (PAXOS — V20 may return 400; show zeros if unavailable)
+                crypto_balance = 0.0
+                crypto_equity = 0.0
+                crypto_unrealized = 0.0
+                crypto_open = 0
+                spot_id = getattr(config, "oanda_spot_crypto_account_id", None)
+                if spot_id and spot_id != config.oanda_account_id:
+                    try:
+                        crypto_acct = await oanda.get_account_summary_for("BTC_USD")
+                        crypto_balance = float(crypto_acct.get("balance", 0))
+                        crypto_equity = float(crypto_acct.get("NAV", crypto_acct.get("equity", crypto_balance)))
+                        crypto_unrealized = float(crypto_acct.get("unrealizedPL", 0))
+                        crypto_open = int(crypto_acct.get("openTradeCount", 0))
+                    except Exception:
+                        pass  # PAXOS account not accessible via V20; zeros are correct
 
                 return web.json_response({
                     "balance": round(balance, 2),
@@ -766,6 +791,20 @@ class HealthServer:
                     "margin_available": round(balance - margin_used, 2),
                     "unrealized_pnl": round(unrealized_pnl, 2),
                     "open_trade_count": open_trade_count,
+                    "accounts": {
+                        "forex": {
+                            "balance": round(forex_balance, 2),
+                            "equity": round(forex_equity, 2),
+                            "unrealized_pnl": round(forex_unrealized, 2),
+                            "open_trade_count": forex_open,
+                        },
+                        "crypto": {
+                            "balance": round(crypto_balance, 2),
+                            "equity": round(crypto_equity, 2),
+                            "unrealized_pnl": round(crypto_unrealized, 2),
+                            "open_trade_count": crypto_open,
+                        },
+                    },
                 })
             finally:
                 await oanda.close()
