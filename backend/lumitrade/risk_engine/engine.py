@@ -276,15 +276,15 @@ class RiskEngine:
                 max_snap_risk_pct = risk_pct * Decimal("2")
 
                 if snapped_risk_pct > max_snap_risk_pct:
+                    min_balance_needed = (snapped_risk_usd / max_snap_risk_pct).quantize(Decimal("0.01"))
                     snap_result: CheckResult = (
                         "BTC_SNAP_RISK_EXCEEDED",
                         False,
-                        f"Snapping {proposal.pair} to broker minimum "
-                        f"{snapped_units} units would risk "
-                        f"{snapped_risk_pct * Decimal('100'):.2f}%, above "
-                        f"{max_snap_risk_pct * Decimal('100'):.0f}% limit",
-                        str(snapped_risk_pct),
-                        str(max_snap_risk_pct),
+                        f"Account balance ${account_balance:.2f} too small for 0.01 BTC: "
+                        f"would risk {snapped_risk_pct * Decimal('100'):.1f}% (limit {max_snap_risk_pct * Decimal('100'):.0f}%). "
+                        f"Fund account to ≥${min_balance_needed} to trade BTC",
+                        f"${account_balance:.2f}",
+                        f"≥${min_balance_needed}",
                     )
                     return await self._reject(proposal, snap_result, risk_state, now)
 
