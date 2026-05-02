@@ -82,32 +82,15 @@ class OandaClient(BrokerInterface):
     async def get_pricing(self, pairs: list[str]) -> dict:
         """Get current bid/ask for one or more pairs.
 
-        Routes spot crypto pairs (BTC_USD, ETH_USD) to the sub-account when
-        configured — those instruments are not listed on the main forex account.
-        Merges results into a single {"prices": [...]} dict.
+        All instruments (forex + BTC_USD/ETH_USD) are fetched from the primary
+        V20 account. The PAXOS spot crypto account (3891959CPX) does not expose
+        a V20 pricing endpoint — routing there causes 400 errors. OANDA serves
+        crypto pricing from the main forex account instead.
         """
-        spot_id = getattr(self.config, "oanda_spot_crypto_account_id", None)
-        spot_set = getattr(self.config, "SPOT_CRYPTO_PAIRS", frozenset())
-        spot_pairs = [p for p in pairs if p in spot_set and spot_id and spot_id != self._account_id]
-        main_pairs = [p for p in pairs if p not in spot_pairs]
-
-        all_prices: list = []
-        if main_pairs:
-            url = f"{self._base_url}/v3/accounts/{self._account_id}/pricing"
-            resp = await self._client.get(url, params={"instruments": ",".join(main_pairs)})
-            resp.raise_for_status()
-            all_prices.extend(resp.json().get("prices", []))
-
-        if spot_pairs:
-            url = f"{self._base_url}/v3/accounts/{spot_id}/pricing"
-            try:
-                resp = await self._client.get(url, params={"instruments": ",".join(spot_pairs)})
-                resp.raise_for_status()
-                all_prices.extend(resp.json().get("prices", []))
-            except Exception as e:
-                logger.warning("spot_crypto_pricing_fetch_failed", pairs=spot_pairs, error=str(e))
-
-        return {"prices": all_prices}
+        url = f"{self._base_url}/v3/accounts/{self._account_id}/pricing"
+        resp = await self._client.get(url, params={"instruments": ",".join(pairs)})
+        resp.raise_for_status()
+        return resp.json()
 
     async def get_account_summary(self) -> dict:
         """Fetch account balance, equity, margin from the main account."""
@@ -239,60 +222,13 @@ class OandaClient(BrokerInterface):
         )
 
     async def stream_prices(self, pairs: list[str]):
-        """Async generator yielding real-time price ticks."""
-        pairs_by_account: dict[str, list[str]] = {}
-        for pair in pairs:
-            pairs_by_account.setdefault(self.config.account_id_for(pair), []).append(pair)
+        """Async generator yielding real-time price ticks.
 
-        if len(pairs_by_account) == 1:
-            account_id, account_pairs = next(iter(pairs_by_account.items()))
-            async for line in self._stream_prices_for_account(account_id, account_pairs):
-                yield line
-            return
-
-        import asyncio
-
-        queue: asyncio.Queue[str] = asyncio.Queue()
-
-        async def _pump(account_id: str, account_pairs: list[str]) -> None:
-            delay_seconds = 1.0
-            warned = False
-            while True:
-                try:
-                    async for line in self._stream_prices_for_account(account_id, account_pairs):
-                        if warned:
-                            logger.info(
-                                "oanda_price_stream_recovered",
-                                account_id=account_id,
-                                pairs=account_pairs,
-                            )
-                        warned = False
-                        delay_seconds = 1.0
-                        await queue.put(line)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    if not warned:
-                        logger.warning(
-                            "oanda_price_stream_failed",
-                            account_id=account_id,
-                            pairs=account_pairs,
-                            error=str(e),
-                        )
-                        warned = True
-                    await asyncio.sleep(delay_seconds)
-                    delay_seconds = min(delay_seconds * 2, 300.0)
-
-        tasks = [
-            asyncio.create_task(_pump(account_id, account_pairs))
-            for account_id, account_pairs in pairs_by_account.items()
-        ]
-        try:
-            while True:
-                yield await queue.get()
-        finally:
-            for task in tasks:
-                task.cancel()
+        All pairs (forex + BTC_USD/ETH_USD) stream from the primary V20 account.
+        The PAXOS spot crypto account does not have a V20 streaming endpoint.
+        """
+        async for line in self._stream_prices_for_account(self._account_id, pairs):
+            yield line
 
     async def _stream_prices_for_account(self, account_id: str, pairs: list[str]):
         """Async generator yielding price ticks for pairs on one OANDA account."""
