@@ -284,49 +284,83 @@ export default function AccountPanel() {
           style={{ borderTop: "1px solid var(--color-border)" }}
           variants={childVariants}
         >
-          {/* Forex account */}
-          <div
-            className="rounded-lg p-3"
-            style={{ background: "var(--color-elevated)" }}
-          >
-            <div className="flex items-center gap-1.5 mb-2">
-              <TrendingUp size={11} style={{ color: "var(--color-accent)" }} />
-              <span
-                className="text-[10px] font-bold tracking-widest uppercase"
-                style={{ color: "var(--color-accent)" }}
-              >
-                Forex
-              </span>
-            </div>
-            <p className="font-mono font-bold text-sm" style={{ color: "var(--color-text-primary)" }}>
-              <AnimatedNumber value={forex?.balance ?? 0} prefix="$" />
-            </p>
-            <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
-              {forex?.open_trade_count ?? 0} open
-            </p>
-          </div>
+          {(
+            [
+              { data: forex, Icon: TrendingUp, label: "Forex", color: "var(--color-accent)" },
+              { data: crypto, Icon: Bitcoin,   label: "BTC",   color: "var(--color-warning)" },
+            ] as const
+          ).map(({ data, Icon, label, color }) => {
+            if (!data) return null;
+            const bal        = data.balance        ?? 0;
+            const eq         = data.equity         ?? 0;
+            const unrealized = data.unrealized_pnl ?? 0;
+            const daily      = (data as { daily_pnl_usd?: number }).daily_pnl_usd ?? 0;
+            const isUnrealizedProfit = unrealized >= 0;
+            const isDailyProfit      = daily >= 0;
 
-          {/* Crypto (BTC) account */}
-          <div
-            className="rounded-lg p-3"
-            style={{ background: "var(--color-elevated)" }}
-          >
-            <div className="flex items-center gap-1.5 mb-2">
-              <Bitcoin size={11} style={{ color: "var(--color-warning)" }} />
-              <span
-                className="text-[10px] font-bold tracking-widest uppercase"
-                style={{ color: "var(--color-warning)" }}
+            return (
+              <div
+                key={label}
+                className="rounded-lg p-3 flex flex-col"
+                style={{ background: "var(--color-elevated)" }}
               >
-                BTC
-              </span>
-            </div>
-            <p className="font-mono font-bold text-sm" style={{ color: "var(--color-text-primary)" }}>
-              <AnimatedNumber value={crypto?.balance ?? 0} prefix="$" />
-            </p>
-            <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
-              {crypto?.open_trade_count ?? 0} open
-            </p>
-          </div>
+                {/* Label */}
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Icon size={11} style={{ color }} />
+                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color }}>
+                    {label}
+                  </span>
+                </div>
+
+                {/* Balance hero */}
+                <p className="font-mono font-bold text-sm leading-tight" style={{ color: "var(--color-text-primary)" }}>
+                  <AnimatedNumber value={bal} prefix="$" />
+                </p>
+
+                {/* Equity + Open */}
+                <p className="text-[10px] mt-0.5 mb-3" style={{ color: "var(--color-text-secondary)" }}>
+                  Equity: <AnimatedNumber value={eq} prefix="$" className="font-mono" />
+                  <span className="mx-1" style={{ color: "var(--color-text-tertiary)" }}>·</span>
+                  Open: <span className="font-mono">{data.open_trade_count ?? 0}</span>
+                </p>
+
+                {/* P&L split */}
+                <div
+                  className="mt-auto pt-2.5 grid grid-cols-2 gap-1"
+                  style={{ borderTop: "1px solid var(--color-border)" }}
+                >
+                  <div>
+                    <p className="text-[9px] mb-1" style={{ color: "var(--color-text-tertiary)" }}>
+                      Unrealized P&amp;L
+                    </p>
+                    <div className="flex items-center gap-0.5">
+                      <TrendArrow isProfit={isUnrealizedProfit} />
+                      <AnimatedNumber
+                        value={unrealized}
+                        prefix="$"
+                        showSign
+                        className={`text-[11px] font-mono font-bold ${isUnrealizedProfit ? "text-profit" : "text-loss"}`}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[9px] mb-1" style={{ color: "var(--color-text-tertiary)" }}>
+                      Daily P&amp;L
+                    </p>
+                    <div className="flex items-center gap-0.5">
+                      <TrendArrow isProfit={isDailyProfit} />
+                      <AnimatedNumber
+                        value={daily}
+                        prefix="$"
+                        showSign
+                        className={`text-[11px] font-mono font-bold ${isDailyProfit ? "text-profit" : "text-loss"}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </motion.div>
       )}
     </motion.div>
