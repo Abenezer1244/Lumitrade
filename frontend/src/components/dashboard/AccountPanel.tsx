@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAccount } from "@/hooks/useAccount";
-import { AlertTriangle, ArrowUpRight, ArrowDownRight, Landmark, Bitcoin, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ArrowDownRight, Landmark, Bitcoin } from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -277,17 +277,16 @@ export default function AccountPanel() {
         </div>
       </motion.div>
 
-      {/* Per-account breakdown — Forex | BTC */}
-      {(forex || crypto) && (
+      {/* Per-account breakdown — BTC only */}
+      {crypto && (
         <motion.div
-          className="mt-4 pt-4 grid grid-cols-2 gap-3"
+          className="mt-4 pt-4 grid grid-cols-1 gap-3"
           style={{ borderTop: "1px solid var(--color-border)" }}
           variants={childVariants}
         >
           {(
             [
-              { data: forex, Icon: TrendingUp, label: "Forex", color: "var(--color-accent)" },
-              { data: crypto, Icon: Bitcoin,   label: "BTC",   color: "var(--color-warning)" },
+              { data: crypto, Icon: Bitcoin, label: "BTC", color: "var(--color-warning)" },
             ] as const
           ).map(({ data, Icon, label, color }) => {
             if (!data) return null;
