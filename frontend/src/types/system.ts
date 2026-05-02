@@ -23,6 +23,13 @@ export interface SystemHealth {
   };
 }
 
+export interface AccountBreakdown {
+  balance: number;
+  equity: number;
+  unrealized_pnl: number;
+  open_trade_count: number;
+}
+
 export interface AccountSummary {
   balance: string;
   equity: string;
@@ -36,6 +43,11 @@ export interface AccountSummary {
   daily_win_count: number;
   daily_win_rate: string;
   mode: "PAPER" | "LIVE";
+  stale?: boolean;
+  accounts?: {
+    forex: AccountBreakdown;
+    crypto: AccountBreakdown;
+  };
 }
 
 export interface PerformanceSummary {

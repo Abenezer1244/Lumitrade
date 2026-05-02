@@ -43,6 +43,7 @@ export async function GET() {
 
     // 1. Fetch REAL OANDA account data from backend /account endpoint
     //    This calls OANDA directly — balance, equity, margin, unrealized P&L
+    let accountBreakdown: { forex: object; crypto: object } | undefined;
     try {
       const acctRes = await fetch(`${backendUrl}/account`, {
         headers: backendAuthHeaders(),
@@ -56,6 +57,7 @@ export async function GET() {
         marginUsed = acct.margin_used || 0;
         unrealizedPnl = acct.unrealized_pnl || 0;
         openTradeCount = acct.open_trade_count || 0;
+        if (acct.accounts) accountBreakdown = acct.accounts;
       } else {
         stale = true;
         console.error("account: backend /account non-ok", acctRes.status);
@@ -142,6 +144,7 @@ export async function GET() {
       daily_win_rate: dailyWinRate,
       mode,
       stale,
+      ...(accountBreakdown ? { accounts: accountBreakdown } : {}),
     });
   } catch (e) {
     console.error("account: outer handler failed", e);

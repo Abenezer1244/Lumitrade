@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAccount } from "@/hooks/useAccount";
-import { AlertTriangle, ArrowUpRight, ArrowDownRight, Landmark } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ArrowDownRight, Landmark, Bitcoin, TrendingUp } from "lucide-react";
 import {
   motion,
   AnimatePresence,
@@ -191,6 +191,8 @@ export default function AccountPanel() {
   const dailyPnl = parseFloat(account.daily_pnl_usd || "0");
   const isProfit = unrealizedPnl >= 0;
   const isDailyProfit = dailyPnl >= 0;
+  const forex = account.accounts?.forex;
+  const crypto = account.accounts?.crypto;
 
   return (
     <motion.div
@@ -274,6 +276,59 @@ export default function AccountPanel() {
           </div>
         </div>
       </motion.div>
+
+      {/* Per-account breakdown — Forex | BTC */}
+      {(forex || crypto) && (
+        <motion.div
+          className="mt-4 pt-4 grid grid-cols-2 gap-3"
+          style={{ borderTop: "1px solid var(--color-border)" }}
+          variants={childVariants}
+        >
+          {/* Forex account */}
+          <div
+            className="rounded-lg p-3"
+            style={{ background: "var(--color-elevated)" }}
+          >
+            <div className="flex items-center gap-1.5 mb-2">
+              <TrendingUp size={11} style={{ color: "var(--color-accent)" }} />
+              <span
+                className="text-[10px] font-bold tracking-widest uppercase"
+                style={{ color: "var(--color-accent)" }}
+              >
+                Forex
+              </span>
+            </div>
+            <p className="font-mono font-bold text-sm" style={{ color: "var(--color-text-primary)" }}>
+              <AnimatedNumber value={forex?.balance ?? 0} prefix="$" />
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
+              {forex?.open_trade_count ?? 0} open
+            </p>
+          </div>
+
+          {/* Crypto (BTC) account */}
+          <div
+            className="rounded-lg p-3"
+            style={{ background: "var(--color-elevated)" }}
+          >
+            <div className="flex items-center gap-1.5 mb-2">
+              <Bitcoin size={11} style={{ color: "var(--color-warning)" }} />
+              <span
+                className="text-[10px] font-bold tracking-widest uppercase"
+                style={{ color: "var(--color-warning)" }}
+              >
+                BTC
+              </span>
+            </div>
+            <p className="font-mono font-bold text-sm" style={{ color: "var(--color-text-primary)" }}>
+              <AnimatedNumber value={crypto?.balance ?? 0} prefix="$" />
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
+              {crypto?.open_trade_count ?? 0} open
+            </p>
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
 }
