@@ -300,59 +300,68 @@ export default function AccountPanel() {
             return (
               <div
                 key={label}
-                className="rounded-lg p-3 flex flex-col"
+                className="rounded-lg p-4 flex flex-col"
                 style={{ background: "var(--color-elevated)" }}
               >
                 {/* Label */}
-                <div className="flex items-center gap-1.5 mb-2">
-                  <Icon size={11} style={{ color }} />
-                  <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color }}>
-                    {label}
+                <div className="flex items-center gap-2 mb-3">
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: "rgba(255,179,71,0.15)" }}
+                  >
+                    <Icon size={14} style={{ color }} />
+                  </div>
+                  <span className="text-label" style={{ color: "var(--color-text-tertiary)" }}>
+                    {label} Balance
                   </span>
                 </div>
 
-                {/* Balance hero */}
-                <p className="font-mono font-bold text-sm leading-tight" style={{ color: "var(--color-text-primary)" }}>
+                {/* Balance hero — same 32px as main panel */}
+                <p
+                  className="text-primary font-mono font-bold mb-1"
+                  style={{ fontSize: "32px", letterSpacing: "-0.02em" }}
+                >
                   <AnimatedNumber value={bal} prefix="$" />
                 </p>
 
                 {/* Equity + Open */}
-                <p className="text-[10px] mt-0.5 mb-3" style={{ color: "var(--color-text-secondary)" }}>
-                  Equity: <AnimatedNumber value={eq} prefix="$" className="font-mono" />
-                  <span className="mx-1" style={{ color: "var(--color-text-tertiary)" }}>·</span>
-                  Open: <span className="font-mono">{data.open_trade_count ?? 0}</span>
+                <p className="text-sm mb-4" style={{ color: "var(--color-text-secondary)" }}>
+                  Equity:{" "}
+                  <AnimatedNumber value={eq} prefix="$" className="font-mono font-medium" />
+                  <span className="mx-2" style={{ color: "var(--color-text-tertiary)" }}>·</span>
+                  Open: <span className="font-mono font-medium">{data.open_trade_count ?? 0}</span>
                 </p>
 
-                {/* P&L split */}
+                {/* P&L split — same proportions as main panel */}
                 <div
-                  className="mt-auto pt-2.5 grid grid-cols-2 gap-1"
+                  className="pt-4 grid grid-cols-2 gap-4"
                   style={{ borderTop: "1px solid var(--color-border)" }}
                 >
                   <div>
-                    <p className="text-[9px] mb-1" style={{ color: "var(--color-text-tertiary)" }}>
+                    <p className="text-label mb-1.5" style={{ color: "var(--color-text-tertiary)" }}>
                       Unrealized P&amp;L
                     </p>
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-1.5">
                       <TrendArrow isProfit={isUnrealizedProfit} />
                       <AnimatedNumber
                         value={unrealized}
                         prefix="$"
                         showSign
-                        className={`text-[11px] font-mono font-bold ${isUnrealizedProfit ? "text-profit" : "text-loss"}`}
+                        className={`text-base font-mono font-bold ${isUnrealizedProfit ? "text-profit" : "text-loss"}`}
                       />
                     </div>
                   </div>
                   <div>
-                    <p className="text-[9px] mb-1" style={{ color: "var(--color-text-tertiary)" }}>
+                    <p className="text-label mb-1.5" style={{ color: "var(--color-text-tertiary)" }}>
                       Daily P&amp;L
                     </p>
-                    <div className="flex items-center gap-0.5">
+                    <div className="flex items-center gap-1.5">
                       <TrendArrow isProfit={isDailyProfit} />
                       <AnimatedNumber
                         value={daily}
                         prefix="$"
                         showSign
-                        className={`text-[11px] font-mono font-bold ${isDailyProfit ? "text-profit" : "text-loss"}`}
+                        className={`text-base font-mono font-bold ${isDailyProfit ? "text-profit" : "text-loss"}`}
                       />
                     </div>
                   </div>
