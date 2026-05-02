@@ -147,8 +147,8 @@ class DataEngine:
         currencies = pair.split("_")
         news_events = await self._calendar.get_upcoming_events(currencies)
 
-        # 7. Get account context
-        account_ctx = await self._get_account_context()
+        # 7. Get account context (routed to the correct sub-account for this pair)
+        account_ctx = await self._get_account_context(pair)
 
         # 8. Get recent trades on this pair
         recent_trades = await self._get_recent_trades(pair)
@@ -185,12 +185,12 @@ class DataEngine:
             market_regime=regime,
         )
 
-    async def _get_account_context(self) -> AccountContext:
-        """Fetch current account summary from OANDA."""
+    async def _get_account_context(self, pair: str = "") -> AccountContext:
+        """Fetch current account summary from OANDA, routed to the correct sub-account."""
         try:
-            summary = await self._oanda.get_account_summary()
+            summary = await self._oanda.get_account_summary_for(pair)
             return AccountContext(
-                account_id=self.config.oanda_account_id,
+                account_id=self.config.account_id_for(pair) if pair else self.config.oanda_account_id,
                 balance=Decimal(str(summary.get("balance", "0"))),
                 equity=Decimal(str(summary.get("NAV", "0"))),
                 margin_used=Decimal(str(summary.get("marginUsed", "0"))),

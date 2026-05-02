@@ -148,7 +148,7 @@ class TestCrashRecovery:
         db = AsyncMock()
         config = _make_config_mock()
         oanda = AsyncMock()
-        oanda.get_account_summary.return_value = {
+        oanda.get_account_summary_for_pairs.return_value = {
             "balance": "500.00",
             "NAV": "500.00",
         }
@@ -204,7 +204,7 @@ class TestCrashRecovery:
         db = AsyncMock()
         config = _make_config_mock()
         oanda = AsyncMock()
-        oanda.get_account_summary.return_value = {"balance": "0", "NAV": "0"}
+        oanda.get_account_summary_for_pairs.return_value = {"balance": "0", "NAV": "0"}
 
         db.select_one.return_value = None  # No persisted state
 

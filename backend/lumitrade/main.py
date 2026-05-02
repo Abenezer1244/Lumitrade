@@ -474,9 +474,9 @@ class OrchestratorService:
                     await asyncio.sleep(self.config.signal_interval_minutes * 60)
                     continue
 
-                # Refresh primary-account balance from OANDA every cycle.
+                # Refresh aggregate balance across all configured accounts every cycle.
                 try:
-                    acct = await self.oanda.get_account_summary()
+                    acct = await self.oanda.get_account_summary_for_pairs(self.config.pairs)
                     if acct and self.state:
                         self.state._state["account_balance"] = str(acct.get("balance", "0"))
                         self.state._state["account_equity"] = str(acct.get("equity", acct.get("NAV", "0")))
@@ -600,11 +600,11 @@ class OrchestratorService:
                         # Confidence threshold is checked by risk engine
                         # (which also accounts for CAUTIOUS state)
 
-                        # 2. Get primary-account balance for risk sizing. BTC_USD
-                        # signal generation stays active even if the spot account
-                        # summary endpoint is unavailable.
+                        # 2. Get pair-routed account balance for risk sizing.
+                        # BTC_USD routes to the spot crypto sub-account; forex pairs
+                        # use the primary account.
                         try:
-                            account = await self.oanda.get_account_summary()
+                            account = await self.oanda.get_account_summary_for(pair)
                         except Exception as e:
                             logger.warning(
                                 "risk_balance_fetch_failed",

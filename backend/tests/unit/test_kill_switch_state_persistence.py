@@ -31,7 +31,7 @@ def _build_state_manager():
     db.upsert = AsyncMock(return_value=None)
 
     oanda = MagicMock()
-    oanda.get_account_summary = AsyncMock(return_value={"balance": "1000", "NAV": "1000"})
+    oanda.get_account_summary_for_pairs = AsyncMock(return_value={"balance": "1000", "NAV": "1000"})
 
     return StateManager(config=config, db=db, oanda=oanda), db
 
