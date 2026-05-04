@@ -345,6 +345,39 @@ class StateManager:
             trading_mode=self._config.trading_mode,
         )
 
+    async def reconcile_positions(self) -> None:
+        """
+        Run position reconciliation against OANDA and update in-memory state.
+        Called by Watchdog every 5 minutes to catch ghost trades between restarts.
+        """
+        try:
+            from ..infrastructure.alert_service import AlertService
+            from .reconciler import PositionReconciler
+
+            alerts = AlertService(self._config, self._db)
+            reconciler = PositionReconciler(
+                self._db, self._oanda, alerts,
+                account_uuid=self._config.account_uuid,
+            )
+            result = await reconciler.reconcile()
+
+            self._state["reconciliation"] = {
+                "ghosts": len(result.get("ghosts", [])),
+                "phantoms": len(result.get("phantoms", [])),
+                "matched": len(result.get("matched", [])),
+                "reconciled_at": result.get("reconciled_at"),
+            }
+            self._state["open_trades"] = [
+                m.get("broker_trade_id") for m in result.get("matched", [])
+            ]
+            logger.info(
+                "periodic_reconciliation_complete",
+                ghosts=len(result.get("ghosts", [])),
+                matched=len(result.get("matched", [])),
+            )
+        except Exception:
+            logger.exception("periodic_reconciliation_failed")
+
     async def save(self) -> None:
         """
         Write full in-memory state to the system_state singleton row.

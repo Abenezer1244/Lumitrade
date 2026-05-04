@@ -891,7 +891,7 @@ class HealthServer:
                 await oanda.close()
         except Exception as e:
             logger.error("oanda_trades_error", error=str(e))
-            return web.json_response({"trades": []})
+            return web.json_response({"error": "oanda_unavailable"}, status=502)
 
     async def _handle_kill_switch_status(self, request: web.Request) -> web.Response:
         """GET /kill-switch — return current kill-switch flag state."""

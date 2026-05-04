@@ -55,7 +55,9 @@ export async function GET() {
 
     const pairs = Array.from(new Set((data as Record<string, unknown>[]).map((t) => t.pair as string)));
     let prices: Record<string, { bid: number; ask: number; mid: number }> = {};
-    // Map broker_trade_id → OANDA's per-trade unrealized P&L
+    // Map broker_trade_id → OANDA's per-trade unrealized P&L.
+    // null = OANDA fetch failed (don't filter). Set = authoritative active trade IDs.
+    let activeOandaTradeIds: Set<string> | null = null;
     let oandaPnlMap: Record<string, number> = {};
 
     try {
@@ -68,15 +70,27 @@ export async function GET() {
       }
       if (oandaTradesRes.ok) {
         const oandaTrades = await oandaTradesRes.json();
-        for (const t of (oandaTrades.trades || [])) {
-          oandaPnlMap[t.id] = parseFloat(t.unrealizedPL || "0");
+        const trades = Array.isArray(oandaTrades.trades) ? oandaTrades.trades : [];
+        activeOandaTradeIds = new Set(trades.map((t: Record<string, unknown>) => String(t.id)));
+        for (const t of trades) {
+          oandaPnlMap[String(t.id)] = parseFloat(String(t.unrealizedPL || "0"));
         }
       }
     } catch { /* continue with fallback */ }
 
-    const openCount = (data as unknown[]).length;
+    // Filter out ghost positions: OANDA confirms closed but DB still says OPEN.
+    // Only filter when activeOandaTradeIds is set (OANDA fetch succeeded).
+    // Positions with no broker_trade_id (paper trades) are always shown.
+    const liveTrades = (data as Record<string, unknown>[]).filter((trade) => {
+      if (!activeOandaTradeIds) return true;
+      const brokerId = trade.broker_trade_id;
+      if (!brokerId) return true;
+      return activeOandaTradeIds.has(String(brokerId));
+    });
 
-    const positions = (data as Record<string, unknown>[]).map((trade) => {
+    const openCount = liveTrades.length;
+
+    const positions = liveTrades.map((trade) => {
       const pair = trade.pair as string;
       const entry = Number(trade.entry_price) || 0;
       const direction = trade.direction as string;

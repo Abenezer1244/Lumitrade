@@ -27,6 +27,7 @@ STATE_STALE_THRESHOLD_SECONDS = 120
 LOCK_STALE_THRESHOLD_SECONDS = 180
 HEARTBEAT_STALE_THRESHOLD_SECONDS = 90
 MAX_OPEN_TRADES_ALERT = 5
+RECONCILE_INTERVAL_SECONDS = 300
 
 
 class Watchdog:
@@ -47,6 +48,7 @@ class Watchdog:
         self._watchdog_task: asyncio.Task | None = None
         self._consecutive_stale_count = 0
         self._alerted_stale = False
+        self._last_reconcile_at: datetime | None = None
 
     async def run(self) -> None:
         """
@@ -82,6 +84,7 @@ class Watchdog:
             await self._check_state_persistence(state, now)
             await self._check_heartbeat(state, now)
             await self._check_trading_anomalies(state, now)
+            await self._maybe_reconcile_positions(now)
 
         except Exception:
             logger.exception("watchdog_check_failed")
@@ -205,6 +208,18 @@ class Watchdog:
                 "critical_risk_state_active",
                 risk_state=risk_state,
             )
+
+    async def _maybe_reconcile_positions(self, now: datetime) -> None:
+        """Run position reconciliation every RECONCILE_INTERVAL_SECONDS (5 min)."""
+        if self._last_reconcile_at is not None:
+            elapsed = (now - self._last_reconcile_at).total_seconds()
+            if elapsed < RECONCILE_INTERVAL_SECONDS:
+                return
+        self._last_reconcile_at = now
+        try:
+            await self._state_manager.reconcile_positions()
+        except Exception:
+            logger.exception("watchdog_reconciliation_failed")
 
     def start(self) -> asyncio.Task:
         """Start the watchdog background task and return the task handle."""
