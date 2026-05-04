@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class BaseSubagent(ABC):
     """All subagents inherit from this. Enforces error isolation."""
 
-    model = "claude-sonnet-4-20250514"
+    model = "claude-sonnet-4-6"
     max_tokens = 1000
     timeout_seconds = 30
 

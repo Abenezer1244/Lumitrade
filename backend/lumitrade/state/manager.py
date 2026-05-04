@@ -205,6 +205,9 @@ class StateManager:
                     pair=pair,
                     prior_failures=prior_failures,
                 )
+            summary_account_id = str(summary.get("id") or account_id)
+            if any(str(existing.get("id") or "") == summary_account_id for existing in summaries):
+                continue
             summaries.append(summary)
 
         if not summaries:

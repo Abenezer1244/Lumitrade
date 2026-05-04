@@ -103,14 +103,29 @@ class OandaClient(BrokerInterface):
         """Fetch account balance/equity/margin, routing spot crypto pairs to their sub-account.
 
         BTC_USD and ETH_USD positions live on the spot crypto sub-account;
-        fetching balance from the main forex account would give the wrong
-        equity base for BTC risk sizing.
+        if that account does not support the V3 summary endpoint, fall back to
+        the main account so callers still get usable balance context.
         """
         account_id = self.config.account_id_for(pair) if pair else self._account_id
         url = f"{self._base_url}/v3/accounts/{account_id}/summary"
-        resp = await self._client.get(url)
-        resp.raise_for_status()
-        return resp.json()["account"]
+        try:
+            resp = await self._client.get(url)
+            resp.raise_for_status()
+            return resp.json()["account"]
+        except httpx.HTTPStatusError as e:
+            if account_id != self._account_id and e.response.status_code in (400, 404):
+                logger.warning(
+                    "crypto_sub_account_summary_unsupported",
+                    account_id=account_id,
+                    sub_account=account_id,
+                    fallback=self._account_id,
+                    status=e.response.status_code,
+                )
+                fallback_url = f"{self._base_url}/v3/accounts/{self._account_id}/summary"
+                resp2 = await self._client.get(fallback_url)
+                resp2.raise_for_status()
+                return resp2.json()["account"]
+            raise
 
     async def get_account_summary_for_pairs(self, pairs: list[str]) -> dict:
         """Fetch aggregate summary across the unique OANDA accounts for pairs."""
@@ -121,18 +136,20 @@ class OandaClient(BrokerInterface):
         if not representatives:
             representatives[self._account_id] = ""
 
-        summaries = []
+        summaries_by_account: dict[str, dict] = {}
         for pair in representatives.values():
+            acct_id = self.config.account_id_for(pair) if pair else self._account_id
             try:
-                summaries.append(await self.get_account_summary_for(pair))
+                summary = await self.get_account_summary_for(pair)
+                summaries_by_account.setdefault(str(summary.get("id") or acct_id), summary)
             except Exception as e:
-                acct_id = self.config.account_id_for(pair) if pair else self._account_id
                 logger.warning(
                     "account_summary_skipped",
                     account_id=acct_id,
                     pair=pair,
                     error=str(e),
                 )
+        summaries = list(summaries_by_account.values())
         if not summaries:
             raise RuntimeError("No OANDA accounts returned a valid summary")
         if len(summaries) == 1:
