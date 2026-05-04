@@ -183,6 +183,22 @@ class RiskEngine:
             pair=proposal.pair,
         )
 
+        # Gate B — policy meaningfulness (checked on BASE risk, before correlation).
+        # Correlation can reduce a valid \$0.285 risk to \$0.1995 on small accounts,
+        # which would block a legitimate trade. We gate on the un-reduced budget so
+        # that correlation only affects SIZE, not whether the trade fires at all.
+        min_risk_usd = self._config.min_meaningful_risk_usd
+        if risk_amount_usd < min_risk_usd:
+            base_risk_result: CheckResult = (
+                "MIN_RISK_BUDGET",
+                False,
+                f"Trade risk ${risk_amount_usd} below meaningful "
+                f"threshold ${min_risk_usd}",
+                str(risk_amount_usd),
+                str(min_risk_usd),
+            )
+            return await self._reject(proposal, base_risk_result, risk_state, now)
+
         # ── Correlation adjustment ─────────────────────────────────
         # Reduce position size when correlated pairs are already open.
         open_pairs = await self._get_open_pairs()
@@ -312,24 +328,6 @@ class RiskEngine:
                 str(min_units),
             )
             return await self._reject(proposal, min_result, risk_state, now)
-
-        # Gate B — policy meaningfulness. A trade with so little risk
-        # budget that operational cost (Claude API call ~$0.02, DB rows,
-        # OANDA REST quota, log volume) outweighs any plausible P&L is
-        # not worth executing. Configurable via MIN_MEANINGFUL_RISK_USD.
-        # This is what the old hard-coded 1000-unit floor was actually
-        # trying to express, but it was encoded as a broker constraint.
-        min_risk_usd = self._config.min_meaningful_risk_usd
-        if risk_amount_usd < min_risk_usd:
-            risk_result: CheckResult = (
-                "MIN_RISK_BUDGET",
-                False,
-                f"Trade risk ${risk_amount_usd} below meaningful "
-                f"threshold ${min_risk_usd}",
-                str(risk_amount_usd),
-                str(min_risk_usd),
-            )
-            return await self._reject(proposal, risk_result, risk_state, now)
 
         # ── Build ApprovedOrder ──────────────────────────────────
         direction = Direction.BUY if proposal.action == Action.BUY else Direction.SELL

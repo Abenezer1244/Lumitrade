@@ -132,7 +132,7 @@ class LumitradeConfig(BaseSettings):
         validation_alias="MIN_POSITION_UNITS_FOREX", default=1
     )
     min_meaningful_risk_usd: Decimal = Field(
-        validation_alias="MIN_MEANINGFUL_RISK_USD", default=Decimal("0.50")
+        validation_alias="MIN_MEANINGFUL_RISK_USD", default=Decimal("0.20")
     )
     daily_loss_limit_pct: Decimal = Decimal("0.05")
     weekly_loss_limit_pct: Decimal = Decimal("0.10")
