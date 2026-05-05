@@ -95,8 +95,8 @@ class LumitradeConfig(BaseSettings):
     #            confidence after 20+ real-market trades accumulate under D1 filter.
     #            Filter: data_engine/d1_trend_filter.py, wired in scanner.py step 2.6.
     #            LIVE approved (2026-04-30) with caveat above.
-    pairs: list[str] = ["USD_CAD", "USD_JPY"]
-    live_pairs: list[str] = ["USD_CAD", "USD_JPY"]
+    pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
+    live_pairs: list[str] = ["USD_CAD", "USD_JPY", "BTC_USD"]
     # Chart-first mode: Claude sees the TradingView chart and decides BUY or SELL.
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
