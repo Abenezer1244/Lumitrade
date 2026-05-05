@@ -138,6 +138,7 @@ class QuantEngine:
                 reasoning = f"SOLO({best['name']}): {best['reason']}"
 
         # Tier 2.5: Score majority with a strong leading vote
+        logger.info("tier25_eval", pair=pair, buy_score=f"{buy_score:.4f}", sell_score=f"{sell_score:.4f}", action_before=action)
         if action == "HOLD" and abs(buy_score - sell_score) >= 0.05:
             if buy_score > sell_score and buy_votes:
                 best = max(buy_votes, key=lambda s: s["score"])

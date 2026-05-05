@@ -23,6 +23,8 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 # lumitrade user has no home dir — point matplotlib and fontconfig caches to writable /tmp
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV FC_CACHEDIR=/tmp/fontconfig
+# Force layer rebuild when source changes — bump this timestamp on cache-miss deploys
+ARG CACHEBUST=2026-05-05T06:20:00Z
 COPY backend/lumitrade/ /app/lumitrade/
 COPY backend/supervisord.conf /etc/supervisor/conf.d/lumitrade.conf
 RUN useradd --no-create-home --shell /bin/false lumitrade && \
