@@ -175,6 +175,12 @@ class SignalScanner:
             max_spread = _Dec("5")
         if snapshot.spread_pips > max_spread:
             logger.info("early_spread_skip", pair=pair, spread=str(snapshot.spread_pips), max=str(max_spread))
+            if self._events:
+                self._events.publish(
+                    'SCANNER', 'SIGNAL',
+                    f'No trade on {pair} — spread too wide ({snapshot.spread_pips} pips > {max_spread} limit)',
+                    pair=pair, severity='WARNING',
+                )
             return None
 
         # 1a-iii. Already-in-position check (FIFO) — skip if WE (this account)

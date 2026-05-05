@@ -137,6 +137,25 @@ class QuantEngine:
                 sl = self._calculate_sl(ind, price, pair, "SELL")
                 reasoning = f"SOLO({best['name']}): {best['reason']}"
 
+        # Tier 2.5: Score majority with a strong leading vote
+        if action == "HOLD" and abs(buy_score - sell_score) >= 0.05:
+            if buy_score > sell_score and buy_votes:
+                best = max(buy_votes, key=lambda s: s["score"])
+                if best["score"] >= 0.65:
+                    action = "BUY"
+                    score = 0.55
+                    fired = [s["name"] for s in buy_votes]
+                    sl = self._calculate_sl(ind, price, pair, "BUY")
+                    reasoning = f"SCORE_MAJORITY(BUY {best['name']}): {best['reason']}"
+            elif sell_score > buy_score and sell_votes:
+                best = max(sell_votes, key=lambda s: s["score"])
+                if best["score"] >= 0.65:
+                    action = "SELL"
+                    score = 0.55
+                    fired = [s["name"] for s in sell_votes]
+                    sl = self._calculate_sl(ind, price, pair, "SELL")
+                    reasoning = f"SCORE_MAJORITY(SELL {best['name']}): {best['reason']}"
+
         if action == "HOLD":
             # Preserve each strategy's per-reason text so the dashboard /
             # signals table can distinguish "regime-disabled EMA" from
