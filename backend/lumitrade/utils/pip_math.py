@@ -20,6 +20,7 @@ PIP_SIZE: dict[str, Decimal] = {
     "EUR_JPY": Decimal("0.01"),
     "GBP_JPY": Decimal("0.01"),
     "BTC_USD": Decimal("1.00"),  # 1 pip = $1 for BTC/USD
+    "ETH_USD": Decimal("1.00"),  # 1 pip = $1 for ETH/USD (crypto CFD on OANDA)
 }
 DEFAULT_PIP = Decimal("0.0001")
 

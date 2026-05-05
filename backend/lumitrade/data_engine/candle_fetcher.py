@@ -6,6 +6,7 @@ Validates each candle series through DataValidator before returning.
 Per BDS Section 4.
 """
 
+import asyncio
 from datetime import datetime
 from decimal import Decimal
 
@@ -54,10 +55,11 @@ class CandleFetcher:
         reasonable on slower/faster frames.
         """
         counts = {"M15": 120, "H1": 250, "H4": 120, "D": 30}
-        result: dict[str, list[Candle]] = {}
-        for tf, n in counts.items():
-            result[tf] = await self.fetch(pair, tf, count=n)
-        return result
+        timeframes = list(counts.keys())
+        candle_lists = await asyncio.gather(
+            *[self.fetch(pair, tf, count=counts[tf]) for tf in timeframes]
+        )
+        return dict(zip(timeframes, candle_lists))
 
     def _parse_candle(self, raw: dict, granularity: str) -> Candle:
         """Parse OANDA candle JSON to Candle dataclass."""

@@ -91,16 +91,16 @@ def compute_d1_trend_filter(
         ema_slow = ta.ema(closes, length=_D1_EMA_SLOW)
     except Exception as e:
         logger.warning("d1_trend_filter_compute_error", pair=pair, error=str(e))
-        return None  # fail open
+        return f"D1 compute error -- {action} blocked (fail-closed on exception)"
 
     if ema_fast is None or ema_slow is None:
-        return None
+        return f"D1 indicator returned None -- {action} blocked (fail-closed)"
 
     e5  = ema_fast.iloc[-1]
     e10 = ema_slow.iloc[-1]
 
     if pd.isna(e5) or pd.isna(e10):
-        return None
+        return f"D1 indicator NaN -- {action} blocked (fail-closed, insufficient warm-up)"
 
     e5_f  = float(e5)
     e10_f = float(e10)

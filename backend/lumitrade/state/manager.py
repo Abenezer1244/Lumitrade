@@ -416,13 +416,12 @@ class StateManager:
         except Exception:
             logger.exception("state_persist_failed")
 
-    async def persist_loop(self, oanda_client=None) -> None:
+    async def persist_loop(self) -> None:
         """
         Background task that saves state and refreshes OANDA balance.
-        Runs every PERSIST_INTERVAL_SECONDS (30s).
+        Runs every PERSIST_INTERVAL_SECONDS (5s).
         """
         self._shutdown_event.clear()
-        self._oanda = oanda_client
         logger.info(
             "state_persist_loop_started",
             interval_seconds=PERSIST_INTERVAL_SECONDS,
@@ -447,6 +446,17 @@ class StateManager:
                 self._state["daily_pnl"] = "0"
                 self._state["_last_daily_reset"] = today_str
                 logger.info("daily_pnl_reset_midnight", date=today_str)
+
+            # Weekly reset on Monday at midnight UTC.
+            # weekly_pnl was never reset, causing it to accumulate indefinitely
+            # and eventually trigger a permanent WEEKLY_LIMIT block on the
+            # risk state machine after a bad week.
+            last_week_reset = self._state.get("_last_weekly_reset", "")
+            monday_str = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+            if last_week_reset != monday_str:
+                self._state["weekly_pnl"] = "0"
+                self._state["_last_weekly_reset"] = monday_str
+                logger.info("weekly_pnl_reset_monday", week_start=monday_str)
 
             # Refresh OANDA balance every persist cycle.
             # Track consecutive failures: stale balance == position sizer

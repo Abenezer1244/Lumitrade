@@ -89,21 +89,21 @@ def compute_h4_trend_filter(
         adx_df   = ta.adx(highs, lows, closes, length=14)
     except Exception as e:
         logger.warning("h4_trend_filter_compute_error", pair=pair, error=str(e))
-        return None  # fail open
+        return f"H4 compute error — {action} blocked (fail-closed on exception)"
 
     if ema_fast is None or ema_slow is None or adx_df is None:
-        return None
+        return f"H4 indicator returned None — {action} blocked (fail-closed)"
 
     e5  = ema_fast.iloc[-1]
     e10 = ema_slow.iloc[-1]
 
     adx_cols = [c for c in adx_df.columns if "ADX" in c.upper() and "DM" not in c.upper()]
     if not adx_cols:
-        return None
+        return f"H4 ADX column not found — {action} blocked (fail-closed)"
     adx_val = adx_df[adx_cols[0]].iloc[-1]
 
     if pd.isna(e5) or pd.isna(e10) or pd.isna(adx_val):
-        return None
+        return f"H4 indicator NaN — {action} blocked (fail-closed, insufficient warm-up)"
 
     e5_f = float(e5)
     e10_f = float(e10)

@@ -99,6 +99,20 @@ class PositionReconciler:
             # Detect ghosts: in DB as OPEN but not on OANDA
             for dt in db_trades:
                 broker_id = str(dt.get("broker_trade_id", ""))
+                trade_mode = str(dt.get("mode", ""))
+
+                # Paper and shadow trades have synthetic PAPER-* broker IDs that
+                # don't exist on OANDA. Treating them as ghosts would force-close
+                # every simulated position within 5 minutes with P&L=0, corrupting
+                # paper-mode tracking and flooding operators with false alerts.
+                if broker_id.startswith("PAPER-") or trade_mode in ("PAPER", "PAPER_SHADOW"):
+                    matched.append({
+                        "trade_id": dt.get("id"),
+                        "broker_trade_id": broker_id,
+                        "pair": dt.get("pair"),
+                    })
+                    continue
+
                 if not broker_id:
                     # No broker_trade_id means we can't match to OANDA —
                     # treat as ghost (leftover from old parsing bug)
@@ -171,7 +185,7 @@ class PositionReconciler:
             opened_at_raw = db_trade.get("opened_at") or now.isoformat()
             entry_price_raw = db_trade.get("entry_price")
             outcome = "BREAKEVEN"
-            pnl_usd: float = 0.0
+            pnl_usd: Decimal = Decimal("0")
             pnl_pips: Decimal = Decimal("0")
             exit_price = entry_price_raw
             close_time = opened_at_raw
@@ -182,7 +196,7 @@ class PositionReconciler:
             if broker_trade_id:
                 try:
                     oanda_trade = await self._oanda.get_trade(broker_trade_id, pair=pair)
-                    real_pl = float(oanda_trade.get("realizedPL", 0))
+                    real_pl = Decimal(str(oanda_trade.get("realizedPL", 0)))
                     if real_pl != 0:
                         pnl_usd = real_pl
                         outcome = "WIN" if real_pl > 0 else "LOSS"
@@ -332,14 +346,11 @@ class PositionReconciler:
             units_decimal = Decimal(str(units).replace(",", ""))
             direction = "BUY" if units_decimal > 0 else "SELL"
             abs_units = abs(units_decimal)
-            # Get the account_id from an existing trade, or use config
-            from ..config import LumitradeConfig
-            config = LumitradeConfig()  # type: ignore[call-arg]
 
             await self._db.insert(
                 "trades",
                 {
-                    "account_id": config.account_uuid,
+                    "account_id": self._account_uuid,
                     "broker_trade_id": trade_id,
                     "pair": instrument,
                     "direction": direction,

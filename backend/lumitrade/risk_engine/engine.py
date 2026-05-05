@@ -742,7 +742,7 @@ class RiskEngine:
         """
         # BTC risk cap: 0.5%/trade regardless of confidence until validated
         if proposal.pair == "BTC_USD":
-            risk_pct = Decimal("0.005")
+            risk_pct = min(Decimal("0.005"), self._config.max_risk_pct)
             logger.info(
                 "risk_pct_btc_capped",
                 pair=proposal.pair,
@@ -757,6 +757,11 @@ class RiskEngine:
         else:
             risk_pct = Decimal("0.005")  # 0.5%
 
+        # Enforce dashboard-configured ceiling. max_risk_pct is loaded from
+        # the user_settings table in _load_user_settings — if the operator
+        # has set a lower limit than the confidence tier would grant, honour it.
+        risk_pct = min(risk_pct, self._config.max_risk_pct)
+
         # Log AI recommendation as advisory telemetry only — not applied
         if proposal.recommended_risk_pct is not None:
             logger.info(
@@ -770,6 +775,7 @@ class RiskEngine:
             "risk_pct_confidence_based",
             confidence=str(confidence),
             risk_pct=str(risk_pct),
+            max_risk_pct=str(self._config.max_risk_pct),
         )
         return risk_pct
 

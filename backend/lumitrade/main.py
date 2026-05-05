@@ -534,7 +534,7 @@ class OrchestratorService:
                 for pair in self.config.pairs:
 
                     # Per-pair session window check
-                    pair_window = _pair_hours.get(pair, (0, 13))
+                    pair_window = _pair_hours.get(pair, (0, 17))
                     if not (pair_window[0] <= current_hour < pair_window[1]):
                         logger.debug(
                             "pair_session_skip",
@@ -656,12 +656,6 @@ class OrchestratorService:
                             continue
                         approved = result
 
-                        # 4. Fixed 1x position size — no confidence scaling.
-                        #    Data showed 80%+ confidence has WORSE win rate (16.7%)
-                        #    than 70-80% (48.1%). Scaling up on high confidence
-                        #    was amplifying losses, not gains.
-                        num_orders = 1
-
                         current_price = proposal.entry_price
                         logger.info(
                             "signal_executing_trade",
@@ -669,81 +663,46 @@ class OrchestratorService:
                             action=_action_str(proposal.action),
                             confidence=str(proposal.confidence_adjusted),
                             price=str(current_price),
-                            num_orders=num_orders,
                         )
 
-                        # Execute multiple orders for high-confidence signals
-                        from uuid import uuid4 as _uuid4
-                        for order_num in range(num_orders):
-                            try:
-                                if order_num == 0:
-                                    # First order uses the original approved order
-                                    exec_result = await self.exec_eng.execute_order(approved, current_price)
-                                else:
-                                    # Subsequent orders get a fresh order_ref
-                                    scaled_order = ApprovedOrder(
-                                        order_ref=_uuid4(),
-                                        signal_id=approved.signal_id,
-                                        pair=approved.pair,
-                                        direction=approved.direction,
-                                        units=approved.units,
-                                        entry_price=approved.entry_price,
-                                        stop_loss=approved.stop_loss,
-                                        take_profit=approved.take_profit,
-                                        risk_amount_usd=approved.risk_amount_usd,
-                                        risk_pct=approved.risk_pct,
-                                        confidence=approved.confidence,
-                                        account_balance_at_approval=approved.account_balance_at_approval,
-                                        approved_at=datetime.now(timezone.utc),
-                                        expiry=datetime.now(timezone.utc) + timedelta(seconds=30),
-                                        mode=approved.mode,
-                                    )
-                                    exec_result = await self.exec_eng.execute_order(scaled_order, current_price)
-                                if exec_result is None:
-                                    logger.warning(
-                                        "trade_execution_failed",
-                                        pair=pair,
-                                        action=_action_str(proposal.action),
-                                        order_num=order_num + 1,
-                                    )
-                                    self.events.publish(
-                                        "EXECUTION", "ORDER_FAILED",
-                                        f"FAILED: {_action_str(proposal.action)} {pair} — execution returned None",
-                                        severity="ERROR", pair=pair,
-                                    )
-                                    break
+                        try:
+                            exec_result = await self.exec_eng.execute_order(approved, current_price)
+                            if exec_result is None:
+                                logger.warning(
+                                    "trade_execution_failed",
+                                    pair=pair,
+                                    action=_action_str(proposal.action),
+                                )
+                                self.events.publish(
+                                    "EXECUTION", "ORDER_FAILED",
+                                    f"FAILED: {_action_str(proposal.action)} {pair} — execution returned None",
+                                    severity="ERROR", pair=pair,
+                                )
+                            else:
                                 logger.info(
                                     "trade_executed_successfully",
                                     pair=pair,
                                     action=_action_str(proposal.action),
-                                    order_num=order_num + 1,
-                                    total_orders=num_orders,
                                 )
-                                if order_num == 0:
-                                    try:
-                                        await self.db.update(
-                                            "signals",
-                                            {"id": str(proposal.signal_id)},
-                                            {"executed": True},
-                                        )
-                                    except Exception:
-                                        pass
-                            except Exception as e:
-                                logger.error(
-                                    "scaled_order_failed",
-                                    pair=pair,
-                                    order_num=order_num + 1,
-                                    error=str(e),
-                                )
-                                self.events.publish(
-                                    "EXECUTION", "ORDER_FAILED",
-                                    f"FAILED: {_action_str(proposal.action)} {pair} — {str(e)[:200]}",
-                                    severity="ERROR", pair=pair,
-                                )
-                                break  # Stop scaling if one fails
-                            # Small delay between scaled orders
-                            if order_num < num_orders - 1:
-                                await asyncio.sleep(1)
+                                try:
+                                    await self.db.update(
+                                        "signals",
+                                        {"id": str(proposal.signal_id)},
+                                        {"executed": True},
+                                    )
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            logger.error(
+                                "order_execution_failed",
+                                pair=pair,
+                                error=str(e),
+                            )
+                            self.events.publish(
+                                "EXECUTION", "ORDER_FAILED",
+                                f"FAILED: {_action_str(proposal.action)} {pair} — {str(e)[:200]}",
+                                severity="ERROR", pair=pair,
+                            )
                     except Exception as e:
                         import traceback
                         logger.error(
@@ -761,7 +720,7 @@ class OrchestratorService:
                 try:
                     settings_row = await self.db.select_one("system_state", {"id": "settings"})
                     if settings_row and settings_row.get("open_trades") and isinstance(settings_row["open_trades"], dict):
-                        scan_minutes = int(settings_row["open_trades"].get("scanInterval", scan_minutes))
+                        scan_minutes = max(1, min(60, int(settings_row["open_trades"].get("scanInterval", scan_minutes))))
                 except Exception as _si_err:
                     logger.debug("scan_interval_settings_fetch_failed", error=str(_si_err))
                 await asyncio.sleep(scan_minutes * 60)

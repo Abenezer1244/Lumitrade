@@ -52,10 +52,9 @@ class ConfidenceAdjuster:
         adjustments["indicator_alignment"] = float(factor)
         adjusted = adjusted * multiplier
 
-        # Hard cap: if fewer than 2/5 indicators agree, cap adjusted confidence
-        # below the minimum threshold regardless of Claude's self-reported score.
-        if alignment < 0.4:
-            adjusted = min(adjusted, Decimal("0.64"))
+        # Track whether indicator alignment is weak — hard cap applied AFTER
+        # all additive adjustments so news/session bonuses can't bypass it.
+        weak_alignment = alignment < 0.4
 
         # Factor 2: News proximity — always apply (chart doesn't show news)
         news_adj = self._news_proximity(snapshot)
@@ -86,6 +85,11 @@ class ConfidenceAdjuster:
             pair_adj = pair_adj / 2
         adjustments["recent_pair_performance"] = float(pair_adj)
         adjusted += pair_adj
+
+        # Hard cap: if fewer than 2/5 indicators agree, cap adjusted confidence
+        # below the minimum threshold regardless of additive bonuses applied above.
+        if weak_alignment:
+            adjusted = min(adjusted, Decimal("0.64"))
 
         # Clamp to [0.0, 1.0]
         adjusted = max(Decimal("0"), min(Decimal("1"), adjusted))

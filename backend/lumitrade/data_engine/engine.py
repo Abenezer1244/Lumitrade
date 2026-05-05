@@ -217,7 +217,7 @@ class DataEngine:
         try:
             trades = await self._db.select(
                 "trades",
-                {"pair": pair, "status": "CLOSED"},
+                {"pair": pair, "status": "CLOSED", "account_id": self.config.account_uuid},
                 order="closed_at",
                 limit=limit,
             )

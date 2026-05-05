@@ -701,7 +701,7 @@ class SignalScanner:
 
     async def _save_hold_signal(self, pair: str, quant_signal, block_reason: str = "") -> None:
         """Save a HOLD signal from the quant engine for tracking."""
-        score_str = str(quant_signal.score) if quant_signal.score else "0"
+        score_str = str(quant_signal.score) if quant_signal.score is not None else "0"
         summary = (
             f"Blocked ({block_reason}): {quant_signal.reasoning}"
             if block_reason
