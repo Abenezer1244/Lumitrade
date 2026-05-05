@@ -138,8 +138,9 @@ class QuantEngine:
                 reasoning = f"SOLO({best['name']}): {best['reason']}"
 
         # Tier 2.5: Score majority with a strong leading vote
-        logger.info("tier25_eval", pair=pair, buy_score=f"{buy_score:.4f}", sell_score=f"{sell_score:.4f}", action_before=action)
-        if action == "HOLD" and abs(buy_score - sell_score) >= 0.05:
+        # Threshold 0.04 (not 0.05): 0.70-0.65 in IEEE 754 = 0.04999... due to
+        # float rounding, so >= 0.05 always fails for this exact pair of scores.
+        if action == "HOLD" and abs(buy_score - sell_score) > 0.04:
             if buy_score > sell_score and buy_votes:
                 best = max(buy_votes, key=lambda s: s["score"])
                 if best["score"] >= 0.65:
