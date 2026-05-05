@@ -81,6 +81,10 @@ class SignalScanner:
         self._tv_signal = TradingViewSignal()
         self._quant = QuantEngine()
         self._pair_locks: dict[str, asyncio.Lock] = {}
+        # Strong references prevent Python GC from collecting long-sleeping tasks.
+        # USD_CAD sleeps 150s before its first scan — long enough to be collected
+        # without this set. add_done_callback removes the ref when the task exits.
+        self._scan_tasks: set[asyncio.Task] = set()
 
     async def scan_loop(self) -> None:
         """Background task: run signal scans on staggered intervals."""
@@ -88,9 +92,11 @@ class SignalScanner:
         try:
             while True:
                 for pair in self.config.pairs:
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         self._scan_pair(pair), name=f"scan_{pair}"
                     )
+                    self._scan_tasks.add(task)
+                    task.add_done_callback(self._scan_tasks.discard)
                 await asyncio.sleep(self.config.signal_interval_minutes * 60)
         except asyncio.CancelledError:
             logger.info("signal_scanner_cancelled")

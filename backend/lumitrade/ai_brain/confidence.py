@@ -151,6 +151,8 @@ class ConfidenceAdjuster:
     _TOKYO_PAIRS = {"USD_JPY", "AUD_USD", "NZD_USD", "AUD_JPY", "NZD_JPY"}
     _LONDON_PAIRS = {"EUR_USD", "GBP_USD", "EUR_GBP", "USD_CHF", "EUR_CHF"}
     _NY_PAIRS = {"USD_CAD", "EUR_USD", "GBP_USD", "USD_CHF", "XAU_USD"}
+    # Crypto trades 24/7 — session hours are irrelevant, no penalty applies.
+    _CRYPTO_PAIRS = {"BTC_USD", "ETH_USD"}
 
     def _session_quality(self, session: Session, pair: str = "") -> Decimal:
         """
@@ -159,6 +161,8 @@ class ConfidenceAdjuster:
         A pair native to the current session gets no penalty — e.g. USD/JPY
         during Tokyo has full liquidity and tight spreads.
         """
+        if pair in self._CRYPTO_PAIRS:
+            return Decimal("0")
         if session == Session.OVERLAP:
             return Decimal("0.05")
         elif session == Session.TOKYO:
