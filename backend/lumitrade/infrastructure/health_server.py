@@ -774,7 +774,8 @@ class HealthServer:
                 crypto_unrealized = 0.0
                 crypto_open = 0
                 spot_id = getattr(config, "oanda_spot_crypto_account_id", None)
-                if spot_id and spot_id != config.oanda_account_id:
+                _active_crypto = {"BTC_USD", "ETH_USD"} & set(getattr(config, "pairs", []))
+                if spot_id and spot_id != config.oanda_account_id and _active_crypto:
                     try:
                         crypto_acct = await oanda.get_account_summary_for("BTC_USD")
                         crypto_balance = float(crypto_acct.get("balance", 0))
