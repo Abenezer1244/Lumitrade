@@ -312,6 +312,7 @@ class SignalScanner:
                     f"No trade on {pair} -- H4 MTF filter: {h4_block}",
                     pair=pair, severity="WARNING",
                 )
+            await self._save_hold_signal(pair, quant_signal, block_reason=h4_block)
             return None
 
         # ── STEP 2.6: D1 MULTI-TIMEFRAME FILTER ──
@@ -329,6 +330,7 @@ class SignalScanner:
                     f"No trade on {pair} -- D1 MTF filter: {d1_block}",
                     pair=pair, severity="WARNING",
                 )
+            await self._save_hold_signal(pair, quant_signal, block_reason=d1_block)
             return None
 
         # ── STEP 3: CHART SCREENSHOT — visual context for Claude's review ──
@@ -697,21 +699,27 @@ class SignalScanner:
         except Exception as e:
             logger.error("signal_save_failed", error=str(e))
 
-    async def _save_hold_signal(self, pair: str, quant_signal) -> None:
+    async def _save_hold_signal(self, pair: str, quant_signal, block_reason: str = "") -> None:
         """Save a HOLD signal from the quant engine for tracking."""
+        score_str = str(quant_signal.score) if quant_signal.score else "0"
+        summary = (
+            f"Blocked ({block_reason}): {quant_signal.reasoning}"
+            if block_reason
+            else f"Quant HOLD: {quant_signal.reasoning}"
+        )
         try:
             await self._db.insert("signals", {
                 "id": str(uuid4()),
                 "account_id": self.config.account_uuid,
                 "pair": pair,
                 "action": "HOLD",
-                "confidence_raw": "0",
-                "confidence_adjusted": "0",
+                "confidence_raw": score_str,
+                "confidence_adjusted": score_str,
                 "confidence_adjustment_log": {},
                 "entry_price": str(quant_signal.entry_price),
                 "stop_loss": "0",
                 "take_profit": "0",
-                "summary": f"Quant HOLD: {quant_signal.reasoning}",
+                "summary": summary,
                 "reasoning": quant_signal.reasoning,
                 "indicators_snapshot": {},
                 "timeframe_scores": {},
