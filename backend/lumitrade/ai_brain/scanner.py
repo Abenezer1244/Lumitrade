@@ -564,7 +564,8 @@ class SignalScanner:
                     "ai_call_failed",
                     pair=pair,
                     attempt=attempt + 1,
-                    error=str(e),
+                    exception_type=type(e).__name__,
+                    exception_message=str(e),
                 )
 
         # All AI attempts failed — use rule-based fallback

@@ -69,9 +69,7 @@ class DataValidator:
                     consecutive_spikes=count,
                     new_baseline=str(tick.mid),
                 )
-                self._price_history[tick.pair] = deque(
-                    [tick.mid] * ROLLING_WINDOW, maxlen=200
-                )
+                self._price_history[tick.pair] = deque(maxlen=200)
                 self._consecutive_spikes[tick.pair] = 0
                 spike_detected = False  # This tick is now accepted as the new baseline
 

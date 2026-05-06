@@ -30,6 +30,8 @@ class ClaudeClient:
             response = await self._client.messages.create(
                 model=self.config.claude_model,
                 max_tokens=self.config.claude_max_tokens,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                timeout=30.0,
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user}],
             )
@@ -69,6 +71,8 @@ class ClaudeClient:
             response = await self._client.messages.create(
                 model=self.config.claude_model,
                 max_tokens=self.config.claude_max_tokens,
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                timeout=30.0,
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=[{
                     "role": "user",
