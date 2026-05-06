@@ -16,7 +16,11 @@ from ..infrastructure.secure_logger import get_logger
 logger = get_logger(__name__)
 
 STALE_THRESHOLD_SECONDS = 5
-SPIKE_STD_MULTIPLIER = Decimal("5.0")  # 5 stddev — avoid false positives on normal tick noise
+# 10 stddev — catches genuinely bad data (price=0, 999, etc.) without
+# false-positiving normal volatility. At 250ms ticks with a 25s window,
+# a tight market (std=0.3 pip) would need a 3-pip single-tick jump to trigger.
+# 5.0 was too aggressive for London-NY overlap active markets.
+SPIKE_STD_MULTIPLIER = Decimal("10.0")
 ROLLING_WINDOW = 100  # ~25 seconds of ticks at 250ms — larger window = more stable baseline
 
 # Per-instrument max spread (in pips). Gold/metals have wider spreads.
@@ -132,7 +136,18 @@ class DataValidator:
             return False
 
         z_score = abs(tick.mid - mean) / std
-        return z_score > SPIKE_STD_MULTIPLIER
+        is_spike = z_score > SPIKE_STD_MULTIPLIER
+        if is_spike:
+            logger.debug(
+                "spike_detected_detail",
+                pair=tick.pair,
+                mid=str(tick.mid),
+                mean=str(round(mean, 5)),
+                std=str(round(std, 5)),
+                z_score=str(round(z_score, 2)),
+                threshold=str(SPIKE_STD_MULTIPLIER),
+            )
+        return is_spike
 
     def _check_spread(self, tick: PriceTick) -> bool:
         """Spread must be within per-instrument ceiling."""
