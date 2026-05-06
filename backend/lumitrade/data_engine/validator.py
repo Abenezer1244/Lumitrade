@@ -37,8 +37,16 @@ DEFAULT_MAX_SPREAD = Decimal("5.0")
 class DataValidator:
     """Validates all incoming market data before use."""
 
+    _SPIKE_RESET_THRESHOLD = 10  # reset baseline after N consecutive spikes
+
     def __init__(self) -> None:
         self._price_history: dict[str, deque[Decimal]] = {}
+        # Track consecutive spike counts per pair. When a genuine market
+        # move happens (e.g. London open gap), every tick flags as a spike
+        # because the history never updates (spikes are excluded). After
+        # _SPIKE_RESET_THRESHOLD consecutive spikes, the baseline is reset
+        # to the current price so the engine can adapt to the new level.
+        self._consecutive_spikes: dict[str, int] = {}
 
     def validate_tick(self, tick: PriceTick) -> DataQuality:
         """Full validation pipeline for a price tick."""
@@ -47,7 +55,25 @@ class DataValidator:
         spread_ok = self._check_spread(tick)
 
         if not spike_detected:
+            self._consecutive_spikes[tick.pair] = 0
             self._update_price_history(tick)
+        else:
+            count = self._consecutive_spikes.get(tick.pair, 0) + 1
+            self._consecutive_spikes[tick.pair] = count
+            if count >= self._SPIKE_RESET_THRESHOLD:
+                # Market has moved — reset baseline to current price so
+                # subsequent ticks are not permanently blocked.
+                logger.info(
+                    "spike_baseline_reset",
+                    pair=tick.pair,
+                    consecutive_spikes=count,
+                    new_baseline=str(tick.mid),
+                )
+                self._price_history[tick.pair] = deque(
+                    [tick.mid] * ROLLING_WINDOW, maxlen=200
+                )
+                self._consecutive_spikes[tick.pair] = 0
+                spike_detected = False  # This tick is now accepted as the new baseline
 
         quality = DataQuality(
             is_fresh=is_fresh,
