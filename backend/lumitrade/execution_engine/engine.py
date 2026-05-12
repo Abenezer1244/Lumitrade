@@ -690,13 +690,22 @@ class ExecutionEngine:
         else:
             profit_pips = pips_between(current_price, entry, pair) if current_price < entry else -pips_between(entry, current_price, pair)
 
-        # Break-even stop: move SL to entry when profit exceeds threshold
-        # XAU: 300 pips ($3.00), BTC: 500 pips ($500), forex: 15 pips
+        # Extract initial SL once -- used for both breakeven and trailing-stop computations
+        initial_sl_raw = trade.get("initial_stop_loss")
+        initial_sl_price = (
+            Decimal(str(initial_sl_raw))
+            if initial_sl_raw and str(initial_sl_raw).strip()
+            else current_sl
+        )
+        initial_sl_pips = abs(pips_between(min(entry, initial_sl_price), max(entry, initial_sl_price), pair))
+
+        # Break-even stop: move SL to entry when profit >= 1.5x initial SL distance
+        # XAU: 300 pips, BTC: 500 pips, forex: 1.5x SL (min 25 pips)
         ps = get_pip_size(pair)
         be_threshold = (
             Decimal("300") if pair == "XAU_USD"
             else Decimal("500") if "BTC" in pair or "ETH" in pair
-            else Decimal("15")
+            else max(initial_sl_pips * Decimal("1.5"), Decimal("25"))
         )
         sl_is_behind_entry = (direction == "BUY" and current_sl < entry) or (direction == "SELL" and current_sl > entry)
         if profit_pips >= be_threshold and sl_is_behind_entry:
@@ -747,19 +756,14 @@ class ExecutionEngine:
         # persisted initial_stop_loss from trade open. Fall back to
         # current_sl only when initial is missing (legacy rows pre-migration
         # 016 with no backfill).
-        initial_sl_raw = trade.get("initial_stop_loss")
-        if initial_sl_raw is not None and str(initial_sl_raw).strip():
-            initial_sl = Decimal(str(initial_sl_raw))
-        else:
-            initial_sl = current_sl
-        original_sl_distance = abs(entry - initial_sl)
+        original_sl_distance = abs(entry - initial_sl_price)
         if original_sl_distance == 0:
             # Defensive: if initial_sl == entry (degenerate trade or backfill
             # error), do not trail — would set SL onto the market price.
             logger.warning(
                 "trailing_stop_skipped_zero_initial_distance",
                 pair=pair, broker_id=broker_id,
-                entry=str(entry), initial_sl=str(initial_sl),
+                entry=str(entry), initial_sl=str(initial_sl_price),
             )
             return
 

@@ -101,7 +101,7 @@ class LumitradeConfig(BaseSettings):
     # Old 85-trade SELL data was from text-only mode — Claude can now SEE the chart.
     buy_only_mode: bool = Field(validation_alias="BUY_ONLY_MODE", default=False)
     signal_interval_minutes: int = 15  # Live: restored from paper-mode 10min. Reduces API calls, more conservative cadence.
-    max_risk_pct: Decimal = Decimal("0.005")  # Default 0.5% — matches dashboard conservative default
+    max_risk_pct: Decimal = Decimal("0.03")  # Default 3% — sized for ~$10/trade on live accounts ≥$100
     min_confidence: Decimal = Decimal("0.70")  # Raised from 0.65 — data showed 60-70% bracket underperforms
     # 106-trade audit (2026-04-21): 0.80+ confidence bucket WR collapsed to
     # 27.3% (−$5,620 over 22 trades). Confidence model is currently inverted

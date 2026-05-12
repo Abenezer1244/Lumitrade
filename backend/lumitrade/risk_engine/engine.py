@@ -753,9 +753,9 @@ class RiskEngine:
 
         confidence = proposal.confidence_adjusted
         if confidence >= Decimal("0.80"):
-            risk_pct = Decimal("0.01")   # 1.0%
+            risk_pct = Decimal("0.03")   # 3.0% — targets ~$10/trade on $107 at 1.5:1 R:R
         else:
-            risk_pct = Decimal("0.005")  # 0.5%
+            risk_pct = Decimal("0.02")   # 2.0%
 
         # Enforce dashboard-configured ceiling. max_risk_pct is loaded from
         # the user_settings table in _load_user_settings — if the operator
