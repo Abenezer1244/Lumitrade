@@ -257,8 +257,10 @@ class StateManager:
                     self._state["daily_pnl"] = str(row["daily_pnl_usd"])
                 if row.get("weekly_pnl_usd") is not None:
                     self._state["weekly_pnl"] = str(row["weekly_pnl_usd"])
-                if row.get("consecutive_losses") is not None:
-                    self._state["consecutive_losses"] = row["consecutive_losses"]
+                # consecutive_losses is intentionally NOT restored from DB.
+                # A restart (deploy, crash, bug fix) should clear the streak —
+                # persisting it caused stuck-CAUTIOUS after system failures where
+                # errors were counted as losses but no real trades were harmed.
                 if row.get("last_signal_time") is not None:
                     self._state["last_signal_at"] = row["last_signal_time"]
                 if row.get("confidence_threshold_override") is not None:
