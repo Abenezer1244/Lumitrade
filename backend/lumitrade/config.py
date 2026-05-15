@@ -120,7 +120,7 @@ class LumitradeConfig(BaseSettings):
     # Tuesday drawdowns recur on USD_CAD / USD_JPY specifically.
     blocked_weekdays_utc: list[int] = []
     max_open_trades: int = 5  # Live: restored from paper-mode 10. Limits real-money exposure to 5 concurrent trades.
-    max_positions_per_pair: int = 2  # 2 max per pair — prevents directional concentration (4 same-direction SLs hit simultaneously)
+    max_positions_per_pair: int = 3  # 3 max per pair — margin physically limits to ~3 at 3% risk on a $107 account anyway
     max_position_units: int = 500_000
     # Two-gate position sizing (Claude + Codex review 2026-04-27):
     # `min_position_units_forex` is the BROKER floor — OANDA accepts ≥1 unit.
@@ -139,7 +139,7 @@ class LumitradeConfig(BaseSettings):
     max_spread_pips: Decimal = Decimal("5.0")
     news_blackout_before_min: int = 30
     news_blackout_after_min: int = 15
-    trade_cooldown_minutes: int = 60  # QTS RE-009/RE-010 tested at 60min. 5min was ineffective: cooldown only checks CLOSED trades, so with open positions it never fires.
+    trade_cooldown_minutes: int = 15  # Matches scan interval — after a trade closes, reopen at the very next scan cycle.
     min_rr_ratio: Decimal = Decimal("1.5")
     min_sl_pips: Decimal = Decimal("15.0")
     min_tp_pips: Decimal = Decimal("15.0")
