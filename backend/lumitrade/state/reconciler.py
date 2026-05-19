@@ -288,7 +288,7 @@ class PositionReconciler:
                     "status": "CLOSED",
                     "exit_reason": exit_reason,
                     "outcome": outcome,
-                    "pnl_usd": pnl_usd,
+                    "pnl_usd": str(pnl_usd),
                     "pnl_pips": str(pnl_pips),
                     "exit_price": str(exit_price) if exit_price else None,
                     "closed_at": close_time,
