@@ -428,8 +428,20 @@ class ExecutionEngine:
                                     pair=pair, severity="WARNING",
                                 )
                         except Exception as e:
-                            await self._circuit_breaker.record_failure()
-                            logger.error("max_hold_close_failed", broker_id=broker_id, error=str(e))
+                            err_str = str(e)
+                            if "404" in err_str:
+                                # Trade already closed on OANDA — mark it closed in DB.
+                                # Don't penalize circuit breaker: 404 confirms the trade
+                                # is gone, not a transient infrastructure failure.
+                                logger.warning(
+                                    "max_hold_already_closed_on_broker",
+                                    broker_id=broker_id,
+                                    pair=pair,
+                                )
+                                await self._mark_trade_closed(trade)
+                            else:
+                                await self._circuit_breaker.record_failure()
+                                logger.error("max_hold_close_failed", broker_id=broker_id, error=err_str)
                         continue
                 except (ValueError, TypeError):
                     pass
