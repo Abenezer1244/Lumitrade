@@ -528,8 +528,35 @@ class OrchestratorService:
                     **{cp: (0, 24) for cp in self.config.SPOT_CRYPTO_PAIRS},
                 }
 
-                # (Kill-switch handling moved to the top of the loop body —
-                # before market-hours / weekday / session early-continues.)
+                # Pre-scan reconciliation: clear ghost trades (DB=OPEN, OANDA=closed)
+                # before position-count checks run. Without this, a ghost sitting in
+                # the DB as mode=LIVE/status=OPEN consumes a position slot for the
+                # entire scan cycle (up to 15 min). The background reconciler runs
+                # every 5 min but has no ordering guarantee relative to this loop.
+                try:
+                    from .state.reconciler import PositionReconciler
+                    _pre_reconciler = PositionReconciler(
+                        self.db, self.oanda, self.alerts,
+                        account_uuid=self.config.account_uuid,
+                    )
+                    _pre_result = await _pre_reconciler.reconcile()
+                    _pre_ghosts = len(_pre_result.get("ghosts", []))
+                    if _pre_ghosts > 0:
+                        logger.warning(
+                            "pre_scan_reconciliation_cleared_ghosts",
+                            ghosts=_pre_ghosts,
+                            matched=len(_pre_result.get("matched", [])),
+                        )
+                    else:
+                        logger.debug(
+                            "pre_scan_reconciliation_clean",
+                            matched=len(_pre_result.get("matched", [])),
+                        )
+                except Exception as _recon_err:
+                    logger.warning(
+                        "pre_scan_reconciliation_failed",
+                        error=str(_recon_err),
+                    )
 
                 for pair in self.config.pairs:
 
