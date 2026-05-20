@@ -320,15 +320,37 @@ class OandaTradingClient(OandaClient):
         if resp.status_code >= 400:
             error_body = resp.text
             from ..infrastructure.secure_logger import get_logger
-            get_logger(__name__).error(
+            _log = get_logger(__name__)
+            # Extract OANDA-specific reject reason from the response body.
+            # rejectReason is nested inside orderRejectTransaction for 400s.
+            # We embed it in the exception message so OandaExecutor._PERMANENT_REJECTS
+            # can match it without needing to re-parse the response.
+            _oanda_reject_reason = ""
+            try:
+                import json as _json
+                _err_data = _json.loads(error_body)
+                _reject_tx = _err_data.get("orderRejectTransaction", {})
+                _oanda_reject_reason = (
+                    _reject_tx.get("rejectReason", "")
+                    or _err_data.get("errorCode", "")
+                )
+            except Exception:
+                pass
+            _log.error(
                 "oanda_order_error_detail",
                 status=resp.status_code,
                 body=error_body[:500],
+                reject_reason=_oanda_reject_reason,
                 pair=pair,
                 units=units,
                 sl=fmt_sl,
                 tp=fmt_tp,
             )
+            if _oanda_reject_reason:
+                raise RuntimeError(
+                    f"OANDA_REJECT:{_oanda_reject_reason} — "
+                    f"HTTP {resp.status_code} for {pair}"
+                )
         resp.raise_for_status()
         return resp.json()
 

@@ -412,6 +412,12 @@ class OrchestratorService:
     async def _signal_to_trade_loop(self) -> None:
         """Full pipeline: scan → risk evaluate → execute if approved."""
         logger.info("signal_to_trade_loop_started", pairs=self.config.pairs)
+        # Per-pair broker rejection cooldown. After OANDA permanently rejects
+        # an order (e.g. STOP_LOSS_ON_FILL_LOSS_TOO_LARGE), suppress that pair
+        # for BROKER_REJECT_COOLDOWN_SECONDS before retrying. Without this gate,
+        # a systematic reject hammers OANDA every scan cycle indefinitely.
+        _broker_reject_until: dict[str, datetime] = {}
+        BROKER_REJECT_COOLDOWN_SECONDS = 1800  # 30 minutes
         try:
             while True:
                 # Kill-switch handling MUST be first — before market-hours and
@@ -577,6 +583,19 @@ class OrchestratorService:
                         logger.debug("pair_market_closed_skip", pair=pair)
                         continue
 
+                    # Broker rejection cooldown — skip pair if OANDA permanently
+                    # rejected its last order (wrong SL/TP, instrument halted, etc.).
+                    # Prevents hammering OANDA every scan cycle with doomed orders.
+                    _reject_until = _broker_reject_until.get(pair)
+                    if _reject_until and datetime.now(timezone.utc) < _reject_until:
+                        _remaining = int((_reject_until - datetime.now(timezone.utc)).total_seconds() / 60)
+                        logger.info(
+                            "broker_reject_cooldown_active",
+                            pair=pair,
+                            cooldown_remaining_min=_remaining,
+                        )
+                        continue
+
                     try:
                         # 1. Scan for signal
                         proposal = await self.scanner.execute_scan(pair)
@@ -704,6 +723,20 @@ class OrchestratorService:
                                     "EXECUTION", "ORDER_FAILED",
                                     f"FAILED: {_action_str(proposal.action)} {pair} — execution returned None",
                                     severity="ERROR", pair=pair,
+                                )
+                                # Activate broker rejection cooldown so this pair
+                                # is not retried until the next scan window.
+                                # Broker-side rejects are systematic (wrong SL/TP
+                                # params, account limits) and won't self-heal in the
+                                # next 60 seconds — only after market conditions or
+                                # config changes, so 30 minutes is the right throttle.
+                                _broker_reject_until[pair] = datetime.now(timezone.utc) + timedelta(
+                                    seconds=BROKER_REJECT_COOLDOWN_SECONDS
+                                )
+                                logger.warning(
+                                    "broker_reject_cooldown_set",
+                                    pair=pair,
+                                    cooldown_minutes=BROKER_REJECT_COOLDOWN_SECONDS // 60,
                                 )
                             else:
                                 logger.info(

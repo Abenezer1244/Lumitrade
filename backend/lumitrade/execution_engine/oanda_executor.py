@@ -62,6 +62,11 @@ class OandaExecutor:
                 "STOP_LOSS_ON_FILL_LOSS_TOO_LARGE",
                 "TAKE_PROFIT_ON_FILL_LOSS",
                 "UNITS_PRECISION_EXCEEDED",
+                "INSUFFICIENT_MARGIN",
+                "MARGIN_CLOSEOUT_REQUIRED",
+                "MARKET_ORDER_MARGIN_CLOSEOUT_REQUIRED",
+                "UNITS_LIMIT_EXCEEDED",
+                "OANDA_REJECT:",  # prefix injected by place_market_order from response body
             )
             if any(code in _err_str for code in _PERMANENT_REJECTS):
                 # Extract the specific reject reason for a clear log message.
