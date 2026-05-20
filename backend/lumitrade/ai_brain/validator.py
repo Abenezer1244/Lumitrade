@@ -156,16 +156,34 @@ class AIOutputValidator:
             try:
                 from ..config import LumitradeConfig
                 _cfg = LumitradeConfig()  # type: ignore[call-arg]
-                min_tp_pips = 10.0 if "XAU" in pair else float(_cfg.min_tp_pips)
-                min_sl_pips = 10.0 if "XAU" in pair else float(_cfg.min_sl_pips)
+                if "XAU" in pair:
+                    min_tp_pips = 10.0
+                    min_sl_pips = 10.0
+                elif "BTC" in pair or "ETH" in pair:
+                    # BTC/ETH spread on OANDA is ~$30-50 (30-50 pips at $1/pip).
+                    # A TP set at only 15 pips ($15) above entry will land BELOW
+                    # the ask at fill, causing TAKE_PROFIT_ON_FILL_LOSS rejection.
+                    # Floor at 100 pips ($100) gives ~2× spread buffer.
+                    min_tp_pips = 100.0
+                    min_sl_pips = 100.0
+                else:
+                    min_tp_pips = float(_cfg.min_tp_pips)
+                    min_sl_pips = float(_cfg.min_sl_pips)
             except Exception as _cfg_err:
                 logger.warning(
                     "validator_config_fallback",
                     pair=pair,
                     error=str(_cfg_err),
                 )
-                min_tp_pips = 10.0 if "XAU" in pair else 15.0
-                min_sl_pips = 10.0 if "XAU" in pair else 15.0
+                if "XAU" in pair:
+                    min_tp_pips = 10.0
+                    min_sl_pips = 10.0
+                elif "BTC" in pair or "ETH" in pair:
+                    min_tp_pips = 100.0
+                    min_sl_pips = 100.0
+                else:
+                    min_tp_pips = 15.0
+                    min_sl_pips = 15.0
             if tp != Decimal("0") and tp_pips < min_tp_pips:
                 return ValidationResult(
                     False,
