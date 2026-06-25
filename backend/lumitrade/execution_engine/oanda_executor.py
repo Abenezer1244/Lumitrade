@@ -252,14 +252,17 @@ class OandaExecutor:
         if the trade could not be fetched — in which case absence is unknown,
         NOT proof the stop is missing.
         """
-        # The fetch AND the parsing are both inside the try: a malformed
-        # response (non-dict trade, non-dict stopLossOrder/takeProfitOrder) must
-        # become readback_ok=False (uncertain), never propagate to the caller's
-        # corrective path where it would emergency-close a protected trade.
+        # The fetch AND the parsing are both inside the try, and parsing is
+        # STRICT: a present-but-malformed protective order (non-dict, missing or
+        # unparsable price) becomes readback_ok=False (uncertain) — never a
+        # silent "missing" that could drive an emergency close. Only a genuinely
+        # ABSENT order (key missing / None) counts as "no protection".
         try:
             trade = await self._client.get_trade(trade_id, pair=pair)
-            sl_raw = (trade.get("stopLossOrder") or {}).get("price")
-            tp_raw = (trade.get("takeProfitOrder") or {}).get("price")
+            if not isinstance(trade, dict):
+                raise ValueError("trade is not a dict")
+            sl = self._parse_protective_order(trade.get("stopLossOrder"))
+            tp = self._parse_protective_order(trade.get("takeProfitOrder"))
         except Exception as e:
             logger.error(
                 "oanda_protection_readback_failed",
@@ -268,7 +271,26 @@ class OandaExecutor:
                 error=str(e),
             )
             return None, None, False
-        return self._price_or_none(sl_raw), self._price_or_none(tp_raw), True
+        return sl, tp, True
+
+    @staticmethod
+    def _parse_protective_order(obj: object) -> Decimal | None:
+        """Parse an OANDA stopLossOrder/takeProfitOrder field.
+
+        - None / absent -> the order genuinely does not exist (returns None).
+        - present but malformed (non-dict, no price, or non-finite/unparsable
+          price) -> raise, so the whole readback is marked uncertain (ok=False)
+          rather than misreported as 'missing'. Closing a live trade on
+          ambiguous data is forbidden.
+        """
+        if obj is None:
+            return None
+        if not isinstance(obj, dict):
+            raise ValueError("protective order is not a dict")
+        price = OandaExecutor._price_or_none(obj.get("price"))
+        if price is None:
+            raise ValueError("protective order present but price missing/invalid")
+        return price
 
     async def _verify_protection(
         self, trade_id: str, order: ApprovedOrder, sl_requested: bool, tp_requested: bool

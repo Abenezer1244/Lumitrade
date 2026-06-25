@@ -287,6 +287,40 @@ async def test_malformed_recheck_response_does_not_close():
     assert result.stop_loss_confirmed is None
 
 
+@pytest.mark.asyncio
+async def test_falsy_malformed_protective_order_is_uncertain_not_missing():
+    """Codex catch #3: a present-but-malformed protective order (e.g. an empty
+    list, or a dict with no/garbage price) must mark the readback UNCERTAIN
+    (ok=False), not 'missing' — otherwise persistently-malformed data could
+    drive an emergency close of a protected trade. A genuinely ABSENT order
+    (key missing) is still treated as no-protection."""
+    # Present-but-malformed stopLossOrder ([] is falsy non-dict) on every read.
+    bad_trade = {"id": "12345", "stopLossOrder": [], "takeProfitOrder": {"price": "1.08730"}}
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    client.get_trade = AsyncMock(return_value=bad_trade)
+    client.modify_trade = AsyncMock()
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    # Malformed SL -> readback uncertain -> best-effort reassert, NEVER close.
+    client.close_trade.assert_not_awaited()
+    assert result.stop_loss_confirmed is None
+
+    # _parse_protective_order contract:
+    assert OandaExecutor._parse_protective_order(None) is None        # absent
+    assert OandaExecutor._parse_protective_order({"price": "1.5"}) == Decimal("1.5")
+    for bad in ([], "", 0, {"price": None}, {"price": "NaN"}, {}):
+        try:
+            OandaExecutor._parse_protective_order(bad)
+            raised = False
+        except Exception:
+            raised = True
+        assert raised, f"malformed protective order {bad!r} must raise (uncertain)"
+
+
 def test_price_or_none_rejects_non_finite_and_garbage():
     """A non-finite ("NaN"/"Infinity") or unparsable price must become None, not
     a bogus 'confirmed' stop."""
