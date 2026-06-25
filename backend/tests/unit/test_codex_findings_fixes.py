@@ -727,3 +727,49 @@ def test_trigger_insight_analysis_count_filters_by_account(env_keys):
     body = src[idx:idx + 800]
     assert "account_id" in body, \
         f"_trigger_insight_analysis must filter by account_id:\n{body[:400]}"
+
+
+# ─── Audit 2026-06-25: position monitor must fail closed on partial snapshot ─
+
+
+async def _run_check_closed(snapshot, complete):
+    """Build a bare ExecutionEngine and run _check_closed_positions with a
+    given OANDA snapshot + completeness flag. Returns the _mark_trade_closed mock.
+    """
+    from lumitrade.config import LumitradeConfig
+    from lumitrade.execution_engine.engine import ExecutionEngine
+    cfg = LumitradeConfig()
+    eng = ExecutionEngine.__new__(ExecutionEngine)
+    eng.config = cfg
+    eng._db = MagicMock()
+    # One live BTC trade, open in DB. opened_at empty so the max-hold path is
+    # skipped and we exercise the absence-based close branch directly.
+    eng._db.select = AsyncMock(return_value=[
+        {"id": "1", "broker_trade_id": "BTC-1", "pair": "BTC_USD", "opened_at": ""},
+    ])
+    eng._oanda_read = MagicMock()
+    eng._oanda_read.get_all_open_trades_checked = AsyncMock(
+        return_value=(snapshot, complete)
+    )
+    eng._mark_trade_closed = AsyncMock()
+    eng._check_paper_trade_exit = AsyncMock()
+    await eng._check_closed_positions()
+    return eng._mark_trade_closed
+
+
+@pytest.mark.asyncio
+async def test_monitor_incomplete_snapshot_does_not_close_live_trade(env_keys):
+    """Audit fix: when the broker snapshot is INCOMPLETE (e.g. spot-crypto
+    sub-account fetch failed), a live BTC trade absent from the partial list
+    must NOT be marked closed. This is the second door to the BTC/ETH ghost
+    bug that Codex caught was still open after the reconciler fix."""
+    mark_closed = await _run_check_closed(snapshot=[], complete=False)
+    mark_closed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_monitor_complete_snapshot_closes_absent_trade(env_keys):
+    """Sanity: with a COMPLETE snapshot, a trade genuinely absent from the
+    broker is still closed — the guard must not suppress real ghost closure."""
+    mark_closed = await _run_check_closed(snapshot=[], complete=True)
+    mark_closed.assert_called_once()

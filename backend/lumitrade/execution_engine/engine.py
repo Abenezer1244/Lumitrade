@@ -373,11 +373,19 @@ class ExecutionEngine:
         if not db_open:
             return
 
-        # Get OANDA open trade IDs
+        # Get OANDA open trade IDs, with a completeness signal. A partial
+        # snapshot (e.g. spot-crypto sub-account fetch failed) must NOT be used
+        # as proof that a live position is closed — that force-closes real
+        # BTC/ETH positions. Fail closed when the snapshot is incomplete.
         oanda_open_ids: set[str] = set()
+        snapshot_complete = True
         if self._oanda_read:
             try:
-                oanda_trades = await self._oanda_read.get_all_open_trades()
+                checked = getattr(self._oanda_read, "get_all_open_trades_checked", None)
+                if checked is not None:
+                    oanda_trades, snapshot_complete = await checked()
+                else:
+                    oanda_trades = await self._oanda_read.get_all_open_trades()
                 oanda_open_ids = {t["id"] for t in oanda_trades}
             except Exception as e:
                 logger.warning("position_monitor_oanda_error", error=str(e))
@@ -452,9 +460,18 @@ class ExecutionEngine:
                 await self._check_paper_trade_exit(trade)
                 continue
 
-            # Live trades: if broker_trade_id not in OANDA open trades, it's closed
+            # Live trades: if broker_trade_id not in OANDA open trades, it's
+            # closed — but ONLY when the snapshot was complete. Absence from a
+            # partial snapshot is not proof of closure; skip and retry next cycle.
             if broker_id not in oanda_open_ids:
-                await self._mark_trade_closed(trade)
+                if snapshot_complete:
+                    await self._mark_trade_closed(trade)
+                else:
+                    logger.warning(
+                        "position_monitor_close_skipped_incomplete_snapshot",
+                        broker_id=broker_id,
+                        pair=pair,
+                    )
 
     async def _check_paper_trade_exit(self, trade: dict) -> None:
         """Check if a paper trade's SL or TP has been hit by current price."""

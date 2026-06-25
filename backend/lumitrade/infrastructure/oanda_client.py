@@ -182,13 +182,22 @@ class OandaClient(BrokerInterface):
         resp.raise_for_status()
         return resp.json()["trades"]
 
-    async def get_all_open_trades(self) -> list[dict]:
-        """Fetch open trades from main account AND spot crypto sub-account (if configured).
+    async def get_all_open_trades_checked(self) -> tuple[list[dict], bool]:
+        """Fetch open trades from main account AND spot crypto sub-account.
 
-        Merges results so the position monitor sees BTC/ETH trades placed on
-        the separate spot crypto account alongside standard forex trades.
+        Returns ``(trades, complete)`` where ``complete`` is ``False`` if any
+        configured account could not be fetched. A partial snapshot is the root
+        cause of reconciliation force-closing live BTC/ETH positions: when the
+        spot-crypto sub-account fetch fails, every crypto trade is absent from
+        the merged list and looks like a ghost. Callers that DELETE/close on
+        absence (the reconciler) MUST fail closed when ``complete`` is False.
+
+        The main-account fetch is intentionally NOT wrapped: if it raises, the
+        whole snapshot is meaningless and the exception propagates so the caller
+        aborts (the reconciler's own try/except turns it into an error report).
         """
         trades = await self.get_open_trades()
+        complete = True
         spot_id = self.config.oanda_spot_crypto_account_id
         if spot_id and spot_id != self._account_id:
             try:
@@ -198,13 +207,29 @@ class OandaClient(BrokerInterface):
                 spot_trades = resp.json().get("trades", [])
                 trades = trades + spot_trades
             except httpx.HTTPStatusError as e:
+                complete = False
                 logger.warning(
                     "spot_crypto_open_trades_fetch_failed",
                     status_code=e.response.status_code,
                     error=str(e),
                 )
             except httpx.HTTPError as e:
+                complete = False
                 logger.warning("spot_crypto_open_trades_fetch_failed", error=str(e))
+        return trades, complete
+
+    async def get_all_open_trades(self) -> list[dict]:
+        """Fetch open trades from main account AND spot crypto sub-account (if configured).
+
+        Merges results so the position monitor sees BTC/ETH trades placed on
+        the separate spot crypto account alongside standard forex trades.
+
+        NOTE: this returns a best-effort merged list and SWALLOWS sub-account
+        failures (partial snapshot). It is safe for read/monitor callers that
+        never close positions on absence. Any caller that closes/deletes on a
+        missing trade MUST use ``get_all_open_trades_checked`` and fail closed.
+        """
+        trades, _complete = await self.get_all_open_trades_checked()
         return trades
 
     async def get_trade(self, trade_id: str, pair: str = "") -> dict:
