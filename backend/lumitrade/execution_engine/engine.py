@@ -71,10 +71,34 @@ class ExecutionEngine:
             self._capital_executor = None
         self.performance_analyzer = PerformanceAnalyzer(db)
         self._lesson_analyzer = LessonAnalyzer(db, config)
+        # Hard execution halt for fatal lock loss. Unlike the kill switch this
+        # does NOT liquidate positions — it only refuses to start new broker
+        # work, so a primary that lost its lease stops cleanly without fighting
+        # the survivor's book. Set via halt_execution(); never auto-cleared.
+        self._execution_halted = False
+
+    def halt_execution(self, reason: str) -> None:
+        """Hard-stop NEW order placement and broker mutations without
+        liquidating. Used by the primary-lock-lost failover path. Idempotent
+        and non-resettable for the life of the process.
+        """
+        self._execution_halted = True
+        logger.critical("execution_halted", reason=reason)
 
     async def execute_order(
         self, order: ApprovedOrder, current_price: Decimal
     ) -> OrderResult | None:
+        # Hard execution halt (primary lock lost): refuse new orders BEFORE any
+        # DB refresh so a DB read cannot clear it. Does NOT liquidate — see
+        # halt_execution(). Separate from the kill switch on purpose: the kill
+        # switch closes all positions; lock-loss must not touch the book.
+        if getattr(self, "_execution_halted", False):
+            logger.critical(
+                "execute_order_blocked_execution_halted",
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+            )
+            return None
         # Kill-switch guard: block any new order placement once the kill
         # switch is active, even if a signal slipped through the loop's
         # kill check. Refresh from DB first so we observe activations from
@@ -356,6 +380,11 @@ class ExecutionEngine:
         try:
             while True:
                 await asyncio.sleep(POSITION_MONITOR_INTERVAL)
+                # Stop mutating broker state once execution is halted (lock
+                # lost): the survivor instance now owns these positions.
+                if getattr(self, "_execution_halted", False):
+                    logger.warning("position_monitor_skipped_execution_halted")
+                    continue
                 try:
                     await self._check_closed_positions()
                     await self._trail_stop_losses()
