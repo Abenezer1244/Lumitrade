@@ -181,6 +181,31 @@ class ExecutionEngine:
                 # Shadow: pair scanned for telemetry but not eligible for live execution.
                 # Stored as PAPER_SHADOW so position counts and daily_pnl stay clean.
                 is_shadow = effective_mode == "LIVE" and not pair_is_live_approved
+                # Idempotency guard (live orders only): never place a SECOND
+                # broker order for a signal that already has a trade row. Guards
+                # against a restart/retry re-feeding the same ApprovedOrder ->
+                # duplicate live position on a hedging account. Fail open: the
+                # OANDA client_request_id still dedups within a single call, and
+                # blocking all trades on a transient DB hiccup is worse.
+                if effective_mode == "LIVE" and not is_shadow and order.signal_id:
+                    try:
+                        existing = await self._db.select(
+                            "trades",
+                            {
+                                "signal_id": str(order.signal_id),
+                                "account_id": self.config.account_uuid,
+                            },
+                        )
+                        if isinstance(existing, list) and existing:
+                            logger.warning(
+                                "execute_order_skipped_duplicate_signal",
+                                signal_id=str(order.signal_id),
+                                pair=order.pair,
+                                existing=len(existing),
+                            )
+                            return None
+                    except Exception:
+                        logger.exception("execute_order_idempotency_check_failed")
                 if effective_mode == "PAPER" or is_shadow:
                     # Simulated fill — no broker call. Lands here when:
                     # - effective_mode is PAPER (either switch is PAPER), OR

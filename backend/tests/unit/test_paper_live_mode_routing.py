@@ -332,6 +332,41 @@ async def test_execute_routes_to_oanda_only_when_both_live(execution_engine_with
 
 
 @pytest.mark.asyncio
+async def test_idempotency_skips_duplicate_signal_on_live(execution_engine_with_mocked_executors):
+    """Audit (a1): a LIVE order whose signal_id already has a trade row must NOT
+    place a second broker order — guards against restart/retry duplicate live
+    positions on a hedging account."""
+    eng, cfg = execution_engine_with_mocked_executors
+    cfg.trading_mode = "LIVE"
+    cfg.db_mode_override = "LIVE"
+    eng._db.select = AsyncMock(return_value=[{"id": "existing-trade-row"}])
+
+    order = _make_order()
+    order.signal_id = uuid4()
+    result = await eng.execute_order(order, Decimal("1.30000"))
+
+    assert result is None
+    eng._oanda_executor.execute.assert_not_awaited()  # duplicate -> no broker call
+    eng._paper_executor.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_idempotency_allows_new_signal_on_live(execution_engine_with_mocked_executors):
+    """Sanity: a LIVE order whose signal_id has NO existing trade proceeds to
+    the broker as normal."""
+    eng, cfg = execution_engine_with_mocked_executors
+    cfg.trading_mode = "LIVE"
+    cfg.db_mode_override = "LIVE"
+    eng._db.select = AsyncMock(return_value=[])  # no prior trade for this signal
+
+    order = _make_order()
+    order.signal_id = uuid4()
+    await eng.execute_order(order, Decimal("1.30000"))
+
+    eng._oanda_executor.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_paper_fill_produces_paper_broker_id(execution_engine_with_mocked_executors):
     """Paper fills must have PAPER- prefix on broker_trade_id so the
     reconciler and trade_audit can distinguish them downstream."""
