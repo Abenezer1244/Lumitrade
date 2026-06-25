@@ -321,6 +321,12 @@ class StateManager:
             )
             result = await reconciler.reconcile()
 
+            # Book realized P&L from any reconciler-closed trades into the
+            # daily/weekly loss-limit counters (the monitor close path does this
+            # for its own closes; reconciler closes would otherwise be invisible
+            # to the limits).
+            self._book_reconciled_pnl(result.get("ghosts", []))
+
             self._state["reconciliation"] = {
                 "ghosts": len(result.get("ghosts", [])),
                 "phantoms": len(result.get("phantoms", [])),
@@ -350,6 +356,65 @@ class StateManager:
             trading_mode=self._config.trading_mode,
         )
 
+    def _book_reconciled_pnl(self, ghosts: list[dict]) -> None:
+        """Add realized P&L from reconciler-closed trades into the daily/weekly
+        loss-limit counters.
+
+        The position-monitor close path books its own closes (engine
+        _update_closed_trade), but a trade closed SOLELY by reconciliation would
+        otherwise never reach the limits — the engine could keep trading past
+        its daily loss limit. Period-aware: only counts a close within the
+        current UTC day / ISO week so a stale prior-period close isn't
+        attributed to now. Idempotent: a ghost is detected exactly once (its DB
+        row flips OPEN->CLOSED), so it is booked at most once.
+        """
+        if not ghosts:
+            return
+        now = datetime.now(timezone.utc)
+        today = now.strftime("%Y-%m-%d")
+        monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+        daily_add = Decimal("0")
+        weekly_add = Decimal("0")
+        for g in ghosts:
+            if str(g.get("mode", "")) == "PAPER_SHADOW":
+                continue
+            try:
+                pnl = Decimal(str(g.get("pnl_usd", "0")))
+            except (ArithmeticError, ValueError, TypeError):
+                continue
+            if pnl == 0:
+                continue
+            closed_day = None
+            closed_monday = None
+            closed_at = g.get("closed_at")
+            try:
+                if isinstance(closed_at, str) and closed_at:
+                    cd = datetime.fromisoformat(closed_at.replace("Z", "+00:00"))
+                    closed_day = cd.strftime("%Y-%m-%d")
+                    closed_monday = (cd - timedelta(days=cd.weekday())).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                closed_day = closed_monday = None
+            # If the close timestamp is unknown, conservatively count it in the
+            # current period — a loss silently escaping the limit is worse than
+            # a slightly conservative limit.
+            if closed_day is None or closed_day == today:
+                daily_add += pnl
+            if closed_monday is None or closed_monday == monday:
+                weekly_add += pnl
+        if daily_add != 0:
+            cur = Decimal(str(self._state.get("daily_pnl", "0")))
+            self._state["daily_pnl"] = str(cur + daily_add)
+        if weekly_add != 0:
+            cur = Decimal(str(self._state.get("weekly_pnl", "0")))
+            self._state["weekly_pnl"] = str(cur + weekly_add)
+        if daily_add != 0 or weekly_add != 0:
+            logger.info(
+                "reconciled_pnl_booked",
+                daily_add=str(daily_add),
+                weekly_add=str(weekly_add),
+                ghosts=len(ghosts),
+            )
+
     async def reconcile_positions(self) -> None:
         """
         Run position reconciliation against OANDA and update in-memory state.
@@ -365,6 +430,10 @@ class StateManager:
                 account_uuid=self._config.account_uuid,
             )
             result = await reconciler.reconcile()
+
+            # Book reconciler-closed P&L into the loss-limit counters (see
+            # _book_reconciled_pnl).
+            self._book_reconciled_pnl(result.get("ghosts", []))
 
             self._state["reconciliation"] = {
                 "ghosts": len(result.get("ghosts", [])),

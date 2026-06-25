@@ -365,6 +365,14 @@ class PositionReconciler:
             "pair": pair,
             "action": "marked_closed_unknown",
             "detected_at": now.isoformat(),
+            # Carried so the StateManager can book this realized P&L into the
+            # daily/weekly loss-limit counters — reconciler-closed trades are
+            # otherwise invisible to the limits (only the monitor close path
+            # updates them). mode lets PAPER_SHADOW be excluded; closed_at lets
+            # the booking be period-aware (don't count a prior-day close today).
+            "pnl_usd": str(pnl_usd),
+            "closed_at": close_time,
+            "mode": str(db_trade.get("mode", "")),
         }
 
     async def _handle_phantom(self, oanda_trade: dict, now: datetime) -> dict:
