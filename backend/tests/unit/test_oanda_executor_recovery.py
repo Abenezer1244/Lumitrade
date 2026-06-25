@@ -60,11 +60,19 @@ def _ok_response(broker_trade_id: str = "12345", fill_price: str = "1.08431") ->
             "price": fill_price,
             "units": "1000",
         },
-        # 4 IDs = 2 base + 2 dependents (SL + TP). Satisfies the relatedTransactionIDs
-        # check so the corrective-SL path is not entered and modify_trade/close_trade
-        # don't need to be mocked in basic recovery tests.
         "relatedTransactionIDs": ["tx-create-1", "tx-fill-1", "tx-sl-1", "tx-tp-1"],
     }
+
+
+def _ok_trade(sl: str | None = "1.08230", tp: str | None = "1.08730") -> dict:
+    """A live OANDA trade object with attached SL/TP orders, as get_trade returns.
+    Pass sl=None / tp=None to simulate a missing protective order."""
+    trade: dict = {"id": "12345", "currentUnits": "1000"}
+    if sl is not None:
+        trade["stopLossOrder"] = {"id": "sl-1", "price": sl}
+    if tp is not None:
+        trade["takeProfitOrder"] = {"id": "tp-1", "price": tp}
+    return trade
 
 
 @pytest.mark.asyncio
@@ -73,6 +81,7 @@ async def test_place_succeeds_no_recovery_path_taken():
     client = MagicMock()
     client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
     client.lookup_order_status = AsyncMock()  # should never be called
+    client.get_trade = AsyncMock(return_value=_ok_trade())
 
     executor = OandaExecutor(client)
     result = await executor.execute(_make_order())
@@ -94,6 +103,7 @@ async def test_timeout_recovers_when_broker_already_filled(monkeypatch):
     client = MagicMock()
     client.place_market_order = AsyncMock(side_effect=TimeoutError("read timeout"))
     client.lookup_order_status = AsyncMock(return_value=_ok_response("trade-RECOVERED"))
+    client.get_trade = AsyncMock(return_value=_ok_trade())
 
     executor = OandaExecutor(client)
     order = _make_order()
@@ -167,3 +177,117 @@ async def test_timeout_lookup_itself_fails_raises(monkeypatch):
 
     with pytest.raises(ExecutionError):
         await executor.execute(_make_order())
+
+
+# ── Audit 2026-06-25: SL/TP confirmation via real trade readback (Phase 3) ──
+
+
+@pytest.mark.asyncio
+async def test_protection_confirmed_from_actual_trade_readback():
+    """SL/TP confirmed values come from the LIVE trade (get_trade), not the
+    requested order. The broker-attached prices are what we report."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    client.get_trade = AsyncMock(return_value=_ok_trade(sl="1.08230", tp="1.08730"))
+    client.modify_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    assert result.stop_loss_confirmed == Decimal("1.08230")
+    assert result.take_profit_confirmed == Decimal("1.08730")
+    client.get_trade.assert_awaited_once()
+    client.modify_trade.assert_not_awaited()  # nothing missing -> no correction
+
+
+@pytest.mark.asyncio
+async def test_protection_missing_triggers_corrective_then_confirms():
+    """If the readback shows the SL is missing, the executor places a corrective
+    modify_trade and re-reads; the corrected SL is then confirmed."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    # 1st readback: SL missing. 2nd readback (after correction): SL present.
+    client.get_trade = AsyncMock(side_effect=[
+        _ok_trade(sl=None, tp="1.08730"),
+        _ok_trade(sl="1.08230", tp="1.08730"),
+    ])
+    client.modify_trade = AsyncMock()
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    client.modify_trade.assert_awaited_once()
+    client.close_trade.assert_not_awaited()  # correction succeeded -> no close
+    assert result.stop_loss_confirmed == Decimal("1.08230")
+
+
+@pytest.mark.asyncio
+async def test_protection_missing_and_correction_fails_closes_trade():
+    """If the SL is confirmed missing AND the corrective modify fails, the
+    unprotected position is emergency-closed and protection reported as None."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    client.get_trade = AsyncMock(return_value=_ok_trade(sl=None, tp="1.08730"))
+    client.modify_trade = AsyncMock(side_effect=RuntimeError("modify rejected"))
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    client.modify_trade.assert_awaited_once()
+    client.close_trade.assert_awaited_once()  # unprotected -> emergency close
+    assert result.stop_loss_confirmed is None
+
+
+@pytest.mark.asyncio
+async def test_correction_succeeds_but_recheck_fails_does_not_close():
+    """Codex catch: after a SUCCESSFUL corrective modify_trade, if the second
+    readback transiently fails, the trade must NOT be emergency-closed — the
+    correction almost certainly set the stop. Report unconfirmed, never close."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    # 1st readback: SL missing (positively). 2nd readback (post-correction): FAILS.
+    client.get_trade = AsyncMock(side_effect=[
+        _ok_trade(sl=None, tp="1.08730"),
+        RuntimeError("recheck timeout"),
+    ])
+    client.modify_trade = AsyncMock()       # correction accepted
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    client.modify_trade.assert_awaited_once()
+    client.close_trade.assert_not_awaited()  # MUST NOT close on post-fix uncertainty
+    assert result.stop_loss_confirmed is None  # unconfirmed -> FillVerifier alerts
+
+
+def test_price_or_none_rejects_non_finite_and_garbage():
+    """A non-finite ("NaN"/"Infinity") or unparsable price must become None, not
+    a bogus 'confirmed' stop."""
+    assert OandaExecutor._price_or_none("1.08230") == Decimal("1.08230")
+    assert OandaExecutor._price_or_none(None) is None
+    assert OandaExecutor._price_or_none("") is None
+    assert OandaExecutor._price_or_none("NaN") is None
+    assert OandaExecutor._price_or_none("Infinity") is None
+    assert OandaExecutor._price_or_none("not-a-price") is None
+
+
+@pytest.mark.asyncio
+async def test_readback_failure_reasserts_but_does_not_close():
+    """A transient readback failure must NOT emergency-close (absence unknown).
+    The executor re-asserts protection best-effort and reports unconfirmed."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    client.get_trade = AsyncMock(side_effect=RuntimeError("trade fetch timeout"))
+    client.modify_trade = AsyncMock()
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    client.modify_trade.assert_awaited_once()       # best-effort re-assert
+    client.close_trade.assert_not_awaited()         # never close on uncertainty
+    assert result.stop_loss_confirmed is None
+    assert result.take_profit_confirmed is None

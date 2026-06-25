@@ -274,8 +274,11 @@ class OrderResult:
     fill_price: Decimal
     fill_units: Decimal  # Decimal to support fractional crypto fills
     fill_timestamp: datetime
-    stop_loss_confirmed: Decimal
-    take_profit_confirmed: Decimal
+    # None means the broker-side protective order could NOT be confirmed
+    # present (read back from the live trade). FillVerifier escalates a None/0
+    # to a CRITICAL alert — never silently treat an unconfirmed stop as set.
+    stop_loss_confirmed: Decimal | None
+    take_profit_confirmed: Decimal | None
     slippage_pips: Decimal
     raw_response: dict
 

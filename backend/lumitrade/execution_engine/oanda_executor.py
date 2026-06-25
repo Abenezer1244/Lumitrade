@@ -199,57 +199,14 @@ class OandaExecutor:
                 f"OANDA returned no orderFillTransaction for {order.pair}. Keys: {list(response.keys())}"
             )
 
-        related_ids = response.get("relatedTransactionIDs", [])
         sl_requested = order.stop_loss is not None and order.stop_loss != 0
         tp_requested = order.take_profit is not None and order.take_profit != 0
-        expected_dependents = int(sl_requested) + int(tp_requested)
-        # OANDA relatedTransactionIDs for a filled market order always includes:
-        # 1) MarketOrderCreate  2) OrderFill  + N dependent SL/TP orders.
-        # Threshold = 2 (base) + N dependents. Using 1+N misses the case where
-        # exactly one SL or TP dependent is absent (3 < 3 = False, no CRITICAL).
-        if len(related_ids) < 2 + expected_dependents:
-            logger.critical(
-                "oanda_sl_tp_possibly_not_set",
-                order_ref=str(order.order_ref),
-                pair=order.pair,
-                related_ids_count=len(related_ids),
-                expected_dependents=expected_dependents,
-                sl=order.stop_loss,
-                tp=order.take_profit,
-            )
-            # Attempt corrective SL placement — modify_trade is idempotent if SL
-            # was actually set (overwrites with same value). Only fires when SL was
-            # requested, meaning a missing SL would leave capital unprotected.
-            if sl_requested and trade_id:
-                try:
-                    await self._client.modify_trade(
-                        broker_trade_id=trade_id,
-                        sl=order.stop_loss,
-                        tp=order.take_profit or Decimal("0"),
-                        pair=order.pair,
-                    )
-                    logger.info(
-                        "oanda_corrective_sl_placed",
-                        trade_id=trade_id,
-                        pair=order.pair,
-                        sl=str(order.stop_loss),
-                    )
-                except Exception as corr_err:
-                    logger.critical(
-                        "oanda_corrective_sl_failed_closing_trade",
-                        trade_id=trade_id,
-                        pair=order.pair,
-                        error=str(corr_err),
-                    )
-                    try:
-                        await self._client.close_trade(trade_id, pair=order.pair)
-                        logger.info("oanda_unprotected_trade_closed", trade_id=trade_id)
-                    except Exception as close_err:
-                        logger.critical(
-                            "oanda_emergency_close_failed",
-                            trade_id=trade_id,
-                            error=str(close_err),
-                        )
+        # Confirm protection by reading the ACTUAL trade back from OANDA, not by
+        # echoing the requested values or counting relatedTransactionIDs (a
+        # filled order can return enough txn IDs while the SL/TP was rejected).
+        sl_confirmed, tp_confirmed = await self._verify_protection(
+            str(trade_id), order, sl_requested, tp_requested
+        )
 
         order_create = response.get("orderCreateTransaction", {})
         order_id = order_create.get("id", order_fill.get("id", ""))
@@ -266,9 +223,146 @@ class OandaExecutor:
             fill_price=fill_price,
             fill_units=abs(fill_units),
             fill_timestamp=datetime.now(timezone.utc),
-            # NOTE: These reflect the requested values, not confirmed OANDA values. Confirmation is approximated via relatedTransactionIDs count above.
-            stop_loss_confirmed=order.stop_loss,
-            take_profit_confirmed=order.take_profit,
+            # Actual broker-confirmed SL/TP prices (None == could not confirm —
+            # FillVerifier escalates). See _verify_protection.
+            stop_loss_confirmed=sl_confirmed,
+            take_profit_confirmed=tp_confirmed,
             slippage_pips=slippage,
             raw_response=response,
         )
+
+    @staticmethod
+    def _price_or_none(raw: object) -> Decimal | None:
+        """Parse an OANDA order price string to Decimal, or None if absent."""
+        if raw is None or raw == "":
+            return None
+        try:
+            d = Decimal(str(raw))
+        except (ArithmeticError, ValueError, TypeError):
+            return None
+        # Reject NaN/Infinity — a non-finite "price" is never a real stop.
+        return d if d.is_finite() else None
+
+    async def _read_protection(
+        self, trade_id: str, pair: str
+    ) -> tuple[Decimal | None, Decimal | None, bool]:
+        """Read the live trade's actual stopLossOrder/takeProfitOrder prices.
+
+        Returns ``(sl_price, tp_price, readback_ok)``. ``readback_ok`` is False
+        if the trade could not be fetched — in which case absence is unknown,
+        NOT proof the stop is missing.
+        """
+        try:
+            trade = await self._client.get_trade(trade_id, pair=pair)
+        except Exception as e:
+            logger.error(
+                "oanda_protection_readback_failed",
+                trade_id=trade_id,
+                pair=pair,
+                error=str(e),
+            )
+            return None, None, False
+        sl = self._price_or_none((trade.get("stopLossOrder") or {}).get("price"))
+        tp = self._price_or_none((trade.get("takeProfitOrder") or {}).get("price"))
+        return sl, tp, True
+
+    async def _verify_protection(
+        self, trade_id: str, order: ApprovedOrder, sl_requested: bool, tp_requested: bool
+    ) -> tuple[Decimal | None, Decimal | None]:
+        """Confirm SL/TP are actually attached at the broker; correct if not.
+
+        - Reads the trade back. If a REQUESTED protective order is positively
+          confirmed missing, attempts an idempotent corrective modify_trade and
+          re-reads. If it is STILL missing, emergency-closes the unprotected
+          position (capital must never sit unprotected).
+        - If the readback itself fails (transient), we re-assert the protection
+          best-effort but do NOT emergency-close on mere uncertainty, and report
+          (None, None) so FillVerifier surfaces the unconfirmed state.
+
+        Returns the confirmed (sl, tp) prices; None means not confirmed.
+        """
+        if not trade_id:
+            return None, None
+
+        sl, tp, ok = await self._read_protection(trade_id, order.pair)
+
+        if not ok:
+            # Couldn't verify. Best-effort idempotent re-assert (harmless if the
+            # stop is already set); never emergency-close on uncertainty alone.
+            if sl_requested or tp_requested:
+                try:
+                    await self._client.modify_trade(
+                        broker_trade_id=trade_id,
+                        sl=order.stop_loss or Decimal("0"),
+                        tp=order.take_profit or Decimal("0"),
+                        pair=order.pair,
+                    )
+                    logger.warning(
+                        "oanda_protection_reasserted_unverified",
+                        trade_id=trade_id,
+                        pair=order.pair,
+                    )
+                except Exception as e:
+                    logger.critical(
+                        "oanda_protection_reassert_failed",
+                        trade_id=trade_id,
+                        pair=order.pair,
+                        error=str(e),
+                    )
+            return None, None
+
+        sl_missing = sl_requested and sl is None
+        tp_missing = tp_requested and tp is None
+        if not (sl_missing or tp_missing):
+            return sl, tp
+
+        logger.critical(
+            "oanda_protection_missing_after_fill",
+            trade_id=trade_id,
+            pair=order.pair,
+            sl_missing=sl_missing,
+            tp_missing=tp_missing,
+        )
+        try:
+            await self._client.modify_trade(
+                broker_trade_id=trade_id,
+                sl=order.stop_loss or Decimal("0"),
+                tp=order.take_profit or Decimal("0"),
+                pair=order.pair,
+            )
+            sl, tp, ok2 = await self._read_protection(trade_id, order.pair)
+            if not ok2:
+                # Correction was ACCEPTED (modify_trade did not raise) but we
+                # cannot re-confirm it. Do NOT close on uncertainty — the modify
+                # almost certainly set the stop. Report unconfirmed so
+                # FillVerifier surfaces it.
+                logger.warning(
+                    "oanda_protection_correction_unverified",
+                    trade_id=trade_id,
+                    pair=order.pair,
+                )
+                return None, None
+            # Re-read positively confirmed the state. Emergency-close ONLY when
+            # the requested protection is still genuinely absent.
+            still_missing = (sl_requested and sl is None) or (tp_requested and tp is None)
+            if still_missing:
+                raise ExecutionError("protection still missing after corrective modify")
+            logger.info("oanda_protection_corrected", trade_id=trade_id, pair=order.pair)
+            return sl, tp
+        except Exception as corr_err:
+            logger.critical(
+                "oanda_corrective_protection_failed_closing_trade",
+                trade_id=trade_id,
+                pair=order.pair,
+                error=str(corr_err),
+            )
+            try:
+                await self._client.close_trade(trade_id, pair=order.pair)
+                logger.info("oanda_unprotected_trade_closed", trade_id=trade_id)
+            except Exception as close_err:
+                logger.critical(
+                    "oanda_emergency_close_failed",
+                    trade_id=trade_id,
+                    error=str(close_err),
+                )
+            return None, None
