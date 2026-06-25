@@ -71,19 +71,20 @@ class TestCrashRecovery:
     async def test_cr002_lock_acquired_empty_system(self):
         """CR-002: When no lock row exists, acquire succeeds via upsert."""
         db = AsyncMock()
+        lock = DistributedLock(db)
         # Double-readback: first call returns None (no row); verification reads
-        # must return a row owned by this instance so the race-check passes.
+        # must return a row owned by THIS process's owner token so the race
+        # check passes (lock persists INSTANCE_ID#lease, not the bare id).
         future_expiry = datetime.now(timezone.utc) + timedelta(seconds=120)
-        verification_row = _make_lock_row("instance-A", future_expiry)
+        verification_row = _make_lock_row(lock._owner("instance-A"), future_expiry)
         db.select_one.side_effect = [None, verification_row, verification_row]
 
-        lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
 
         assert result is True
         db.upsert.assert_called_once()
         upsert_payload = db.upsert.call_args[0][1]
-        assert upsert_payload["instance_id"] == "instance-A"
+        assert upsert_payload["instance_id"] == lock._owner("instance-A")
         assert upsert_payload["is_primary_instance"] is True
 
     # ── CR-003: Lock not acquired when held by active other ───────
@@ -127,11 +128,12 @@ class TestCrashRecovery:
     async def test_cr005_lock_released_on_shutdown(self):
         """CR-005: release() clears the lock data for the holding instance."""
         db = AsyncMock()
+        lock = DistributedLock(db)
         now = datetime.now(timezone.utc)
         future_expiry = now + timedelta(seconds=90)
-        db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
+        # The row must record OUR owner token for release's CAS to fire.
+        db.select_one.return_value = _make_lock_row(lock._owner("instance-A"), future_expiry)
 
-        lock = DistributedLock(db)
         await lock.release("instance-A")
 
         db.update.assert_called_once()
@@ -239,12 +241,13 @@ class TestCrashRecovery:
     async def test_cr008_same_instance_reacquires(self):
         """CR-008: An instance that already holds the lock can refresh it."""
         db = AsyncMock()
+        lock = DistributedLock(db)
         future_expiry = datetime.now(timezone.utc) + timedelta(seconds=60)
-        db.select_one.return_value = _make_lock_row("instance-A", future_expiry)
+        # Row records OUR owner token, so the same process refreshes its lease.
+        db.select_one.return_value = _make_lock_row(lock._owner("instance-A"), future_expiry)
         # _update_lock checks len(result) == 1 for CAS success
         db.update.return_value = [{"id": LOCK_ROW_ID}]
 
-        lock = DistributedLock(db)
         result = await lock.acquire("instance-A")
 
         assert result is True
@@ -274,19 +277,20 @@ class TestCrashRecovery:
     async def test_cr010_lock_acquire_empty_table(self):
         """CR-010: Lock acquire when no row exists creates new lock and returns True."""
         db = AsyncMock()
+        lock = DistributedLock(db)
         # Double-readback: first call returns None (empty table); verification reads
-        # must return a row owned by this instance so the race-check passes.
+        # must return a row owned by THIS process's owner token so the race
+        # check passes.
         future_expiry = datetime.now(timezone.utc) + timedelta(seconds=120)
-        verification_row = _make_lock_row("fresh-instance", future_expiry)
+        verification_row = _make_lock_row(lock._owner("fresh-instance"), future_expiry)
         db.select_one.side_effect = [None, verification_row, verification_row]
 
-        lock = DistributedLock(db)
         result = await lock.acquire("fresh-instance")
 
         assert result is True
         db.upsert.assert_called_once()
         payload = db.upsert.call_args[0][1]
         assert payload["id"] == LOCK_ROW_ID
-        assert payload["instance_id"] == "fresh-instance"
+        assert payload["instance_id"] == lock._owner("fresh-instance")
         assert payload["is_primary_instance"] is True
         assert "lock_expires_at" in payload
