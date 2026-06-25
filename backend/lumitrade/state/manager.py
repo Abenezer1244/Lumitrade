@@ -376,6 +376,11 @@ class StateManager:
         daily_add = Decimal("0")
         weekly_add = Decimal("0")
         for g in ghosts:
+            # Only book ghosts THIS reconciler atomically claimed and closed
+            # (booked=True). A failed/no-op close or a monitor-won race is not
+            # booked here — prevents double-counting and runaway re-booking.
+            if not g.get("booked"):
+                continue
             if str(g.get("mode", "")) == "PAPER_SHADOW":
                 continue
             try:

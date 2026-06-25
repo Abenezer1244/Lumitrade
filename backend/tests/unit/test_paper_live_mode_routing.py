@@ -231,6 +231,10 @@ def execution_engine_with_mocked_executors(env_with_required_keys):
     eng._oanda_read = MagicMock()
     eng._db = MagicMock()
     eng._db.insert = AsyncMock(return_value={})
+    # Idempotency check reads trades by signal_id; default no prior trade.
+    # (execute_order now FAILS CLOSED if this check can't run, so it must be a
+    # real AsyncMock, not an auto MagicMock.)
+    eng._db.select = AsyncMock(return_value=[])
     eng._alerts = MagicMock()
     eng._alerts.send_info = AsyncMock()
     eng._subagents = None

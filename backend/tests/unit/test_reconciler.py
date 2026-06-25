@@ -147,7 +147,8 @@ class TestPositionReconciler:
         mock_db.update.assert_called_once()
         update_args = mock_db.update.call_args
         assert update_args[0][0] == "trades"
-        assert update_args[0][1] == {"id": "uuid-1"}
+        # Atomic CAS: close only if still OPEN (claim-once, avoids double-book).
+        assert update_args[0][1] == {"id": "uuid-1", "status": "OPEN"}
         update_data = update_args[0][2]
         assert update_data["status"] == "CLOSED"
         assert update_data["exit_reason"] == ExitReason.UNKNOWN.value

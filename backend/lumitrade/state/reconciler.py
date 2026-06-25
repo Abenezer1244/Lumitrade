@@ -227,6 +227,14 @@ class PositionReconciler:
             pair=pair,
         )
 
+        # Whether THIS reconciler actually claimed and closed the row (atomic
+        # CAS below). Only a claimed close may book P&L into the loss limits —
+        # otherwise a failed/no-op update would re-book every cycle.
+        closed_ok = False
+        # Whether we obtained a REAL broker close time (vs. the opened_at
+        # fallback). Drives period attribution for loss-limit booking.
+        close_time_known = False
+
         # Mark as closed in DB — try to fetch real P&L from OANDA first.
         try:
             opened_at_raw = db_trade.get("opened_at") or now.isoformat()
@@ -253,6 +261,7 @@ class PositionReconciler:
                     close_t = oanda_trade.get("closeTime")
                     if close_t:
                         close_time = close_t
+                        close_time_known = True
                     # Infer exit reason from the close-transaction reasons
                     # OANDA populates these fields when a stop/tp order filled.
                     tx_reasons = [
@@ -328,9 +337,13 @@ class PositionReconciler:
             except Exception:
                 duration_minutes = None
 
-            await self._db.update(
+            # Atomic CAS: only close the row if it is STILL OPEN. This claims
+            # the close exactly once even if the position monitor races to close
+            # the same trade — whichever updates the OPEN row wins; the loser
+            # affects 0 rows and must NOT book P&L (prevents double-counting).
+            update_result = await self._db.update(
                 "trades",
-                {"id": trade_id},
+                {"id": trade_id, "status": "OPEN"},
                 {
                     "status": "CLOSED",
                     "exit_reason": exit_reason,
@@ -342,11 +355,13 @@ class PositionReconciler:
                     "duration_minutes": duration_minutes,
                 },
             )
+            closed_ok = isinstance(update_result, list) and len(update_result) == 1
             logger.info(
                 "ghost_trade_closed",
                 trade_id=trade_id,
                 broker_trade_id=broker_trade_id,
                 pair=pair,
+                claimed=closed_ok,
             )
         except Exception:
             logger.exception(
@@ -365,13 +380,16 @@ class PositionReconciler:
             "pair": pair,
             "action": "marked_closed_unknown",
             "detected_at": now.isoformat(),
-            # Carried so the StateManager can book this realized P&L into the
-            # daily/weekly loss-limit counters — reconciler-closed trades are
-            # otherwise invisible to the limits (only the monitor close path
-            # updates them). mode lets PAPER_SHADOW be excluded; closed_at lets
-            # the booking be period-aware (don't count a prior-day close today).
+            # `booked` is True ONLY when THIS reconciler atomically claimed and
+            # closed the row with non-zero realized P&L — the StateManager books
+            # the loss-limit counter only for booked ghosts, so a failed/no-op
+            # close (e.g. monitor won the race, or DB update failed) is never
+            # double-counted. mode lets PAPER_SHADOW be excluded. closed_at uses
+            # the real broker close time when known, else "now" so an unknown
+            # close still counts in the current period (conservative).
+            "booked": closed_ok and pnl_usd != 0,
             "pnl_usd": str(pnl_usd),
-            "closed_at": close_time,
+            "closed_at": close_time if close_time_known else now.isoformat(),
             "mode": str(db_trade.get("mode", "")),
         }
 

@@ -182,11 +182,19 @@ class ExecutionEngine:
                 # Stored as PAPER_SHADOW so position counts and daily_pnl stay clean.
                 is_shadow = effective_mode == "LIVE" and not pair_is_live_approved
                 # Idempotency guard (live orders only): never place a SECOND
-                # broker order for a signal that already has a trade row. Guards
-                # against a restart/retry re-feeding the same ApprovedOrder ->
-                # duplicate live position on a hedging account. Fail open: the
-                # OANDA client_request_id still dedups within a single call, and
-                # blocking all trades on a transient DB hiccup is worse.
+                # broker order for a signal that already has a LIVE trade row.
+                # Guards against a restart/retry re-feeding the same
+                # ApprovedOrder -> duplicate live position on a hedging account.
+                #
+                # FAIL CLOSED: on a hedging account a duplicate live position is
+                # the expensive failure, so if the DB check cannot be performed
+                # we refuse to place rather than risk a double. (The OANDA
+                # client_request_id only dedups within a single call, not across
+                # re-evaluations which generate a fresh order_ref.) Paper/shadow
+                # rows are excluded so a shadow row never blocks a later live
+                # signal. NOTE: this is a best-effort guard, not full idempotency
+                # — the TOCTOU and broker-accept-then-DB-save-fail windows still
+                # need a durable pre-placement claim (tracked follow-up).
                 if effective_mode == "LIVE" and not is_shadow and order.signal_id:
                     try:
                         existing = await self._db.select(
@@ -196,16 +204,31 @@ class ExecutionEngine:
                                 "account_id": self.config.account_uuid,
                             },
                         )
-                        if isinstance(existing, list) and existing:
+                        if not isinstance(existing, list):
+                            raise RuntimeError(
+                                f"idempotency check returned non-list: {type(existing).__name__}"
+                            )
+                        live_rows = [
+                            r for r in existing
+                            if str(r.get("mode", "")) not in ("PAPER", "PAPER_SHADOW")
+                            and not str(r.get("broker_trade_id", "")).startswith("PAPER-")
+                        ]
+                        if live_rows:
                             logger.warning(
                                 "execute_order_skipped_duplicate_signal",
                                 signal_id=str(order.signal_id),
                                 pair=order.pair,
-                                existing=len(existing),
+                                existing=len(live_rows),
                             )
                             return None
                     except Exception:
-                        logger.exception("execute_order_idempotency_check_failed")
+                        # Fail closed: cannot verify -> do not place a live order.
+                        logger.critical(
+                            "execute_order_idempotency_check_failed_failing_closed",
+                            signal_id=str(order.signal_id),
+                            pair=order.pair,
+                        )
+                        return None
                 if effective_mode == "PAPER" or is_shadow:
                     # Simulated fill — no broker call. Lands here when:
                     # - effective_mode is PAPER (either switch is PAPER), OR

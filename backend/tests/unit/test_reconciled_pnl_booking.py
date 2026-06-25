@@ -21,13 +21,26 @@ def _sm() -> StateManager:
     return sm
 
 
+def test_only_booked_claimed_ghosts_count():
+    sm = _sm()
+    now = datetime.now(timezone.utc).isoformat()
+    # A ghost the reconciler did NOT claim (booked=False — e.g. monitor won the
+    # race or the DB close failed) must NOT be counted, even with real P&L.
+    sm._book_reconciled_pnl([
+        {"booked": False, "pnl_usd": "-999.00", "closed_at": now, "mode": "LIVE"},
+        {"booked": True, "pnl_usd": "-8.00", "closed_at": now, "mode": "LIVE"},
+    ])
+    assert sm._state["daily_pnl"] == "-8.00"
+    assert sm._state["weekly_pnl"] == "-8.00"
+
+
 def test_books_current_period_live_ghosts_excludes_shadow():
     sm = _sm()
     now = datetime.now(timezone.utc).isoformat()
     sm._book_reconciled_pnl([
-        {"pnl_usd": "-10.00", "closed_at": now, "mode": "LIVE"},
-        {"pnl_usd": "5.00", "closed_at": now, "mode": "LIVE"},
-        {"pnl_usd": "-100.00", "closed_at": now, "mode": "PAPER_SHADOW"},  # excluded
+        {"booked": True, "pnl_usd": "-10.00", "closed_at": now, "mode": "LIVE"},
+        {"booked": True, "pnl_usd": "5.00", "closed_at": now, "mode": "LIVE"},
+        {"booked": True, "pnl_usd": "-100.00", "closed_at": now, "mode": "PAPER_SHADOW"},  # excluded
     ])
     assert sm._state["daily_pnl"] == "-5.00"   # -10 + 5
     assert sm._state["weekly_pnl"] == "-5.00"
@@ -36,7 +49,7 @@ def test_books_current_period_live_ghosts_excludes_shadow():
 def test_ignores_prior_period_close():
     sm = _sm()
     old = "2020-01-01T00:00:00+00:00"
-    sm._book_reconciled_pnl([{"pnl_usd": "-50.00", "closed_at": old, "mode": "LIVE"}])
+    sm._book_reconciled_pnl([{"booked": True, "pnl_usd": "-50.00", "closed_at": old, "mode": "LIVE"}])
     # A close from a prior day/week must not be attributed to the current period.
     assert sm._state["daily_pnl"] == "0"
     assert sm._state["weekly_pnl"] == "0"
@@ -46,7 +59,7 @@ def test_unknown_close_time_counts_conservatively():
     sm = _sm()
     # No/blank closed_at -> count in current period (a loss escaping the limit
     # is worse than a conservative limit).
-    sm._book_reconciled_pnl([{"pnl_usd": "-7.00", "closed_at": "", "mode": "LIVE"}])
+    sm._book_reconciled_pnl([{"booked": True, "pnl_usd": "-7.00", "closed_at": "", "mode": "LIVE"}])
     assert sm._state["daily_pnl"] == "-7.00"
     assert sm._state["weekly_pnl"] == "-7.00"
 
@@ -54,7 +67,7 @@ def test_unknown_close_time_counts_conservatively():
 def test_zero_and_empty_are_noops():
     sm = _sm()
     sm._book_reconciled_pnl([])
-    sm._book_reconciled_pnl([{"pnl_usd": "0", "closed_at": "", "mode": "LIVE"}])
+    sm._book_reconciled_pnl([{"booked": True, "pnl_usd": "0", "closed_at": "", "mode": "LIVE"}])
     assert sm._state["daily_pnl"] == "0"
     assert sm._state["weekly_pnl"] == "0"
 
@@ -67,6 +80,6 @@ def test_daily_only_when_same_day_but_weekly_same_week():
     if now.weekday() == 0:
         pytest.skip("Monday: no earlier same-week day to test")
     earlier_same_week = (now - timedelta(days=1)).isoformat()
-    sm._book_reconciled_pnl([{"pnl_usd": "-12.00", "closed_at": earlier_same_week, "mode": "LIVE"}])
+    sm._book_reconciled_pnl([{"booked": True, "pnl_usd": "-12.00", "closed_at": earlier_same_week, "mode": "LIVE"}])
     assert sm._state["daily_pnl"] == "0"        # not today
     assert sm._state["weekly_pnl"] == "-12.00"  # same week
