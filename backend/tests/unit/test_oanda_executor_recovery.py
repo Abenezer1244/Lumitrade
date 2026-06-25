@@ -263,6 +263,30 @@ async def test_correction_succeeds_but_recheck_fails_does_not_close():
     assert result.stop_loss_confirmed is None  # unconfirmed -> FillVerifier alerts
 
 
+@pytest.mark.asyncio
+async def test_malformed_recheck_response_does_not_close():
+    """Codex catch #2: a MALFORMED (but successful) second readback after a
+    corrective modify must be treated as uncertain (ok=False) and must NOT
+    emergency-close a potentially protected trade."""
+    client = MagicMock()
+    client.place_market_order = AsyncMock(return_value=_ok_response("trade-A"))
+    # 1st readback: SL positively missing. 2nd readback: malformed (a list, not a
+    # trade dict) -> parsing raises inside _read_protection -> ok=False.
+    client.get_trade = AsyncMock(side_effect=[
+        _ok_trade(sl=None, tp="1.08730"),
+        ["not", "a", "dict"],
+    ])
+    client.modify_trade = AsyncMock()  # correction accepted
+    client.close_trade = AsyncMock()
+
+    executor = OandaExecutor(client)
+    result = await executor.execute(_make_order())
+
+    client.modify_trade.assert_awaited_once()
+    client.close_trade.assert_not_awaited()  # malformed recheck != confirmed missing
+    assert result.stop_loss_confirmed is None
+
+
 def test_price_or_none_rejects_non_finite_and_garbage():
     """A non-finite ("NaN"/"Infinity") or unparsable price must become None, not
     a bogus 'confirmed' stop."""

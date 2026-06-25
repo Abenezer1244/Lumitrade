@@ -252,8 +252,14 @@ class OandaExecutor:
         if the trade could not be fetched — in which case absence is unknown,
         NOT proof the stop is missing.
         """
+        # The fetch AND the parsing are both inside the try: a malformed
+        # response (non-dict trade, non-dict stopLossOrder/takeProfitOrder) must
+        # become readback_ok=False (uncertain), never propagate to the caller's
+        # corrective path where it would emergency-close a protected trade.
         try:
             trade = await self._client.get_trade(trade_id, pair=pair)
+            sl_raw = (trade.get("stopLossOrder") or {}).get("price")
+            tp_raw = (trade.get("takeProfitOrder") or {}).get("price")
         except Exception as e:
             logger.error(
                 "oanda_protection_readback_failed",
@@ -262,9 +268,7 @@ class OandaExecutor:
                 error=str(e),
             )
             return None, None, False
-        sl = self._price_or_none((trade.get("stopLossOrder") or {}).get("price"))
-        tp = self._price_or_none((trade.get("takeProfitOrder") or {}).get("price"))
-        return sl, tp, True
+        return self._price_or_none(sl_raw), self._price_or_none(tp_raw), True
 
     async def _verify_protection(
         self, trade_id: str, order: ApprovedOrder, sl_requested: bool, tp_requested: bool
