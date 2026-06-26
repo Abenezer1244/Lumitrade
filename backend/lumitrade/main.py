@@ -138,44 +138,45 @@ class OrchestratorService:
             logger.exception("lock_lost_alert_failed")
 
     async def _acquire_primary_with_retry(self) -> bool:
-        """Become primary, retrying patiently until the predecessor's lease
-        expires or is released.
+        """Become primary, polling QUIETLY until the lock is free or we shut down.
 
         With per-process lease tokens (state/lock.py) a redeploying instance
-        CANNOT refresh the previous instance's lease — it must WAIT up to the
-        lock TTL (~120s) for that lease to expire (or for a graceful release).
-        Exiting immediately makes supervisord rapid-restart the engine and hit
-        FATAL (`startretries=5, startsecs=5`) long before the TTL elapses — a
-        deploy-time outage. Staying alive in this retry loop keeps the process
-        'running' past `startsecs` so it is never killed as a crash loop, and we
-        still NEVER run trading loops as a standby (we proceed only once
-        genuinely primary). The separate health-server supervisord program keeps
-        answering /health throughout, so the Railway healthcheck is unaffected.
+        CANNOT refresh the previous instance's lease — it must wait for that
+        lease to expire (<= LOCK_TTL ~120s) or be released. Two failure modes to
+        avoid:
+          * Exiting immediately on a busy lock -> supervisord rapid-restarts and
+            hits FATAL (`startretries=5, startsecs=5`) before the TTL elapses.
+          * Giving up after a fixed window and exiting -> the process churns
+            (restart every few minutes) and spams CRITICAL logs whenever a deploy
+            briefly overlaps a still-live primary.
+        So we poll indefinitely — staying 'running' past `startsecs` — and only
+        stop on a shutdown signal. We NEVER run trading loops as a standby (we
+        proceed only once genuinely primary). The separate health-server
+        supervisord program answers /health throughout, so Railway can promote
+        this deploy and retire the predecessor, freeing the lock for us. Logging
+        is throttled to avoid noise during a normal rolling deploy.
         """
-        retry_seconds = 10
-        # Must exceed LOCK_TTL_SECONDS (120) so we outlast a stale/unreleased
-        # predecessor lease before giving up.
-        max_wait_seconds = 180
-        attempts = max(1, max_wait_seconds // retry_seconds)
-        for attempt in range(1, attempts + 1):
+        poll_seconds = 15
+        log_every = 8  # ~ every 2 minutes
+        waited = 0
+        while not self._shutdown.is_set():
             if await self.lock.acquire(self.config.instance_id):
-                if attempt > 1:
+                if waited:
                     logger.info(
                         "lock_acquired_after_wait",
                         instance_id=self.config.instance_id,
-                        attempts=attempt,
+                        waited_polls=waited,
                     )
                 return True
-            if self._shutdown.is_set():
-                return False
-            logger.info(
-                "lock_acquire_retry_waiting",
-                instance_id=self.config.instance_id,
-                attempt=attempt,
-                max_attempts=attempts,
-                retry_seconds=retry_seconds,
-            )
-            await asyncio.sleep(retry_seconds)
+            waited += 1
+            if waited == 1 or waited % log_every == 0:
+                logger.info(
+                    "lock_acquire_waiting_for_primary",
+                    instance_id=self.config.instance_id,
+                    polls=waited,
+                    poll_seconds=poll_seconds,
+                )
+            await asyncio.sleep(poll_seconds)
         return False
 
     async def startup(self) -> None:
@@ -201,16 +202,16 @@ class OrchestratorService:
         logger.info("lock_status", is_primary=is_primary)
 
         if not is_primary:
-            logger.critical(
-                "lock_not_acquired_after_retries_exiting",
+            # Only reached if a shutdown was requested while waiting for the
+            # lock (e.g. SIGTERM during a deploy hand-off). Clean exit, no alarm.
+            logger.info(
+                "startup_aborted_during_lock_wait",
                 instance_id=self.config.instance_id,
-                msg="Could not become primary within the lock-TTL window — "
-                    "another instance may be actively primary. Exiting so the "
-                    "platform recycles us to retry.",
+                msg="Shutdown requested before primary lock was acquired.",
             )
             raise SystemExit(
-                f"Lock acquisition failed for {self.config.instance_id} after "
-                "retrying past the lock TTL. Refusing to run as standby."
+                f"Shutdown requested before {self.config.instance_id} became "
+                "primary. Exiting cleanly."
             )
 
         # 4. Initialize state manager — safe now that we hold the lock
