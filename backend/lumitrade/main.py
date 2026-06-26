@@ -99,10 +99,43 @@ class OrchestratorService:
         self.oanda = OandaClient(self.config)
         self.oanda_trade = OandaTradingClient(self.config)
         self.alerts = AlertService(self.config, self.db)
-        self.lock = DistributedLock(self.db)
+        self.lock = DistributedLock(self.db, on_lock_lost=self._on_lock_lost)
 
         # Core services (lazy init after DB connect)
         self.state: StateManager | None = None
+
+    async def _on_lock_lost(self) -> None:
+        """Failover handler invoked when the primary lock is fatally lost.
+
+        Codex CRITICAL #2: a lost lease must HARD-HALT new order placement
+        before any further order can fire, then shut down so the survivor takes
+        over.
+
+        IMPORTANT: we must NOT engage the kill switch here. The kill switch has
+        close-all-positions semantics (main.py signal loop calls
+        close_all_positions on activation). A primary that just lost its lease
+        liquidating the entire book would fight the new primary that now owns
+        those positions. Instead we use ExecutionEngine.halt_execution(), an
+        in-process, non-resettable flag that refuses NEW orders and broker
+        mutations WITHOUT touching open positions. Then we signal shutdown so
+        the trading loops are cancelled and the lock is released.
+        """
+        logger.critical("lock_lost_failover", instance_id=self.config.instance_id)
+        try:
+            if getattr(self, "exec_eng", None) is not None:
+                self.exec_eng.halt_execution(reason="primary_lock_lost")
+        except Exception:
+            logger.exception("lock_lost_halt_execution_failed")
+        # Begin graceful shutdown — the main loop wakes and cancels trading loops.
+        self._shutdown.set()
+        try:
+            await self.alerts.send_critical(
+                f"PRIMARY LOCK LOST on {self.config.instance_id} — new orders "
+                f"halted (positions left intact for the survivor), shutting "
+                f"down for failover."
+            )
+        except Exception:
+            logger.exception("lock_lost_alert_failed")
 
     async def startup(self) -> None:
         """Full startup sequence — must complete before trading begins."""

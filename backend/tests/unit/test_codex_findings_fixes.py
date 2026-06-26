@@ -362,13 +362,14 @@ async def test_lock_bootstrap_verifies_winner_after_upsert(env_keys):
 async def test_lock_bootstrap_returns_true_when_we_win(env_keys):
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
+    lock = DistributedLock(db)
+    owner = lock._owner("instance-A")
     db.select_one = AsyncMock(side_effect=[
-        None,                                                        # initial read
-        {"id": "primary", "instance_id": "instance-A"},              # 1st readback
-        {"id": "primary", "instance_id": "instance-A"},              # 2nd confirmation read
+        None,                                            # initial read
+        {"id": "primary", "instance_id": owner},         # 1st readback (our owner token)
+        {"id": "primary", "instance_id": owner},         # 2nd confirmation read
     ])
     db.upsert = AsyncMock(return_value=[{"id": "primary"}])
-    lock = DistributedLock(db)
     ok = await lock.acquire("instance-A")
     assert ok is True
 
@@ -380,16 +381,17 @@ async def test_lock_release_uses_cas_filter(env_keys):
     Codex follow-up review #1."""
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
-    db.select_one = AsyncMock(return_value={"id": "primary", "instance_id": "instance-A"})
-    db.update = AsyncMock(return_value=[{"id": "primary"}])  # 1 row updated
     lock = DistributedLock(db)
+    owner = lock._owner("instance-A")
+    db.select_one = AsyncMock(return_value={"id": "primary", "instance_id": owner})
+    db.update = AsyncMock(return_value=[{"id": "primary"}])  # 1 row updated
     await lock.release("instance-A")
     call = db.update.call_args
     args, _ = call
     table, filters, data = args[0], args[1], args[2]
     assert table == "system_state"
-    assert filters.get("instance_id") == "instance-A", \
-        "release() must include instance_id in filter for CAS"
+    assert filters.get("instance_id") == owner, \
+        "release() must include our owner token in filter for CAS"
     assert "id" in filters  # LOCK_ROW_ID is the singleton key (actual value is internal)
 
 
@@ -400,9 +402,11 @@ async def test_lock_release_aborts_if_cas_mismatch(env_keys):
     without clobbering the new holder."""
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
-    db.select_one = AsyncMock(return_value={"id": "primary", "instance_id": "instance-A"})
-    db.update = AsyncMock(return_value=[])  # 0 rows updated — race lost
     lock = DistributedLock(db)
+    db.select_one = AsyncMock(
+        return_value={"id": "primary", "instance_id": lock._owner("instance-A")}
+    )
+    db.update = AsyncMock(return_value=[])  # 0 rows updated — race lost
     # Should not raise; just log and return
     await lock.release("instance-A")
     # No assertion on side effect — just that it didn't crash and didn't try harder
@@ -536,19 +540,18 @@ async def test_lock_vacant_row_uses_readback_cas(env_keys):
 async def test_lock_vacant_row_we_win(env_keys):
     from lumitrade.state.lock import DistributedLock
     db = MagicMock()
+    lock = DistributedLock(db)
+    owner = lock._owner("instance-A")
     db.select_one = AsyncMock(side_effect=[
         # Initial read: row exists but vacant
         {"id": "singleton", "instance_id": None, "is_primary_instance": False,
          "lock_expires_at": None},
-        # 1st readback: we won
-        {"id": "singleton", "instance_id": "instance-A",
-         "is_primary_instance": True},
+        # 1st readback: we won (our owner token)
+        {"id": "singleton", "instance_id": owner, "is_primary_instance": True},
         # 2nd confirmation read: still us
-        {"id": "singleton", "instance_id": "instance-A",
-         "is_primary_instance": True},
+        {"id": "singleton", "instance_id": owner, "is_primary_instance": True},
     ])
     db.update = AsyncMock(return_value=[{"id": "singleton"}])
-    lock = DistributedLock(db)
     ok = await lock.acquire("instance-A")
     assert ok is True
 
@@ -727,3 +730,116 @@ def test_trigger_insight_analysis_count_filters_by_account(env_keys):
     body = src[idx:idx + 800]
     assert "account_id" in body, \
         f"_trigger_insight_analysis must filter by account_id:\n{body[:400]}"
+
+
+# ─── Audit 2026-06-25: position monitor must fail closed on partial snapshot ─
+
+
+async def _run_check_closed(snapshot, complete):
+    """Build a bare ExecutionEngine and run _check_closed_positions with a
+    given OANDA snapshot + completeness flag. Returns the _mark_trade_closed mock.
+    """
+    from lumitrade.config import LumitradeConfig
+    from lumitrade.execution_engine.engine import ExecutionEngine
+    cfg = LumitradeConfig()
+    eng = ExecutionEngine.__new__(ExecutionEngine)
+    eng.config = cfg
+    eng._db = MagicMock()
+    # One live BTC trade, open in DB. opened_at empty so the max-hold path is
+    # skipped and we exercise the absence-based close branch directly.
+    eng._db.select = AsyncMock(return_value=[
+        {"id": "1", "broker_trade_id": "BTC-1", "pair": "BTC_USD", "opened_at": ""},
+    ])
+    eng._oanda_read = MagicMock()
+    eng._oanda_read.get_all_open_trades_checked = AsyncMock(
+        return_value=(snapshot, complete)
+    )
+    eng._mark_trade_closed = AsyncMock()
+    eng._check_paper_trade_exit = AsyncMock()
+    await eng._check_closed_positions()
+    return eng._mark_trade_closed
+
+
+@pytest.mark.asyncio
+async def test_monitor_incomplete_snapshot_does_not_close_live_trade(env_keys):
+    """Audit fix: when the broker snapshot is INCOMPLETE (e.g. spot-crypto
+    sub-account fetch failed), a live BTC trade absent from the partial list
+    must NOT be marked closed. This is the second door to the BTC/ETH ghost
+    bug that Codex caught was still open after the reconciler fix."""
+    mark_closed = await _run_check_closed(snapshot=[], complete=False)
+    mark_closed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_monitor_complete_snapshot_closes_absent_trade(env_keys):
+    """Sanity: with a COMPLETE snapshot, a trade genuinely absent from the
+    broker is still closed — the guard must not suppress real ghost closure."""
+    mark_closed = await _run_check_closed(snapshot=[], complete=True)
+    mark_closed.assert_called_once()
+
+
+# ─── Audit 2026-06-25: lock-loss hard halt blocks new orders (not kill switch) ─
+
+
+async def _run_update_closed(claimed_rows):
+    """Run _update_closed_trade with a given db.update result; return state dict."""
+    from lumitrade.execution_engine.engine import ExecutionEngine
+    eng = ExecutionEngine.__new__(ExecutionEngine)
+    eng._db = MagicMock()
+    eng._db.update = AsyncMock(return_value=claimed_rows)
+    eng._events = None
+    eng._subagents = None
+    eng._run_post_trade_analysis = AsyncMock()
+    state = MagicMock()
+    state._state = {"daily_pnl": "0", "weekly_pnl": "0", "consecutive_losses": 0}
+    eng._state = state
+    trade = {"id": "t1", "pair": "USD_CAD", "mode": "LIVE", "opened_at": ""}
+    await eng._update_closed_trade(
+        trade, Decimal("1.3"), Decimal("10"), Decimal("-5"), "LOSS", "SL_HIT"
+    )
+    return state._state
+
+
+@pytest.mark.asyncio
+async def test_monitor_close_books_pnl_when_it_claims_the_row(env_keys):
+    """Audit (a) hardening: the monitor books P&L into the loss-limit counter
+    only when its atomic CAS actually claimed the OPEN row (1 row updated)."""
+    s = await _run_update_closed([{"id": "t1"}])  # claimed
+    assert s["daily_pnl"] == "-5"
+    assert s["weekly_pnl"] == "-5"
+
+
+@pytest.mark.asyncio
+async def test_monitor_close_skips_booking_when_already_closed(env_keys):
+    """If the row was already CLOSED by another path (reconciler), the monitor's
+    CAS matches 0 rows -> it must NOT re-book P&L (prevents double-count)."""
+    s = await _run_update_closed([])  # 0 rows claimed
+    assert s["daily_pnl"] == "0"
+    assert s["weekly_pnl"] == "0"
+    assert s["consecutive_losses"] == 0
+
+
+@pytest.mark.asyncio
+async def test_execution_halt_blocks_new_orders(env_keys):
+    """Audit fix (Codex CRITICAL #2): on primary-lock loss the engine must
+    refuse NEW orders via the non-resettable _execution_halted flag, BEFORE any
+    DB refresh, and must NOT route to the broker executor. This is distinct from
+    the kill switch (which liquidates) — halt must never touch open positions."""
+    from lumitrade.execution_engine.engine import ExecutionEngine
+    eng = ExecutionEngine.__new__(ExecutionEngine)
+    eng._state = None
+    eng._oanda_executor = MagicMock()
+    eng._oanda_executor.execute = AsyncMock()
+
+    order = MagicMock()
+    order.order_ref = "ref-1"
+    order.pair = "BTC_USD"
+
+    eng._execution_halted = False
+    eng.halt_execution(reason="primary_lock_lost")
+    assert eng._execution_halted is True
+
+    result = await eng.execute_order(order, Decimal("50000"))
+
+    assert result is None  # order refused
+    eng._oanda_executor.execute.assert_not_called()  # never reached the broker

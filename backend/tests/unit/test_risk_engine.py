@@ -36,6 +36,10 @@ def _make_config():
     config.trade_cooldown_minutes = 60
     config.min_confidence = Decimal("0.65")
     config.max_confidence = Decimal("0.80")
+    # Dashboard-configured risk ceiling, read by _determine_risk_pct via
+    # min(tier_pct, max_risk_pct). Must be a real Decimal or the comparison
+    # raises TypeError (config default is 0.03 = 3%).
+    config.max_risk_pct = Decimal("0.03")
     config.max_spread_pips = Decimal("3.0")
     config.min_rr_ratio = Decimal("1.5")
     config.min_sl_pips = Decimal("15.0")
@@ -305,22 +309,28 @@ class TestPositionSizing:
     """
 
     @pytest.mark.asyncio
-    async def test_position_size_0_5pct_for_low_confidence(self, engine):
-        """RE-018: confidence below 0.80 -> 0.5% risk."""
+    async def test_position_size_2pct_for_low_confidence(self, engine):
+        """RE-018: confidence below 0.80 -> 2.0% risk.
+
+        Updated from the prior 0.5% tier: commit 95ec9e9 raised the
+        confidence-based sizing schedule to target ~$10/trade on live accounts
+        (sub-0.80 -> 2.0%, at-0.80 ceiling -> 3.0%), capped by max_risk_pct=3%.
+        """
         result = await engine.evaluate(
             _make_proposal(confidence=Decimal("0.70")), Decimal("1000")
         )
         assert isinstance(result, ApprovedOrder)
-        assert result.risk_pct == Decimal("0.005")
+        assert result.risk_pct == Decimal("0.02")
 
     @pytest.mark.asyncio
-    async def test_position_size_1pct_for_mid_confidence(self, engine):
-        """RE-019: confidence at 0.80 ceiling -> 1% risk."""
+    async def test_position_size_3pct_for_confidence_at_ceiling(self, engine):
+        """RE-019: confidence at the 0.80 ceiling -> 3.0% risk (capped by
+        max_risk_pct=3%). Updated from the prior 1% tier per commit 95ec9e9."""
         result = await engine.evaluate(
             _make_proposal(confidence=Decimal("0.80")), Decimal("1000")
         )
         assert isinstance(result, ApprovedOrder)
-        assert result.risk_pct == Decimal("0.01")
+        assert result.risk_pct == Decimal("0.03")
 
     @pytest.mark.asyncio
     async def test_high_confidence_rejected_by_ceiling(self, engine):

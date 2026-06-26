@@ -124,7 +124,13 @@ def _make_proposal(confidence: Decimal):
     return p
 
 
-def test_risk_pct_below_080_is_0_5pct(env_with_required_keys):
+# NOTE: commit 95ec9e9 raised the confidence-based sizing schedule to target
+# ~$10/trade on live accounts: sub-0.80 -> 2.0%, at/above-0.80 -> 3.0% (capped
+# by max_risk_pct=3%). These tests track the DEPLOYED schedule (updated from the
+# prior 0.5%/1.0% tiers). See progress notes — this is a real position-size change.
+
+
+def test_risk_pct_below_080_is_2pct(env_with_required_keys):
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
@@ -132,10 +138,10 @@ def test_risk_pct_below_080_is_0_5pct(env_with_required_keys):
     engine._config = cfg
     engine.config = cfg
     rp = engine._determine_risk_pct(_make_proposal(Decimal("0.75")))
-    assert rp == Decimal("0.005"), f"Expected 0.5% for conf 0.75 — got {rp}"
+    assert rp == Decimal("0.02"), f"Expected 2.0% for conf 0.75 — got {rp}"
 
 
-def test_risk_pct_at_080_is_1pct(env_with_required_keys):
+def test_risk_pct_at_080_is_3pct(env_with_required_keys):
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
@@ -143,23 +149,22 @@ def test_risk_pct_at_080_is_1pct(env_with_required_keys):
     engine._config = cfg
     engine.config = cfg
     rp = engine._determine_risk_pct(_make_proposal(Decimal("0.80")))
-    assert rp == Decimal("0.01"), f"Expected 1.0% for conf 0.80 — got {rp}"
+    assert rp == Decimal("0.03"), f"Expected 3.0% for conf 0.80 — got {rp}"
 
 
-def test_risk_pct_above_080_still_1pct_after_dead_branch_removal(env_with_required_keys):
-    """The >=0.90 -> 2% branch was removed. Anything >=0.80 now returns 1%.
-    (The 0.80 confidence cap rejects these signals before sizing anyway, but the
-    sizing logic itself must no longer have the dead 2% tier.)"""
+def test_risk_pct_above_080_is_3pct_capped(env_with_required_keys):
+    """The >=0.90 -> 2% branch was removed. Anything >=0.80 now returns 3%
+    (capped by max_risk_pct=3%). The 0.80 confidence cap rejects these signals
+    before sizing anyway, but the sizing logic must have no dead tier."""
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
     engine = RiskEngine.__new__(RiskEngine)
     engine._config = cfg
     engine.config = cfg
-    # 0.95 confidence: previously would have hit the dead 2% branch
     rp = engine._determine_risk_pct(_make_proposal(Decimal("0.95")))
-    assert rp == Decimal("0.01"), (
-        f"Dead 2% tier was removed — conf 0.95 should now return 1.0% — got {rp}"
+    assert rp == Decimal("0.03"), (
+        f"conf 0.95 should return the >=0.80 tier (3.0%, capped) — got {rp}"
     )
 
 
@@ -176,13 +181,14 @@ def test_risk_pct_ai_recommendation_advisory_only(env_with_required_keys):
     p.confidence_adjusted = Decimal("0.75")
     p.recommended_risk_pct = Decimal("0.015")  # AI suggests 1.5% but is ignored
     rp = engine._determine_risk_pct(p)
-    # Advisory mode: falls back to deterministic confidence-based rate (0.5% for conf 0.75)
-    assert rp == Decimal("0.005"), f"Expected deterministic 0.5% (advisory mode) — got {rp}"
+    # Advisory mode: falls back to the deterministic confidence-based rate
+    # (2.0% for conf 0.75 under the current schedule).
+    assert rp == Decimal("0.02"), f"Expected deterministic 2.0% (advisory mode) — got {rp}"
 
 
 def test_risk_pct_ai_recommendation_clamped(env_with_required_keys):
     """When AI advisory eventually activates, extreme values must be clamped.
-    Currently advisory_only so deterministic rate returned for all inputs."""
+    Currently advisory_only so the deterministic rate is returned for all inputs."""
     from lumitrade.config import LumitradeConfig
     from lumitrade.risk_engine.engine import RiskEngine
     cfg = LumitradeConfig()
@@ -193,4 +199,4 @@ def test_risk_pct_ai_recommendation_clamped(env_with_required_keys):
     p.confidence_adjusted = Decimal("0.75")
     p.recommended_risk_pct = Decimal("0.05")  # 5% — advisory, ignored
     rp = engine._determine_risk_pct(p)
-    assert rp == Decimal("0.005"), f"Expected deterministic 0.5% (advisory mode) — got {rp}"
+    assert rp == Decimal("0.02"), f"Expected deterministic 2.0% (advisory mode) — got {rp}"

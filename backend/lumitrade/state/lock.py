@@ -19,6 +19,8 @@ DB columns used (on the singleton row):
 """
 
 import asyncio
+import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 from ..infrastructure.db import DatabaseClient
@@ -35,10 +37,33 @@ MAX_CONSECUTIVE_FAILURES = 2
 class DistributedLock:
     """TTL-based distributed lock backed by Supabase system_state table."""
 
-    def __init__(self, db: DatabaseClient) -> None:
+    def __init__(
+        self,
+        db: DatabaseClient,
+        on_lock_lost: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self._db = db
         self._renew_task: asyncio.Task | None = None
         self._shutdown_event = asyncio.Event()
+        # Per-process unique lease suffix. Two processes that share the same
+        # configured INSTANCE_ID (e.g. overlapping containers during a Railway
+        # rolling deploy) would otherwise BOTH satisfy `holder == instance_id`
+        # and BOTH renew the lock -> two PRIMARY engines -> duplicate live
+        # orders on a hedging account. The suffix makes ownership per-process.
+        self._lease_id = uuid.uuid4().hex[:12]
+        # Invoked when lock renewal fatally fails. MUST hard-halt execution and
+        # begin shutdown. When None, renew_loop falls back to raising SystemExit
+        # (legacy behavior) so the lock is still safe in tests/standalone use.
+        self._on_lock_lost = on_lock_lost
+
+    def _owner(self, instance_id: str) -> str:
+        """Per-process ownership token persisted in the DB instance_id column.
+
+        Combines the human-facing INSTANCE_ID with a per-process lease id so
+        two processes that share the same INSTANCE_ID never collide. Stored in
+        the existing column — no schema migration required.
+        """
+        return f"{instance_id}#{self._lease_id}"
 
     async def acquire(self, instance_id: str) -> bool:
         """
@@ -54,6 +79,10 @@ class DistributedLock:
             True if this instance now holds the lock.
         """
         now = datetime.now(timezone.utc)
+        # Per-process ownership token. All DB reads/writes/CAS compare against
+        # this composite, never the bare INSTANCE_ID, so two processes sharing
+        # an INSTANCE_ID cannot both be recorded as holder.
+        owner = self._owner(instance_id)
 
         try:
             row = await self._db.select_one(
@@ -70,7 +99,7 @@ class DistributedLock:
                     "system_state",
                     {
                         "id": LOCK_ROW_ID,
-                        "instance_id": instance_id,
+                        "instance_id": owner,
                         "is_primary_instance": True,
                         "lock_expires_at": (
                             now + timedelta(seconds=LOCK_TTL_SECONDS)
@@ -89,7 +118,7 @@ class DistributedLock:
                 await asyncio.sleep(0.2)
                 check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
                 actual_holder = (check or {}).get("instance_id")
-                if actual_holder != instance_id:
+                if actual_holder != owner:
                     logger.warning(
                         "lock_bootstrap_lost_race",
                         instance_id=instance_id,
@@ -99,7 +128,7 @@ class DistributedLock:
                 # Second confirmation read after another short delay
                 await asyncio.sleep(0.2)
                 check2 = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
-                if (check2 or {}).get("instance_id") != instance_id:
+                if (check2 or {}).get("instance_id") != owner:
                     logger.warning(
                         "lock_bootstrap_lost_race_late",
                         instance_id=instance_id,
@@ -117,10 +146,10 @@ class DistributedLock:
             lock_expires_at_str = row.get("lock_expires_at")
 
             # We already hold the lock — refresh. Conditional update on our
-            # own instance_id; if it fails, someone else stole the lock between
+            # own owner token; if it fails, someone else stole the lock between
             # the read and the write.
-            if current_holder == instance_id:
-                ok = await self._update_lock(instance_id, now, expected_holder=instance_id)
+            if current_holder == owner:
+                ok = await self._update_lock(instance_id, now, expected_holder=owner)
                 if not ok:
                     logger.warning("lock_reacquire_lost_race", instance_id=instance_id)
                     return False
@@ -134,13 +163,13 @@ class DistributedLock:
                 # predicates). Use write-then-readback to detect race losers,
                 # same pattern as the cold-start bootstrap path. Two concurrent
                 # claimants both pass through the unconditional update, but
-                # only the last writer's instance_id stays recorded — the
+                # only the last writer's owner token stays recorded — the
                 # earlier writer reads back and discovers it lost.
                 await self._db.update(
                     "system_state",
                     {"id": LOCK_ROW_ID},
                     {
-                        "instance_id": instance_id,
+                        "instance_id": owner,
                         "is_primary_instance": True,
                         "lock_expires_at": (now + timedelta(seconds=LOCK_TTL_SECONDS)).isoformat(),
                         "updated_at": now.isoformat(),
@@ -151,7 +180,7 @@ class DistributedLock:
                 await asyncio.sleep(0.2)
                 check = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
                 actual_holder = (check or {}).get("instance_id")
-                if actual_holder != instance_id:
+                if actual_holder != owner:
                     logger.warning(
                         "lock_claim_vacant_lost_race",
                         instance_id=instance_id,
@@ -162,7 +191,7 @@ class DistributedLock:
                 # Second confirmation read
                 await asyncio.sleep(0.2)
                 check2 = await self._db.select_one("system_state", {"id": LOCK_ROW_ID})
-                if (check2 or {}).get("instance_id") != instance_id:
+                if (check2 or {}).get("instance_id") != owner:
                     logger.warning(
                         "lock_claim_vacant_lost_race_late",
                         instance_id=instance_id,
@@ -260,7 +289,9 @@ class DistributedLock:
                 # the lock. If another instance has taken over (split-brain
                 # avoidance), this returns False and we treat it as a failure
                 # so the failure counter trips and we shut down cleanly.
-                ok = await self._update_lock(instance_id, now, expected_holder=instance_id)
+                ok = await self._update_lock(
+                    instance_id, now, expected_holder=self._owner(instance_id)
+                )
                 if not ok:
                     raise RuntimeError(
                         f"Lock renewal CAS failed — another instance "
@@ -284,13 +315,37 @@ class DistributedLock:
                     logger.critical(
                         "lock_renewal_fatal",
                         instance_id=instance_id,
-                        msg="Exceeded max consecutive renewal failures, shutting down",
+                        msg="Exceeded max consecutive renewal failures, "
+                        "halting execution and shutting down for failover",
                     )
-                    raise SystemExit(
-                        f"Lock renewal failed "
-                        f"{consecutive_failures} times. "
-                        "Shutting down for failover."
-                    )
+                    await self._trigger_lock_lost()
+                    return
+
+    async def _trigger_lock_lost(self) -> None:
+        """Hard-halt execution and begin shutdown after fatal lock loss.
+
+        Codex CRITICAL #2: the previous code raised SystemExit inside a
+        fire-and-forget task, which killed only the heartbeat task while the
+        signal/execution loops kept trading WITHOUT a renewal loop until the
+        lock expired — a split-brain window with duplicate live orders.
+
+        When an on_lock_lost callback is wired (production: it engages the
+        engine's non-resettable execution halt so execute_order() refuses new
+        orders immediately — WITHOUT the kill switch's close-all semantics —
+        then signals app shutdown), invoke it. Otherwise fall back to SystemExit
+        so standalone usage still fails safe.
+        """
+        self._shutdown_event.set()
+        if self._on_lock_lost is not None:
+            try:
+                await self._on_lock_lost()
+            except Exception:
+                logger.exception("on_lock_lost_callback_failed")
+            return
+        raise SystemExit(
+            "Lock renewal failed — no failover handler wired. "
+            "Shutting down for failover."
+        )
 
     async def release(self, instance_id: str) -> None:
         """
@@ -323,9 +378,10 @@ class DistributedLock:
                 )
                 return
 
+            owner = self._owner(instance_id)
             current_holder = row.get("instance_id")
 
-            if current_holder != instance_id:
+            if current_holder != owner:
                 logger.warning(
                     "lock_release_skipped",
                     instance_id=instance_id,
@@ -335,12 +391,12 @@ class DistributedLock:
                 return
 
             now = datetime.now(timezone.utc)
-            # CAS release: filter by both id AND instance_id so a takeover
+            # CAS release: filter by both id AND our owner token so a takeover
             # that happened between the read above and this write doesn't
             # get clobbered by the previous holder.
             result = await self._db.update(
                 "system_state",
-                {"id": LOCK_ROW_ID, "instance_id": instance_id},
+                {"id": LOCK_ROW_ID, "instance_id": owner},
                 {
                     "instance_id": None,
                     "is_primary_instance": False,
@@ -394,7 +450,7 @@ class DistributedLock:
         the lock after a failover race.
         """
         lock_data = {
-            "instance_id": instance_id,
+            "instance_id": self._owner(instance_id),
             "is_primary_instance": True,
             "lock_expires_at": (
                 now + timedelta(seconds=LOCK_TTL_SECONDS)
@@ -403,7 +459,8 @@ class DistributedLock:
         }
 
         if expected_holder is not None:
-            # Conditional update: only if current holder matches expected
+            # Conditional update: only if current holder matches expected.
+            # Callers pass an owner token ("me") or the stored holder verbatim.
             filters = {"id": LOCK_ROW_ID, "instance_id": expected_holder}
         else:
             filters = {"id": LOCK_ROW_ID}

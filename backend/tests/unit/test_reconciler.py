@@ -52,6 +52,7 @@ def _make_oanda_trade(
 def _make_reconciler(
     db_trades: list[dict] | None = None,
     oanda_trades: list[dict] | None = None,
+    snapshot_complete: bool = True,
 ) -> tuple[PositionReconciler, AsyncMock, AsyncMock, AsyncMock]:
     """
     Create a PositionReconciler with mocked DB, OANDA, and AlertService.
@@ -63,10 +64,13 @@ def _make_reconciler(
     mock_db.update.return_value = {}
     mock_db.insert.return_value = {}
 
+    trades = oanda_trades if oanda_trades is not None else []
     mock_oanda = AsyncMock()
-    mock_oanda.get_open_trades.return_value = (
-        oanda_trades if oanda_trades is not None else []
-    )
+    # The reconciler reads through the completeness-aware variant; keep the
+    # plain method configured too for any back-compat path.
+    mock_oanda.get_all_open_trades_checked.return_value = (trades, snapshot_complete)
+    mock_oanda.get_all_open_trades.return_value = trades
+    mock_oanda.get_open_trades.return_value = trades
     mock_oanda.get_trade.return_value = {"realizedPL": "0"}
 
     mock_alerts = AsyncMock()
@@ -143,7 +147,8 @@ class TestPositionReconciler:
         mock_db.update.assert_called_once()
         update_args = mock_db.update.call_args
         assert update_args[0][0] == "trades"
-        assert update_args[0][1] == {"id": "uuid-1"}
+        # Atomic CAS: close only if still OPEN (claim-once, avoids double-book).
+        assert update_args[0][1] == {"id": "uuid-1", "status": "OPEN"}
         update_data = update_args[0][2]
         assert update_data["status"] == "CLOSED"
         assert update_data["exit_reason"] == ExitReason.UNKNOWN.value
@@ -362,7 +367,7 @@ class TestPositionReconciler:
             _make_db_trade("uuid-1", "OT-100"),
         ]
         mock_oanda = AsyncMock()
-        mock_oanda.get_open_trades.side_effect = Exception("OANDA timeout")
+        mock_oanda.get_all_open_trades_checked.side_effect = Exception("OANDA timeout")
         mock_alerts = AsyncMock()
 
         reconciler = PositionReconciler(mock_db, mock_oanda, mock_alerts)
@@ -410,3 +415,43 @@ class TestPositionReconciler:
         insert_data = mock_db.insert.call_args[0][1]
         assert insert_data["direction"] == "SELL"
         assert insert_data["position_size"] == "3000"
+
+    # -- REC-011: Incomplete broker snapshot must NOT force-close ghosts -----
+
+    @pytest.mark.asyncio
+    async def test_rec011_incomplete_snapshot_defers_not_closes(self):
+        """REC-011: When the broker snapshot is incomplete (e.g. spot-crypto
+        sub-account fetch failed), a DB-open trade absent from the partial list
+        must be DEFERRED, never force-closed. This is the fail-closed guard for
+        the recurring BTC/ETH ghost bug — a live position missing from a partial
+        snapshot was being closed in the DB with P&L=0 while still open at OANDA.
+        """
+        db_trades = [
+            _make_db_trade("uuid-1", "OT-100", "EUR_USD"),    # present in snapshot
+            _make_db_trade("uuid-2", "OT-BTC", "BTC_USD"),    # absent (crypto fetch failed)
+        ]
+        oanda_trades = [
+            _make_oanda_trade("OT-100", "EUR_USD"),
+            # BTC trade missing — partial snapshot
+        ]
+
+        reconciler, mock_db, mock_oanda, mock_alerts = _make_reconciler(
+            db_trades, oanda_trades, snapshot_complete=False
+        )
+        result = await reconciler.reconcile()
+
+        # The forex trade still matches; the crypto trade is deferred, NOT a ghost.
+        assert len(result["matched"]) == 1
+        assert result["matched"][0]["broker_trade_id"] == "OT-100"
+        assert len(result["ghosts"]) == 0
+        assert len(result["deferred"]) == 1
+        assert result["deferred"][0]["broker_trade_id"] == "OT-BTC"
+        assert result["snapshot_complete"] is False
+
+        # The live position must NOT have been closed in the DB.
+        mock_db.update.assert_not_called()
+
+        # Operators must be alerted that reconciliation could not verify positions.
+        mock_alerts.send_critical.assert_called_once()
+        alert_msg = mock_alerts.send_critical.call_args[0][0]
+        assert "INCOMPLETE" in alert_msg.upper()

@@ -456,6 +456,10 @@ class TestExecutionEngine:
         state_manager.refresh_kill_switch_from_db = AsyncMock(return_value=False)
         db = AsyncMock()
         db.insert = AsyncMock()
+        # Idempotency check reads trades by signal_id; default no prior trade.
+        # (execute_order fails CLOSED if this can't run, so it must be a real
+        # AsyncMock returning a list, not an auto MagicMock.)
+        db.select = AsyncMock(return_value=[])
         alert_service = AsyncMock()
         alert_service.send_info = AsyncMock()
         alert_service.send_warning = AsyncMock()

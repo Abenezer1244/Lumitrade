@@ -34,6 +34,7 @@ def _make_btc_config():
     cfg.trade_cooldown_minutes = 0
     cfg.min_confidence = Decimal("0.65")
     cfg.max_confidence = Decimal("0.90")
+    cfg.max_risk_pct = Decimal("0.03")  # read by _determine_risk_pct via min()
     cfg.max_spread_pips = Decimal("5.0")
     cfg.min_rr_ratio = Decimal("1.5")
     cfg.btc_min_rr_ratio = Decimal("3.0")

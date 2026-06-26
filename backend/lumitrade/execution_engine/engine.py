@@ -71,10 +71,34 @@ class ExecutionEngine:
             self._capital_executor = None
         self.performance_analyzer = PerformanceAnalyzer(db)
         self._lesson_analyzer = LessonAnalyzer(db, config)
+        # Hard execution halt for fatal lock loss. Unlike the kill switch this
+        # does NOT liquidate positions — it only refuses to start new broker
+        # work, so a primary that lost its lease stops cleanly without fighting
+        # the survivor's book. Set via halt_execution(); never auto-cleared.
+        self._execution_halted = False
+
+    def halt_execution(self, reason: str) -> None:
+        """Hard-stop NEW order placement and broker mutations without
+        liquidating. Used by the primary-lock-lost failover path. Idempotent
+        and non-resettable for the life of the process.
+        """
+        self._execution_halted = True
+        logger.critical("execution_halted", reason=reason)
 
     async def execute_order(
         self, order: ApprovedOrder, current_price: Decimal
     ) -> OrderResult | None:
+        # Hard execution halt (primary lock lost): refuse new orders BEFORE any
+        # DB refresh so a DB read cannot clear it. Does NOT liquidate — see
+        # halt_execution(). Separate from the kill switch on purpose: the kill
+        # switch closes all positions; lock-loss must not touch the book.
+        if getattr(self, "_execution_halted", False):
+            logger.critical(
+                "execute_order_blocked_execution_halted",
+                order_ref=str(order.order_ref),
+                pair=order.pair,
+            )
+            return None
         # Kill-switch guard: block any new order placement once the kill
         # switch is active, even if a signal slipped through the loop's
         # kill check. Refresh from DB first so we observe activations from
@@ -157,6 +181,54 @@ class ExecutionEngine:
                 # Shadow: pair scanned for telemetry but not eligible for live execution.
                 # Stored as PAPER_SHADOW so position counts and daily_pnl stay clean.
                 is_shadow = effective_mode == "LIVE" and not pair_is_live_approved
+                # Idempotency guard (live orders only): never place a SECOND
+                # broker order for a signal that already has a LIVE trade row.
+                # Guards against a restart/retry re-feeding the same
+                # ApprovedOrder -> duplicate live position on a hedging account.
+                #
+                # FAIL CLOSED: on a hedging account a duplicate live position is
+                # the expensive failure, so if the DB check cannot be performed
+                # we refuse to place rather than risk a double. (The OANDA
+                # client_request_id only dedups within a single call, not across
+                # re-evaluations which generate a fresh order_ref.) Paper/shadow
+                # rows are excluded so a shadow row never blocks a later live
+                # signal. NOTE: this is a best-effort guard, not full idempotency
+                # — the TOCTOU and broker-accept-then-DB-save-fail windows still
+                # need a durable pre-placement claim (tracked follow-up).
+                if effective_mode == "LIVE" and not is_shadow and order.signal_id:
+                    try:
+                        existing = await self._db.select(
+                            "trades",
+                            {
+                                "signal_id": str(order.signal_id),
+                                "account_id": self.config.account_uuid,
+                            },
+                        )
+                        if not isinstance(existing, list):
+                            raise RuntimeError(
+                                f"idempotency check returned non-list: {type(existing).__name__}"
+                            )
+                        live_rows = [
+                            r for r in existing
+                            if str(r.get("mode", "")) not in ("PAPER", "PAPER_SHADOW")
+                            and not str(r.get("broker_trade_id", "")).startswith("PAPER-")
+                        ]
+                        if live_rows:
+                            logger.warning(
+                                "execute_order_skipped_duplicate_signal",
+                                signal_id=str(order.signal_id),
+                                pair=order.pair,
+                                existing=len(live_rows),
+                            )
+                            return None
+                    except Exception:
+                        # Fail closed: cannot verify -> do not place a live order.
+                        logger.critical(
+                            "execute_order_idempotency_check_failed_failing_closed",
+                            signal_id=str(order.signal_id),
+                            pair=order.pair,
+                        )
+                        return None
                 if effective_mode == "PAPER" or is_shadow:
                     # Simulated fill — no broker call. Lands here when:
                     # - effective_mode is PAPER (either switch is PAPER), OR
@@ -356,6 +428,11 @@ class ExecutionEngine:
         try:
             while True:
                 await asyncio.sleep(POSITION_MONITOR_INTERVAL)
+                # Stop mutating broker state once execution is halted (lock
+                # lost): the survivor instance now owns these positions.
+                if getattr(self, "_execution_halted", False):
+                    logger.warning("position_monitor_skipped_execution_halted")
+                    continue
                 try:
                     await self._check_closed_positions()
                     await self._trail_stop_losses()
@@ -373,11 +450,19 @@ class ExecutionEngine:
         if not db_open:
             return
 
-        # Get OANDA open trade IDs
+        # Get OANDA open trade IDs, with a completeness signal. A partial
+        # snapshot (e.g. spot-crypto sub-account fetch failed) must NOT be used
+        # as proof that a live position is closed — that force-closes real
+        # BTC/ETH positions. Fail closed when the snapshot is incomplete.
         oanda_open_ids: set[str] = set()
+        snapshot_complete = True
         if self._oanda_read:
             try:
-                oanda_trades = await self._oanda_read.get_all_open_trades()
+                checked = getattr(self._oanda_read, "get_all_open_trades_checked", None)
+                if checked is not None:
+                    oanda_trades, snapshot_complete = await checked()
+                else:
+                    oanda_trades = await self._oanda_read.get_all_open_trades()
                 oanda_open_ids = {t["id"] for t in oanda_trades}
             except Exception as e:
                 logger.warning("position_monitor_oanda_error", error=str(e))
@@ -452,9 +537,18 @@ class ExecutionEngine:
                 await self._check_paper_trade_exit(trade)
                 continue
 
-            # Live trades: if broker_trade_id not in OANDA open trades, it's closed
+            # Live trades: if broker_trade_id not in OANDA open trades, it's
+            # closed — but ONLY when the snapshot was complete. Absence from a
+            # partial snapshot is not proof of closure; skip and retry next cycle.
             if broker_id not in oanda_open_ids:
-                await self._mark_trade_closed(trade)
+                if snapshot_complete:
+                    await self._mark_trade_closed(trade)
+                else:
+                    logger.warning(
+                        "position_monitor_close_skipped_incomplete_snapshot",
+                        broker_id=broker_id,
+                        pair=pair,
+                    )
 
     async def _check_paper_trade_exit(self, trade: dict) -> None:
         """Check if a paper trade's SL or TP has been hit by current price."""
@@ -964,9 +1058,14 @@ class ExecutionEngine:
                 duration_minutes = None
 
         try:
-            await self._db.update(
+            # Atomic CAS: close only if STILL OPEN. The reconciler ghost path
+            # also closes trades; without claiming the OPEN row both paths could
+            # book the same trade's P&L into the loss limits (double-count). The
+            # path that flips OPEN->CLOSED wins; the loser affects 0 rows and
+            # must skip booking and side effects.
+            update_result = await self._db.update(
                 "trades",
-                {"id": trade_id},
+                {"id": trade_id, "status": "OPEN"},
                 {
                     "status": "CLOSED",
                     "exit_price": str(exit_price),
@@ -978,6 +1077,16 @@ class ExecutionEngine:
                     "duration_minutes": duration_minutes,
                 },
             )
+            claimed = isinstance(update_result, list) and len(update_result) == 1
+            if not claimed:
+                # Already closed by another path (reconciler / prior pass).
+                # Do NOT re-book P&L or re-publish — avoids double-counting.
+                logger.info(
+                    "trade_close_skipped_already_closed",
+                    trade_id=trade_id,
+                    pair=trade.get("pair"),
+                )
+                return
             logger.info(
                 "trade_closed",
                 trade_id=trade_id,
