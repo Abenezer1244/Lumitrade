@@ -781,6 +781,44 @@ async def test_monitor_complete_snapshot_closes_absent_trade(env_keys):
 # ─── Audit 2026-06-25: lock-loss hard halt blocks new orders (not kill switch) ─
 
 
+async def _run_update_closed(claimed_rows):
+    """Run _update_closed_trade with a given db.update result; return state dict."""
+    from lumitrade.execution_engine.engine import ExecutionEngine
+    eng = ExecutionEngine.__new__(ExecutionEngine)
+    eng._db = MagicMock()
+    eng._db.update = AsyncMock(return_value=claimed_rows)
+    eng._events = None
+    eng._subagents = None
+    eng._run_post_trade_analysis = AsyncMock()
+    state = MagicMock()
+    state._state = {"daily_pnl": "0", "weekly_pnl": "0", "consecutive_losses": 0}
+    eng._state = state
+    trade = {"id": "t1", "pair": "USD_CAD", "mode": "LIVE", "opened_at": ""}
+    await eng._update_closed_trade(
+        trade, Decimal("1.3"), Decimal("10"), Decimal("-5"), "LOSS", "SL_HIT"
+    )
+    return state._state
+
+
+@pytest.mark.asyncio
+async def test_monitor_close_books_pnl_when_it_claims_the_row(env_keys):
+    """Audit (a) hardening: the monitor books P&L into the loss-limit counter
+    only when its atomic CAS actually claimed the OPEN row (1 row updated)."""
+    s = await _run_update_closed([{"id": "t1"}])  # claimed
+    assert s["daily_pnl"] == "-5"
+    assert s["weekly_pnl"] == "-5"
+
+
+@pytest.mark.asyncio
+async def test_monitor_close_skips_booking_when_already_closed(env_keys):
+    """If the row was already CLOSED by another path (reconciler), the monitor's
+    CAS matches 0 rows -> it must NOT re-book P&L (prevents double-count)."""
+    s = await _run_update_closed([])  # 0 rows claimed
+    assert s["daily_pnl"] == "0"
+    assert s["weekly_pnl"] == "0"
+    assert s["consecutive_losses"] == 0
+
+
 @pytest.mark.asyncio
 async def test_execution_halt_blocks_new_orders(env_keys):
     """Audit fix (Codex CRITICAL #2): on primary-lock loss the engine must

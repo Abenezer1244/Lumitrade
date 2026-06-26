@@ -288,6 +288,14 @@ class PositionReconciler:
                         broker_trade_id=broker_trade_id,
                     )
 
+            # If we never learned the real broker close time, attribute the
+            # close to NOW (detection time) rather than the open time — both the
+            # persisted closed_at/duration and the loss-limit period attribution
+            # use this. opened_at as the close time yields a 0/negative duration
+            # and can mis-bucket the P&L into a prior period.
+            if not close_time_known:
+                close_time = now.isoformat()
+
             # Best-effort exit_reason classification:
             #   1. If OANDA reported a specific fill reason, use it.
             #   2. Otherwise infer from P&L sign: wins on ghost trades almost
@@ -389,7 +397,7 @@ class PositionReconciler:
             # close still counts in the current period (conservative).
             "booked": closed_ok and pnl_usd != 0,
             "pnl_usd": str(pnl_usd),
-            "closed_at": close_time if close_time_known else now.isoformat(),
+            "closed_at": close_time,  # real broker time, else now (set above)
             "mode": str(db_trade.get("mode", "")),
         }
 

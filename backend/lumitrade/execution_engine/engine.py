@@ -1058,9 +1058,14 @@ class ExecutionEngine:
                 duration_minutes = None
 
         try:
-            await self._db.update(
+            # Atomic CAS: close only if STILL OPEN. The reconciler ghost path
+            # also closes trades; without claiming the OPEN row both paths could
+            # book the same trade's P&L into the loss limits (double-count). The
+            # path that flips OPEN->CLOSED wins; the loser affects 0 rows and
+            # must skip booking and side effects.
+            update_result = await self._db.update(
                 "trades",
-                {"id": trade_id},
+                {"id": trade_id, "status": "OPEN"},
                 {
                     "status": "CLOSED",
                     "exit_price": str(exit_price),
@@ -1072,6 +1077,16 @@ class ExecutionEngine:
                     "duration_minutes": duration_minutes,
                 },
             )
+            claimed = isinstance(update_result, list) and len(update_result) == 1
+            if not claimed:
+                # Already closed by another path (reconciler / prior pass).
+                # Do NOT re-book P&L or re-publish — avoids double-counting.
+                logger.info(
+                    "trade_close_skipped_already_closed",
+                    trade_id=trade_id,
+                    pair=trade.get("pair"),
+                )
+                return
             logger.info(
                 "trade_closed",
                 trade_id=trade_id,
