@@ -805,27 +805,38 @@ async def test_acquire_primary_retries_then_succeeds(env_keys, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_acquire_primary_gives_up_after_ttl_window(env_keys, monkeypatch):
-    """If never able to acquire (another instance is genuinely primary), it
-    gives up after outlasting the lock TTL window (180s / 10s = 18 tries) and
-    exits — it must NOT run as a standby."""
+async def test_acquire_primary_polls_quietly_until_shutdown(env_keys, monkeypatch):
+    """While another instance is genuinely primary, it polls indefinitely
+    (quiet hot-spare — no give-up/exit/cycle), stopping only when shutdown is
+    signalled. It must NOT run as a standby."""
     import asyncio as _asyncio
     import lumitrade.main as main_mod
-    monkeypatch.setattr(main_mod.asyncio, "sleep", AsyncMock())
     svc = main_mod.OrchestratorService.__new__(main_mod.OrchestratorService)
     svc.config = MagicMock()
     svc.config.instance_id = "x"
     svc._shutdown = _asyncio.Event()
     svc.lock = MagicMock()
-    svc.lock.acquire = AsyncMock(return_value=False)
+    svc.lock.acquire = AsyncMock(return_value=False)  # never free
+
+    # Shut down after a few poll-sleeps so the (otherwise infinite) loop ends.
+    sleeps = {"n": 0}
+
+    async def fake_sleep(_):
+        sleeps["n"] += 1
+        if sleeps["n"] >= 4:
+            svc._shutdown.set()
+
+    monkeypatch.setattr(main_mod.asyncio, "sleep", fake_sleep)
 
     assert await svc._acquire_primary_with_retry() is False
-    assert svc.lock.acquire.await_count == 18
+    # Polled several times (did not give up by a fixed count), then stopped.
+    assert svc.lock.acquire.await_count >= 4
 
 
 @pytest.mark.asyncio
-async def test_acquire_primary_stops_on_shutdown(env_keys, monkeypatch):
-    """A SIGTERM during the acquire wait stops the loop promptly."""
+async def test_acquire_primary_returns_false_if_already_shutting_down(env_keys, monkeypatch):
+    """If shutdown is already set, it returns immediately without touching the
+    lock (clean SIGTERM during a deploy hand-off)."""
     import asyncio as _asyncio
     import lumitrade.main as main_mod
     monkeypatch.setattr(main_mod.asyncio, "sleep", AsyncMock())
@@ -838,7 +849,7 @@ async def test_acquire_primary_stops_on_shutdown(env_keys, monkeypatch):
     svc.lock.acquire = AsyncMock(return_value=False)
 
     assert await svc._acquire_primary_with_retry() is False
-    assert svc.lock.acquire.await_count == 1
+    assert svc.lock.acquire.await_count == 0
 
 
 async def _run_update_closed(claimed_rows):
