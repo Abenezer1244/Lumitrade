@@ -195,7 +195,11 @@ class TestCrashRecovery:
         state = await sm.get()
         assert isinstance(state, dict)
         assert state["daily_pnl"] == "-15.00"
-        assert state["consecutive_losses"] == 2
+        # consecutive_losses is intentionally NOT restored from the DB on startup
+        # (commit ffd404f) — a restart must not immediately re-enter CAUTIOUS off
+        # stale losses. So a fresh restore resets it to 0 regardless of the
+        # persisted value (2 in this fixture).
+        assert state["consecutive_losses"] == 0
         assert state["account_balance"] == "500.00"
 
     # ── CR-007: Missing DB state starts with defaults ─────────────
