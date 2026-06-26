@@ -137,6 +137,47 @@ class OrchestratorService:
         except Exception:
             logger.exception("lock_lost_alert_failed")
 
+    async def _acquire_primary_with_retry(self) -> bool:
+        """Become primary, retrying patiently until the predecessor's lease
+        expires or is released.
+
+        With per-process lease tokens (state/lock.py) a redeploying instance
+        CANNOT refresh the previous instance's lease — it must WAIT up to the
+        lock TTL (~120s) for that lease to expire (or for a graceful release).
+        Exiting immediately makes supervisord rapid-restart the engine and hit
+        FATAL (`startretries=5, startsecs=5`) long before the TTL elapses — a
+        deploy-time outage. Staying alive in this retry loop keeps the process
+        'running' past `startsecs` so it is never killed as a crash loop, and we
+        still NEVER run trading loops as a standby (we proceed only once
+        genuinely primary). The separate health-server supervisord program keeps
+        answering /health throughout, so the Railway healthcheck is unaffected.
+        """
+        retry_seconds = 10
+        # Must exceed LOCK_TTL_SECONDS (120) so we outlast a stale/unreleased
+        # predecessor lease before giving up.
+        max_wait_seconds = 180
+        attempts = max(1, max_wait_seconds // retry_seconds)
+        for attempt in range(1, attempts + 1):
+            if await self.lock.acquire(self.config.instance_id):
+                if attempt > 1:
+                    logger.info(
+                        "lock_acquired_after_wait",
+                        instance_id=self.config.instance_id,
+                        attempts=attempt,
+                    )
+                return True
+            if self._shutdown.is_set():
+                return False
+            logger.info(
+                "lock_acquire_retry_waiting",
+                instance_id=self.config.instance_id,
+                attempt=attempt,
+                max_attempts=attempts,
+                retry_seconds=retry_seconds,
+            )
+            await asyncio.sleep(retry_seconds)
+        return False
+
     async def startup(self) -> None:
         """Full startup sequence — must complete before trading begins."""
         logger.info("lumitrade_starting", instance_id=self.config.instance_id)
@@ -156,20 +197,20 @@ class OrchestratorService:
         # a standby (rolling redeploy overlap, manual second instance, lost
         # failover race) can corrupt DB state and place duplicate live OANDA
         # orders during the ~30s window before it figures out it lost.
-        is_primary = await self.lock.acquire(self.config.instance_id)
+        is_primary = await self._acquire_primary_with_retry()
         logger.info("lock_status", is_primary=is_primary)
 
         if not is_primary:
-            logger.warning(
-                "lock_not_acquired_exiting",
+            logger.critical(
+                "lock_not_acquired_after_retries_exiting",
                 instance_id=self.config.instance_id,
-                msg="Refusing to run as standby — exit cleanly so Railway "
-                    "respawns and the survivor can re-attempt the lock.",
+                msg="Could not become primary within the lock-TTL window — "
+                    "another instance may be actively primary. Exiting so the "
+                    "platform recycles us to retry.",
             )
             raise SystemExit(
-                f"Lock acquisition failed for {self.config.instance_id}. "
-                "Another instance holds the primary lock; this process refuses "
-                "to start trading loops as a standby. Restart will retry."
+                f"Lock acquisition failed for {self.config.instance_id} after "
+                "retrying past the lock TTL. Refusing to run as standby."
             )
 
         # 4. Initialize state manager — safe now that we hold the lock

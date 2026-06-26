@@ -781,6 +781,66 @@ async def test_monitor_complete_snapshot_closes_absent_trade(env_keys):
 # ─── Audit 2026-06-25: lock-loss hard halt blocks new orders (not kill switch) ─
 
 
+# ─── Incident 2026-06-26: patient lock acquisition on deploy (no FATAL loop) ──
+
+
+@pytest.mark.asyncio
+async def test_acquire_primary_retries_then_succeeds(env_keys, monkeypatch):
+    """Deploy-outage fix: a redeploying instance cannot refresh the previous
+    per-process lease, so it must WAIT for that lease to expire rather than exit
+    immediately (which crash-loops supervisord into FATAL). It keeps retrying
+    and becomes primary once the lease frees up."""
+    import asyncio as _asyncio
+    import lumitrade.main as main_mod
+    monkeypatch.setattr(main_mod.asyncio, "sleep", AsyncMock())  # instant
+    svc = main_mod.OrchestratorService.__new__(main_mod.OrchestratorService)
+    svc.config = MagicMock()
+    svc.config.instance_id = "cloud-primary"
+    svc._shutdown = _asyncio.Event()
+    svc.lock = MagicMock()
+    svc.lock.acquire = AsyncMock(side_effect=[False, False, True])
+
+    assert await svc._acquire_primary_with_retry() is True
+    assert svc.lock.acquire.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_acquire_primary_gives_up_after_ttl_window(env_keys, monkeypatch):
+    """If never able to acquire (another instance is genuinely primary), it
+    gives up after outlasting the lock TTL window (180s / 10s = 18 tries) and
+    exits — it must NOT run as a standby."""
+    import asyncio as _asyncio
+    import lumitrade.main as main_mod
+    monkeypatch.setattr(main_mod.asyncio, "sleep", AsyncMock())
+    svc = main_mod.OrchestratorService.__new__(main_mod.OrchestratorService)
+    svc.config = MagicMock()
+    svc.config.instance_id = "x"
+    svc._shutdown = _asyncio.Event()
+    svc.lock = MagicMock()
+    svc.lock.acquire = AsyncMock(return_value=False)
+
+    assert await svc._acquire_primary_with_retry() is False
+    assert svc.lock.acquire.await_count == 18
+
+
+@pytest.mark.asyncio
+async def test_acquire_primary_stops_on_shutdown(env_keys, monkeypatch):
+    """A SIGTERM during the acquire wait stops the loop promptly."""
+    import asyncio as _asyncio
+    import lumitrade.main as main_mod
+    monkeypatch.setattr(main_mod.asyncio, "sleep", AsyncMock())
+    svc = main_mod.OrchestratorService.__new__(main_mod.OrchestratorService)
+    svc.config = MagicMock()
+    svc.config.instance_id = "x"
+    svc._shutdown = _asyncio.Event()
+    svc._shutdown.set()
+    svc.lock = MagicMock()
+    svc.lock.acquire = AsyncMock(return_value=False)
+
+    assert await svc._acquire_primary_with_retry() is False
+    assert svc.lock.acquire.await_count == 1
+
+
 async def _run_update_closed(claimed_rows):
     """Run _update_closed_trade with a given db.update result; return state dict."""
     from lumitrade.execution_engine.engine import ExecutionEngine
