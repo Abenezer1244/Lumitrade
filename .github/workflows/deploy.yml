@@ -1,66 +1,118 @@
 name: Deploy to Railway
 
+# Dashboard auto-deploys after the Test Suite passes on main.
+# The ENGINE is MANUAL-ONLY (workflow_dispatch) with a hard 13:00-23:59 UTC
+# window guard: trading runs 00:00-13:00 UTC and an engine restart then misses
+# trades (per CLAUDE.md). Auto-deploying the engine on ordinary CI events is the
+# wrong default for a live money system — Codex review 2026-06-30.
+
 on:
   workflow_run:
     workflows: ["Test Suite"]
     branches: [main]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      deploy_frontend:
+        description: "Deploy dashboard"
+        type: boolean
+        default: true
+      deploy_engine:
+        description: "Deploy engine (allowed only 13:00-23:59 UTC)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: railway-production-deploy
+  cancel-in-progress: false
 
 jobs:
-  deploy-backend:
-    name: Deploy Backend
-    runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy backend service
-        run: railway up --detach --service lumitrade-engine
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Wait for backend health check
-        run: |
-          echo "Waiting 90s for backend deployment..."
-          sleep 90
-          HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
-            ${{ vars.BACKEND_HEALTH_URL || 'https://lumitrade-engine-production.up.railway.app/health' }} || echo "000")
-          if [ "$HEALTH" != "200" ]; then
-            echo "Backend health check failed: $HEALTH"
-            exit 1
-          fi
-          echo "Backend deployment healthy."
-
   deploy-frontend:
-    name: Deploy Frontend
+    name: Deploy Dashboard
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      ${{
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy_frontend)
+      }}
 
     steps:
-      - name: Checkout
+      - name: Checkout tested revision
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Require deployment config
+        run: |
+          test -n "${{ secrets.RAILWAY_TOKEN }}" || { echo "::error::Missing RAILWAY_TOKEN secret"; exit 1; }
+          test -n "${{ vars.FRONTEND_URL }}" || { echo "::error::Missing FRONTEND_URL repo/environment variable"; exit 1; }
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy frontend service
-        run: railway up --detach --service lumitrade-dashboard
+      - name: Deploy dashboard
+        run: railway up --service lumitrade-dashboard --ci
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
-      - name: Wait for frontend health check
+      - name: Poll dashboard health
+        env:
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
         run: |
-          echo "Waiting 90s for frontend deployment..."
-          sleep 90
-          HEALTH=$(curl -s -o /dev/null -w "%{http_code}" \
-            ${{ vars.FRONTEND_URL || 'https://lumitrade-dashboard-production-0507.up.railway.app' }} || echo "000")
-          if [ "$HEALTH" != "200" ]; then
-            echo "Frontend health check failed: $HEALTH"
+          deadline=$((SECONDS + 600))
+          until curl --fail --silent --show-error --location --max-time 10 "$FRONTEND_URL" > /dev/null; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Dashboard health check failed after 10 minutes: $FRONTEND_URL"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Dashboard deployment healthy."
+
+  deploy-engine:
+    name: Deploy Engine
+    runs-on: ubuntu-latest
+    # MANUAL ONLY. Never triggered by workflow_run (no auto engine restarts).
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_engine }}
+
+    steps:
+      - name: Enforce engine deploy window (13:00-23:59 UTC)
+        run: |
+          hour="$(date -u +%H)"
+          if [ "$hour" -lt 13 ]; then
+            echo "::error::Engine deploy blocked. Current UTC hour is $hour; trading hours are 00:00-13:00 UTC. Allowed deploy window is 13:00-23:59 UTC."
             exit 1
           fi
-          echo "Frontend deployment healthy."
+          echo "In deploy window (UTC hour $hour)."
+
+      - name: Checkout selected revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Require deployment config
+        run: |
+          test -n "${{ secrets.RAILWAY_TOKEN }}" || { echo "::error::Missing RAILWAY_TOKEN secret"; exit 1; }
+          test -n "${{ vars.BACKEND_HEALTH_URL }}" || { echo "::error::Missing BACKEND_HEALTH_URL repo/environment variable"; exit 1; }
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy engine
+        run: railway up --service lumitrade-engine --ci
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Poll engine health
+        env:
+          BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+        run: |
+          deadline=$((SECONDS + 600))
+          until [ "$(curl --silent --show-error --location --max-time 10 -o /dev/null -w "%{http_code}" "$BACKEND_HEALTH_URL")" = "200" ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::Engine health check failed after 10 minutes: $BACKEND_HEALTH_URL"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Engine deployment healthy."
