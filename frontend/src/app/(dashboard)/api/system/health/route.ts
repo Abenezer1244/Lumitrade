@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 
+// Returned ONLY when the dashboard cannot reach the engine /health endpoint
+// (network error / timeout). It must read as "engine unreachable" — NOT as a
+// real engine state. Hence status:"offline" (red, distinct from a reachable
+// engine's amber "degraded") and instance_id:"unreachable". We deliberately do
+// NOT report a confident trading mode here: an unreachable engine's mode is
+// unknown, so previously claiming "PAPER" was misleading. `unreachable:true`
+// lets the UI label it explicitly.
 const FALLBACK = {
-  status: "degraded" as const,
-  instance_id: "unknown",
-  is_primary: true,
+  status: "offline" as const,
+  instance_id: "unreachable",
+  unreachable: true,
+  is_primary: false,
   timestamp: new Date().toISOString(),
   uptime_seconds: 0,
   components: {
@@ -11,7 +19,7 @@ const FALLBACK = {
     ai_brain: { status: "offline", last_call_ago_s: 0 },
     database: { status: "offline", latency_ms: 0 },
     price_feed: { status: "offline", last_tick_ago_s: 0 },
-    risk_engine: { status: "ok", state: "NORMAL" },
+    risk_engine: { status: "offline", state: "NORMAL" },
     circuit_breaker: { status: "CLOSED" },
   },
   trading: {
