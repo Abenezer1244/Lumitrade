@@ -556,6 +556,42 @@ async def test_lock_vacant_row_we_win(env_keys):
     assert ok is True
 
 
+async def _health_lock_status(holder: str | None, instance_id: str = "cloud-primary") -> str:
+    from lumitrade.infrastructure.health_server import HealthServer
+
+    db = MagicMock()
+    db.select = AsyncMock(return_value=[{"id": "singleton"}])
+    db.select_one = AsyncMock(return_value={
+        "id": "singleton",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "instance_id": holder,
+        "is_primary_instance": holder is not None,
+    })
+
+    components = await HealthServer(db, instance_id)._check_components(
+        datetime.now(timezone.utc)
+    )
+    return components["lock"]["status"]
+
+
+@pytest.mark.asyncio
+async def test_health_lock_treats_composite_holder_prefix_as_this_instance(env_keys):
+    status = await _health_lock_status("cloud-primary#23e579d1cb19")
+    assert status == "held"
+
+
+@pytest.mark.asyncio
+async def test_health_lock_preserves_legacy_bare_holder_match(env_keys):
+    status = await _health_lock_status("cloud-primary")
+    assert status == "held"
+
+
+@pytest.mark.asyncio
+async def test_health_lock_reports_other_instance_prefix_as_other(env_keys):
+    status = await _health_lock_status("local-backup#23e579d1cb19")
+    assert status == "held_by_other"
+
+
 # ─── Codex round-3 review #2: PromptBuilder account-scoped queries ──────────
 
 
