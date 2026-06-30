@@ -1,0 +1,82 @@
+-- Migration 019: Permanent guard — the lock holder token MUST be lease-qualified
+--
+-- Context (incident 2026-06-29): the Supabase system_state singleton lock was
+-- held by a BARE `cloud-primary` token, renewed every ~60s. The audited
+-- backend/lumitrade/state/lock.py ALWAYS writes a per-process composite token
+-- `{INSTANCE_ID}#{lease}` (see DistributedLock._owner) or NULL on release — it
+-- can NEVER write a bare token. Therefore the bare holder is OLD pre-audit code
+-- (predating the lease-token + CAS fix, commit c8c5f5b) running on a host
+-- outside Railway. Because that old code force-overwrites the lock (pre-CAS),
+-- the audited engine — deployed and healthy — could only ever wait behind it.
+--
+-- ROOT-CAUSE FIX (defense in depth at the DB layer): forbid any non-lease
+-- token from being written to system_state.instance_id. This is enforced even
+-- for the service-role key (Postgres CHECK constraints are NOT bypassed by
+-- BYPASSRLS, unlike row-level security). Consequences:
+--   * The ghost's next renewal UPDATE (instance_id = 'cloud-primary') is
+--     REJECTED -> it can no longer hold/renew the lock -> the lease expires
+--     after LOCK_TTL_SECONDS (120s) -> the audited engine (already polling
+--     every 15s) takes over with a valid composite token. Eviction.
+--   * Any future copy of pre-lease code can NEVER reacquire leadership.
+--
+-- WHY THIS IS SAFE FOR THE AUDITED CODE (verified against source):
+--   * lock.py writes only `_owner()` = '<INSTANCE_ID>#<12-hex-lease>' (matches)
+--     or NULL on release (allowed). All acquire/renew/takeover paths use it.
+--   * state/manager.py save() upserts the singleton row but does NOT include
+--     instance_id in its payload; PostgREST upsert only SETs columns present in
+--     the payload, so instance_id is preserved untouched -> constraint not hit.
+--   * health_server.py upserts (kill switch, settings, reconcile open_trades)
+--     never write instance_id either.
+--   * The id='settings' row has instance_id = NULL -> allowed.
+--
+-- WHY `NOT VALID`: the singleton row CURRENTLY holds the bare 'cloud-primary'
+-- value. A normal CHECK add would fail the initial full-table validation on
+-- that pre-existing row. `NOT VALID` skips validation of existing rows but
+-- STILL enforces the constraint on every subsequent INSERT/UPDATE (Postgres
+-- semantics) — which is exactly what blocks the ghost's next renewal while
+-- tolerating the current bad value until it is overwritten by the legit holder.
+-- We intentionally do NOT run `VALIDATE CONSTRAINT` here; once the audited
+-- engine takes over (composite token) the row self-heals and a later migration
+-- may validate it.
+--
+-- PATTERN: `^[^#]+#[0-9a-f]{12}$` — a non-empty INSTANCE_ID prefix that
+-- contains NO '#', then a literal '#', then exactly 12 lowercase hex chars
+-- (uuid4().hex[:12]), anchored at both ends. Anchoring (Codex review) makes
+-- this a true whole-token invariant, not just a suffix check: it rejects
+-- '#a1b2c3d4e5f6', 'foo#bar#a1b2c3d4e5f6', and any value lacking a real
+-- prefix. INSTANCE_ID='cloud-primary' has no '#', so the legit composite
+-- 'cloud-primary#<12hex>' matches.
+--
+-- IDEMPOTENT: drops any prior copy of the constraint before re-adding.
+-- NON-DESTRUCTIVE: adds a constraint only; no data is modified or dropped.
+--
+-- DEPLOY: run in the Supabase SQL editor. Safe while services are live — adds
+-- a constraint under a brief lock on a 2-row table. After applying, watch the
+-- singleton row: the bare holder stops renewing, the lease expires (<=120s),
+-- and the audited engine acquires as 'cloud-primary#<lease>'.
+-- IMPORTANT operational note (Codex review): this migration evicts DB
+-- LEADERSHIP only. It does NOT kill the rogue process and does NOT revoke its
+-- OANDA token — the ghost retains broker authority and could still place orders
+-- from its own loops even after losing the lock. Rotating the OANDA API token
+-- is therefore MANDATORY as the final incident-response step to cryptographically
+-- retire the unknown host. Sequence: confirm zero OANDA activity -> apply this
+-- migration -> verify audited takeover -> rotate OANDA token + update engine env.
+--
+-- FOLLOW-UP (after takeover): once the singleton row holds a composite token
+-- (no bare 'cloud-primary' remains), promote the constraint to fully validated:
+--     ALTER TABLE system_state VALIDATE CONSTRAINT system_state_instance_id_leased;
+-- Do NOT run VALIDATE while the bare value is still present — it would error.
+--
+-- DEPLOY PATH: this repo keeps migrations in BOTH database/migrations/ (manual)
+-- and supabase/migrations/ (timestamped, auto-applied by the Supabase pipeline).
+-- A twin copy lives at supabase/migrations/20260629223000_lock_holder_must_be_leased.sql
+-- so the constraint is not lost on the next `supabase db push`. For the incident
+-- itself, paste this SQL directly into the Supabase SQL editor now.
+
+ALTER TABLE system_state
+    DROP CONSTRAINT IF EXISTS system_state_instance_id_leased;
+
+ALTER TABLE system_state
+    ADD CONSTRAINT system_state_instance_id_leased
+    CHECK (instance_id IS NULL OR instance_id ~ '^[^#]+#[0-9a-f]{12}$')
+    NOT VALID;

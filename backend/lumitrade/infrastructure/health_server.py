@@ -480,7 +480,8 @@ class HealthServer:
             # Lock
             holder = row.get("instance_id")
             is_primary = row.get("is_primary_instance", False)
-            if is_primary and holder == self._instance_id:
+            holder_base = holder.split("#", 1)[0] if holder else holder
+            if is_primary and holder_base == self._instance_id:
                 components["lock"] = {"status": "held"}
             elif is_primary and holder:
                 components["lock"] = {"status": "held_by_other"}
