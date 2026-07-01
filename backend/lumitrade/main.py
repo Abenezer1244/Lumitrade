@@ -18,8 +18,10 @@ from .config import LumitradeConfig
 from .core.models import ApprovedOrder
 from .infrastructure.alert_service import AlertService
 from .infrastructure.db import DatabaseClient
+from .infrastructure.market_data_router import MarketDataRouter
 from .infrastructure.oanda_client import OandaClient, OandaTradingClient
 from .infrastructure.secure_logger import configure_logging, get_logger
+from .infrastructure.spot_crypto_client import SpotCryptoClient
 from .state.lock import DistributedLock
 from .state.manager import StateManager
 
@@ -98,6 +100,14 @@ class OrchestratorService:
         self.db = DatabaseClient(self.config)
         self.oanda = OandaClient(self.config)
         self.oanda_trade = OandaTradingClient(self.config)
+        # Alpaca read-only crypto data (P1). Present only when both keys are
+        # set; absent otherwise so the engine runs forex-only unchanged. The
+        # router reroutes ONLY market-data reads (candles/pricing/stream) for
+        # BTC_USD to Alpaca — execution stays on the OANDA clients below.
+        self.crypto = (
+            SpotCryptoClient(self.config) if self.config.alpaca_enabled else None
+        )
+        self.market_data = MarketDataRouter(self.config, self.oanda, self.crypto)
         self.alerts = AlertService(self.config, self.db)
         self.lock = DistributedLock(self.db, on_lock_lost=self._on_lock_lost)
 
@@ -248,6 +258,18 @@ class OrchestratorService:
         except Exception as e:
             logger.warning("instrument_validation_failed", error=str(e))
 
+        # 6b-crypto. BTC_USD trades 24/7 on Alpaca spot, not OANDA, so the
+        # tradeable filter above drops it. Re-add it when Alpaca is configured
+        # so the scanner sees it (mirrors the XAU_USD/Capital.com pattern
+        # below). Market data routes to Alpaca via MarketDataRouter. It stays
+        # PAPER — BTC_USD is not in live_pairs and there is no crypto execution
+        # path until P2/P3 — so a signal here is paper-shadowed only.
+        if self.config.alpaca_enabled:
+            for cp in self.config.ALPACA_CRYPTO_PAIRS:
+                if cp not in self.config.pairs:
+                    self.config.pairs.append(cp)
+            logger.info("alpaca_crypto_pairs_active", pairs=self.config.pairs)
+
         # 6c. Paper-shadow scan: all configured pairs are scanned regardless of
         # live_pairs. Non-live pairs are routed to PaperExecutor at execution time
         # (see execution_engine/engine.py). This lets USD_JPY generate shadow signals
@@ -275,7 +297,7 @@ class OrchestratorService:
 
         self.events = EventPublisher(self.db, self.config.account_uuid)
         self.subagents = SubagentOrchestrator(self.config, self.db, self.alerts, events=self.events)
-        self.data_eng = DataEngine(self.config, self.oanda, self.db)
+        self.data_eng = DataEngine(self.config, self.market_data, self.db)
         self.claude = ClaudeClient(self.config)
         self.consensus = ConsensusEngine(self.config)
         self.scanner = SignalScanner(
@@ -299,7 +321,12 @@ class OrchestratorService:
         self.exec_eng = ExecutionEngine(
             self.config, self.oanda_trade, self.state, self.db,
             self.alerts, self.subagents,
-            oanda_read_client=self.oanda,
+            # Read client is the market-data router: BTC paper-exit pricing
+            # (_check_paper_trade_exit / paper monitor) reroutes to Alpaca,
+            # while trade-lookup / get_all_open_trades_checked forward to OANDA
+            # unchanged — so reconciliation stays OANDA-exact. LIVE order
+            # placement uses self.oanda_trade (OANDA) and never the router.
+            oanda_read_client=self.market_data,
             events=self.events,
             capital_client=capital_client,
         )
@@ -462,6 +489,8 @@ class OrchestratorService:
             await self.state.save()
         await self.lock.release(self.config.instance_id)
         await self.oanda.close()
+        if self.crypto is not None:
+            await self.crypto.close()
         logger.info("lumitrade_stopped")
 
     @staticmethod

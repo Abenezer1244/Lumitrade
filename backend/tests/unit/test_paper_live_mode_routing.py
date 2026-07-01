@@ -336,6 +336,27 @@ async def test_execute_routes_to_oanda_only_when_both_live(execution_engine_with
 
 
 @pytest.mark.asyncio
+async def test_execute_forces_crypto_to_paper_even_if_live_approved(
+    execution_engine_with_mocked_executors,
+):
+    """W3 guard (Alpaca P1): a crypto pair in ALPACA_CRYPTO_PAIRS must NEVER
+    reach the live OANDA executor, even if an operator mis-adds it to live_pairs
+    while both switches are LIVE. Crypto has no broker execution path until
+    P2/P3, so it is forced to paper/shadow."""
+    eng, cfg = execution_engine_with_mocked_executors
+    cfg.trading_mode = "LIVE"
+    cfg.db_mode_override = "LIVE"
+    cfg.live_pairs = ["USD_CAD", "BTC_USD"]  # operator misconfiguration
+    assert "BTC_USD" in cfg.ALPACA_CRYPTO_PAIRS
+
+    order = _make_order(pair="BTC_USD")
+    await eng.execute_order(order, Decimal("60000"))
+
+    eng._paper_executor.execute.assert_awaited_once()
+    eng._oanda_executor.execute.assert_not_awaited()  # no real OANDA crypto order
+
+
+@pytest.mark.asyncio
 async def test_idempotency_skips_duplicate_signal_on_live(execution_engine_with_mocked_executors):
     """Audit (a1): a LIVE order whose signal_id already has a trade row must NOT
     place a second broker order — guards against restart/retry duplicate live

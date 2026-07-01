@@ -712,9 +712,16 @@ def test_main_startup_exits_when_lock_not_acquired(env_keys):
     trading loops."""
     main_path = ROOT / "lumitrade" / "main.py"
     src = main_path.read_text(encoding="utf-8")
-    # The block right after the lock check should raise SystemExit
-    lock_section_start = src.find("self.lock.acquire(self.config.instance_id)")
-    section = src[lock_section_start:lock_section_start + 1500]
+    # The block right after the startup lock GATE should raise SystemExit.
+    # Anchor on the startup() gate call, not the first `self.lock.acquire`
+    # occurrence — the patient-lock hotfix moved acquisition into the
+    # `_acquire_primary_with_retry()` helper, so the raw acquire call no longer
+    # sits next to the is_primary check.
+    lock_section_start = src.find(
+        "is_primary = await self._acquire_primary_with_retry()"
+    )
+    assert lock_section_start != -1, "startup lock gate not found"
+    section = src[lock_section_start:lock_section_start + 900]
     assert "if not is_primary" in section
     assert "SystemExit" in section, \
         "Standby path must SystemExit, not just log and proceed"

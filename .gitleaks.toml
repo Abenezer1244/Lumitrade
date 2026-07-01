@@ -1,40 +1,25 @@
-# Gitleaks configuration — allow known false positives
-# Spec docs contain example API key patterns, test files use fake keys
+# Gitleaks configuration — suppress known false positives.
+#
+# Spec docs, .env.example, CLAUDE.md, plan docs, and test files contain EXAMPLE
+# / FAKE key patterns (not real secrets). Those paths are allowlisted below.
+#
+# IMPORTANT: allowlisting MUST live under [allowlist].paths. A [[rules]] block
+# with a `path` does the OPPOSITE — with useDefault=true it ADDS a detection
+# rule that FLAGS those paths as findings. The previous config expressed these
+# as [[rules]], so every changed test file failed the scan (the diff-scoped scan
+# only surfaced it when a PR touched test files). Fixed by using [allowlist].
 
 [extend]
-# Use default rules
+# Use gitleaks' default detection rules.
 useDefault = true
 
-[[rules]]
-  id = "allow-spec-docs"
-  description = "Spec documentation contains example API key patterns (not real secrets)"
-  path = '''docs/specs/.*'''
-
-[[rules]]
-  id = "allow-test-files"
-  description = "Test files contain fake API key patterns for security testing"
-  path = '''(tests/|backend/tests/).*'''
-
-[[rules]]
-  id = "allow-env-example"
-  description = ".env.example contains placeholder values"
-  path = '''\.env\.example'''
-
-[[rules]]
-  id = "allow-claude-md"
-  description = "CLAUDE.md contains documentation patterns"
-  path = '''CLAUDE\.md'''
-
-[[rules]]
-  id = "allow-plans"
-  description = "Plan documents may contain example patterns"
-  path = '''docs/superpowers/.*'''
-
 [allowlist]
-  description = "Global allowlist for documentation and test patterns"
+  description = "Global allowlist for documentation, examples, and test fixtures"
   paths = [
     '''docs/specs/.*''',
+    '''docs/superpowers/.*''',
     '''\.env\.example''',
     '''CLAUDE\.md''',
-    '''docs/superpowers/.*''',
+    '''(^|/)tests/.*''',
+    '''backend/tests/.*''',
   ]
