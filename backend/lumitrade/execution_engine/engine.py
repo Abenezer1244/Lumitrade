@@ -178,6 +178,22 @@ class ExecutionEngine:
 
             try:
                 pair_is_live_approved = order.pair in self.config.live_pairs
+                # P1 hard guard (defense in depth): crypto pairs routed to Alpaca
+                # have NO live broker execution path yet — the stateful entry +
+                # software OCO supervisor land in P2/P3. Never let one reach the
+                # live OANDA/Capital executor, even if an operator mis-adds it to
+                # live_pairs. Force paper/shadow and log loudly.
+                if (
+                    order.pair in self.config.ALPACA_CRYPTO_PAIRS
+                    and pair_is_live_approved
+                ):
+                    logger.warning(
+                        "crypto_pair_forced_paper_no_live_execution_path",
+                        pair=order.pair,
+                        reason="Alpaca crypto execution lands in P2/P3; "
+                        "refusing live OANDA route",
+                    )
+                    pair_is_live_approved = False
                 # Shadow: pair scanned for telemetry but not eligible for live execution.
                 # Stored as PAPER_SHADOW so position counts and daily_pnl stay clean.
                 is_shadow = effective_mode == "LIVE" and not pair_is_live_approved
