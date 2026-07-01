@@ -44,6 +44,68 @@ class LumitradeConfig(BaseSettings):
             return self.oanda_spot_crypto_account_id
         return self.oanda_account_id
 
+    # ── Alpaca (spot crypto: BTC/USD) ──────────────────────────
+    # PAPER-first BTC/USD trading via Alpaca. Auth uses TWO headers
+    # (APCA-API-KEY-ID / APCA-API-SECRET-KEY), NOT a Bearer token.
+    # Data host is identical for paper and live; only the trading base
+    # URL and the key pair differ between the two environments.
+    # See docs/ALPACA_CRYPTO_INTEGRATION.md.
+    alpaca_api_key_id: Optional[str] = Field(
+        validation_alias="ALPACA_API_KEY_ID", default=None
+    )
+    alpaca_api_secret_key: Optional[str] = Field(
+        validation_alias="ALPACA_API_SECRET_KEY", default=None
+    )
+    # When True (default) trading routes to the paper endpoint. The live
+    # endpoint is only ever reached with alpaca_paper=False AND a live key
+    # pair — a deliberate two-condition gate mirroring the dual-switch.
+    alpaca_paper: bool = Field(validation_alias="ALPACA_PAPER", default=True)
+    # Explicit trading base URL override. When unset it is derived from
+    # alpaca_paper (see alpaca_trading_url).
+    alpaca_trading_base_url: Optional[str] = Field(
+        validation_alias="ALPACA_TRADING_BASE_URL", default=None
+    )
+    alpaca_data_base_url: str = Field(
+        validation_alias="ALPACA_DATA_BASE_URL",
+        default="https://data.alpaca.markets",
+    )
+    alpaca_data_ws_url: str = Field(
+        validation_alias="ALPACA_DATA_WS_URL",
+        default="wss://stream.data.alpaca.markets/v1beta3/crypto/us",
+    )
+    # Crypto instruments routed to Alpaca rather than OANDA. Internal
+    # symbol form is BTC_USD; the client normalizes to Alpaca's BTC/USD.
+    ALPACA_CRYPTO_PAIRS: frozenset = frozenset({"BTC_USD"})
+
+    @property
+    def alpaca_enabled(self) -> bool:
+        """True only when both Alpaca credentials are present.
+
+        Absence of either key leaves the Alpaca path inactive (feature is a
+        silent no-op), so the engine runs forex-only without it.
+        """
+        return bool(self.alpaca_api_key_id and self.alpaca_api_secret_key)
+
+    @property
+    def alpaca_trading_url(self) -> str:
+        """Effective Alpaca trading base URL.
+
+        An explicit ALPACA_TRADING_BASE_URL wins; otherwise derive from the
+        alpaca_paper flag. Defaults to the PAPER endpoint so a misconfigured
+        environment can never accidentally reach the live trading API.
+        """
+        if self.alpaca_trading_base_url:
+            return self.alpaca_trading_base_url
+        return (
+            "https://api.alpaca.markets"
+            if not self.alpaca_paper
+            else "https://paper-api.alpaca.markets"
+        )
+
+    def uses_alpaca(self, pair: str) -> bool:
+        """True if `pair` is a crypto instrument routed to Alpaca."""
+        return pair.upper() in self.ALPACA_CRYPTO_PAIRS
+
     # ── Anthropic ──────────────────────────────────────────────
     anthropic_api_key: str = Field(validation_alias="ANTHROPIC_API_KEY")
     claude_model: str = "claude-sonnet-4-6"
